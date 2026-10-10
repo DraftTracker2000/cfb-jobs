@@ -120,7 +120,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     /* style by season: adj O / D, pace, 3-point rate, turnovers forced, eFG for and against, offensive rebounding — with each season's D-I rank for pace */
     const TH = await buildTeamHist({ cb, getPack, putPack, log, S, full }).catch(e => { log("team history: " + e.message); return null });
     if (TH) for (const X of Object.values(CO.coaches)) for (const [y, s] of Object.entries(X.seasons)) { const row = (TH.seasons[y] || {})[s.tm]; if (!row) continue; s.st = row;
-      const paces = Object.values(TH.seasons[y]).map(r => r[2]).filter(v => v != null); if (row[2] != null) s.paceRk = paces.filter(v => v > row[2]).length + 1 }
+      const paces = Object.values(TH.seasons[y]).filter(r => r[0] != null).map(r => r[2]).filter(v => v != null);   /* Division I only (teams with an adjusted rating) */ if (row[2] != null) s.paceRk = paces.filter(v => v > row[2]).length + 1 }
     /* full careers from Wikipedia, for every coach with a current team */
     const nameOf = Object.fromEntries((teamList || []).map(t => [t.id, t.school]));
     const W = await wikiCoaches({ getPack, putPack, log, full, coaches: Object.entries(CO.current).map(([tid, cid]) => ({ cid, nm: (CO.coaches[cid] || {}).nm, school: nameOf[tid] || "" })).filter(c => c.nm) }).catch(e => { log("wikipedia: " + e.message); return null });

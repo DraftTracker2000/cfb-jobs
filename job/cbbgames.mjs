@@ -122,6 +122,9 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     log(`coaches: ${Object.keys(CO.coaches).length} with records, ${Object.keys(CO.current).length} current`) } catch (e) { log("coaches: " + e.message) }
   const coachOf = (tid, y) => { const m = CI && (CI.seasons[y] || CI.seasons[y - 1]); return m ? m[tid] || null : null };
   /* ---- games out ---- */
+  /* rest: days since each team's previous game (Sam: travel and rest) */
+  const lastBy = {}, REST = {}; for (const g of G.slice().sort((x, y) => x.startDate.localeCompare(y.startDate))) { const d = Date.parse(g.startDate.slice(0, 10));
+    REST[g.id] = [g.homeTeamId, g.awayTeamId].map(t => { const l = lastBy[t]; return l != null && d - l < 15 * 864e5 ? Math.round((d - l) / 864e5) : null }); lastBy[g.homeTeamId] = d; lastBy[g.awayTeamId] = d }
   const games = G.filter(g => D1.has(g.homeTeamId) || D1.has(g.awayTeamId)).map(g => {
     const he = g.homeTeamEloStart ?? null, ae = g.awayTeamEloStart ?? null, home = g.neutralSite ? 0 : 1;
     const x = xOf(he, ae, g.homeTeamId, g.awayTeamId, home, g.startDate.slice(0, 10), g.season);
@@ -129,7 +132,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     const PKg = g.season === S && g.status === "final" ? PKx : PK; const p = known ? pickP(PKg, x) : null, m = known ? pickM(PKg, x) : null;
     return { id: g.id, s: g.season, d: g.startDate, tbd: g.startTimeTbd ? 1 : 0, h: g.homeTeamId, a: g.awayTeamId, hs: g.homePoints ?? null, as: g.awayPoints ?? null, st: g.status, n: g.neutralSite ? 1 : 0, c: g.conferenceGame ? 1 : 0,
       t: g.tournament || null, note: g.gameNotes || null, post: g.seasonType === "postseason" ? 1 : 0, hSeed: g.homeSeed ?? null, aSeed: g.awaySeed ?? null, venue: g.venue || null, city: [g.city, g.state].filter(Boolean).join(", "),
-      tv: TV[g.id] || null, ln: LINES[g.id] || null, p: r3(p), m: r1(m), elo: [he != null ? Math.round(he) : null, ae != null ? Math.round(ae) : null],
+      tv: TV[g.id] || null, rest: REST[g.id] || null, ln: LINES[g.id] || null, p: r3(p), m: r1(m), elo: [he != null ? Math.round(he) : null, ae != null ? Math.round(ae) : null],
       hr: g.season === S ? rankAt(g.homeTeamId, g.startDate.slice(0, 10)) : null, ar: g.season === S ? rankAt(g.awayTeamId, g.startDate.slice(0, 10)) : null,
       ser: seriesFor(g.homeTeamId, g.awayTeamId, g.startDate.slice(0, 10)), exc: r1(g.excitement), co: [coachOf(g.homeTeamId, g.season), coachOf(g.awayTeamId, g.season)] };
   });

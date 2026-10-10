@@ -87,6 +87,61 @@ export function nbaTeamRatings(box) {
 }
 /* our pick: the gap in last season's net rating (points per 100) plus 2.5 for home court, as a margin; the chance from a normal curve with a 12-point spread */
 export function nbaPick(H, A, neutral) { const m = (H.net || 0) - (A.net || 0) + (neutral ? 0 : 2.5); const z = m / 12; const t = 1 / (1 + .2316419 * Math.abs(z)), d = .3989423 * Math.exp(-z * z / 2), p = d * t * (.3193815 + t * (-.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return { m: Math.round(10 * m) / 10, p: Math.round(1000 * (z > 0 ? 1 - p : p)) / 1000 } }
+/* ---- NBA play-by-play: shot zones, close games and the season series (Oct 10 — Sam: "you have still given me no H2H NBA side") ----
+   espn_nba_pbp/play_by_play_{y}.csv (~280 MB a season), read as a stream. coordinate_x_raw runs 0–50 across the court, the hoop at
+   (25, 0); coordinate_y_raw is feet from the hoop toward half court (dunks sit at y≈1, corner threes at y −4…7). Checked against a
+   sample: 68% at the rim, 38% from the corners, 34% from the top of the arc, the median three 25.8 ft — the NBA's real numbers.
+   The zones are the college ones (same keys), so the same court drawing works for both. */
+export const NBA_ZONES = ["rim", "paint", "mbL", "mwL", "mt", "mwR", "mbR", "c3L", "w3L", "t3", "w3R", "c3R"];
+const NZI = Object.fromEntries(NBA_ZONES.map((z, i) => [z, i]));
+export function nbaZone(x, y, pts) {
+  if (!(x > -100) || !(y > -100)) return null;
+  const dx = x - 25, d = Math.hypot(dx, y), a = Math.atan2(dx, Math.max(y, .01)) * 180 / Math.PI;
+  if (pts === 3) { if (y < 9) return dx > 0 ? "c3L" : "c3R"; return a > 36 ? "w3L" : a < -36 ? "w3R" : "t3" }
+  if (d < 4) return "rim";
+  if (y < 13.75 && Math.abs(dx) < 8) return "paint";
+  if (y < 9) return dx > 0 ? "mbL" : "mbR";
+  return a > 36 ? "mwL" : a < -36 ? "mwR" : "mt";
+}
+/* lines of a CSV → field arrays, as they stream in (a quoted field may run across lines) */
+export async function* csvStream(chunks) {
+  let rest = "", buf = "";
+  for await (const ch of chunks) { rest += typeof ch === "string" ? ch : new TextDecoder().decode(ch, { stream: true }); let i;
+    while ((i = rest.indexOf("\n")) >= 0) { const line = rest.slice(0, i).replace(/\r$/, ""); rest = rest.slice(i + 1);
+      buf = buf ? buf + "\n" + line : line; if ((buf.match(/"/g) || []).length % 2) continue; yield csvLine(buf); buf = "" } }
+  if (rest || buf) yield csvLine(buf ? buf + "\n" + rest : rest);
+}
+/* one season's play-by-play → { games, avg, teams: { ABBR: { o, d, cl:[w,l] } }, series: [[date, home, away, hs, as]] } (regular season) */
+export async function nbaPbpSummary(rows) {
+  let I = null; const G = {}, T = {}, avg = NBA_ZONES.map(() => [0, 0]);
+  const team = ab => T[ab] = T[ab] || { o: NBA_ZONES.map(() => [0, 0]), d: NBA_ZONES.map(() => [0, 0]), cl: [0, 0] };
+  for await (const f of rows) {
+    if (!I) { const ix = n => f.indexOf(n); I = { st: ix("season_type"), gid: ix("game_id"), ha: ix("home_team_abbrev"), aa: ix("away_team_abbrev"), hid: ix("home_team_id"), tid: ix("team_id"), hs: ix("home_score"), as: ix("away_score"), per: ix("period_number"), rem: ix("end_game_seconds_remaining"), sh: ix("shooting_play"), sc: ix("scoring_play"), pa: ix("points_attempted"), x: ix("coordinate_x_raw"), y: ix("coordinate_y_raw"), dt: ix("game_date") };
+      if (I.gid < 0 || I.x < 0 || I.pa < 0) throw new Error("NBA play-by-play columns changed: " + f.slice(0, 25).join(",")); continue }
+    if (f[I.st] !== "2") continue;
+    const ha = f[I.ha], aa = f[I.aa]; if (!ha || !aa) continue;
+    const g = G[f[I.gid]] = G[f[I.gid]] || { h: ha, a: aa, d: f[I.dt], hs: 0, as: 0, cl: false };
+    const hs = +f[I.hs] || 0, as = +f[I.as] || 0; if (hs > g.hs) g.hs = hs; if (as > g.as) g.as = as;
+    const per = +f[I.per] || 0; if (per > 4 || (per === 4 && +f[I.rem] <= 300 && Math.abs(hs - as) <= 5)) g.cl = true;
+    if (f[I.sh] !== "true") continue; const pts = +f[I.pa]; if (pts !== 2 && pts !== 3) continue;
+    const z = nbaZone(+f[I.x], +f[I.y], pts); if (!z) continue;
+    const off = f[I.tid] === f[I.hid] ? ha : aa, def = off === ha ? aa : ha, k = NZI[z], m = f[I.sc] === "true" ? 1 : 0;
+    team(off).o[k][0] += m; team(off).o[k][1]++; team(def).d[k][0] += m; team(def).d[k][1]++; avg[k][0] += m; avg[k][1]++;
+  }
+  const series = [];
+  for (const g of Object.values(G)) { if (!g.hs && !g.as) continue; series.push([g.d, g.h, g.a, g.hs, g.as]);
+    if (g.cl) { const hw = g.hs > g.as; team(g.h).cl[hw ? 0 : 1]++; team(g.a).cl[hw ? 1 : 0]++ } }
+  series.sort((x, y) => x[0].localeCompare(y[0]));
+  return { games: series.length, avg, teams: T, series };
+}
+async function nbaPbpSeason(y, log) {
+  const r = await fetch(REL("espn_nba_pbp", `play_by_play_${y}.csv`), { redirect: "follow" }).catch(() => null);
+  if (!r || r.status === 404 || !r.ok || !r.body) return null;
+  const t0 = Date.now(), out = await nbaPbpSummary(csvStream(r.body));
+  log(`nba pbp ${y}: ${out.games} games, ${Object.keys(out.teams).length} teams, ${Math.round((Date.now() - t0) / 1000)}s`);
+  return out;
+}
+
 export async function buildNbaGames({ getPack, putPack, log, S, curNba, players }) {
   const sched = await getCsv(REL("espn_nba_schedules", `nba_schedule_${curNba}.csv`)), box = await getCsv(REL("espn_nba_team_boxscores", `team_box_${curNba - 1}.csv`)), ros = await getCsv(REL("espn_nba_rosters", `rosters_${curNba}.csv`));
   if (!sched || !box) { log("nba games: files not out yet"); return null }
@@ -100,7 +155,15 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players 
   const games = []; for (const g of rowsOf(sched)) { const st = +g.season_type; if (st !== 2 && st !== 3) continue; const h = g.home_abbreviation, a = g.away_abbreviation; if (!T[h] || !T[a]) continue;
     const pk = nbaPick(T[h], T[a], /true/i.test(g.neutral_site)); games.push([+g.id, g.date, h, a, g.status_type_completed === "true" ? +g.home_score : null, g.status_type_completed === "true" ? +g.away_score : null, g.status_type_state, g.broadcast_name || g.broadcast || "", pk.p, pk.m, st === 3 ? 1 : 0]) }
   games.sort((x, y) => x[1].localeCompare(y[1]));
-  await putPack(`p${S}_cbb-nbagames`, { season: curNba, teams: T, games, cols: ["id", "date", "home", "away", "hs", "as", "state", "tv", "pHome", "ourMargin", "playoffs"], rosCols: ["espnId", "name", "pos", "ht", "exp", "collegeCbbdId", "ppgLast", "outcome", "gamesLast"] });
+  /* shot zones, close games and the series from the play-by-play: last season's is cached (it won't change); this season's is
+     re-read each run and takes over once there are 150 games */
+  let last = getPack ? await getPack(`p2000_cbb-nbapbp${curNba - 1}`).catch(() => null) : null;
+  if (!last || !last.games) { last = await nbaPbpSeason(curNba - 1, log).catch(e => (log("nba pbp: " + e.message), null)); if (last && last.games > 1000 && putPack) await putPack(`p2000_cbb-nbapbp${curNba - 1}`, last) }
+  const cur = await nbaPbpSeason(curNba, log).catch(e => (log("nba pbp: " + e.message), null));
+  const Z = cur && cur.games >= 150 ? cur : last, zSeason = Z === cur ? curNba : curNba - 1;
+  if (Z) for (const [ab, X] of Object.entries(T)) { const z = Z.teams[ab]; if (z) { X.zo = z.o; X.zd = z.d; X.cl = z.cl } }
+  const series = [...(last ? last.series.map(g => [curNba - 1, ...g]) : []), ...(cur ? cur.series.map(g => [curNba, ...g]) : [])];
+  await putPack(`p${S}_cbb-nbagames`, { season: curNba, zSeason: Z ? zSeason : null, zAvg: Z ? Z.avg : null, series, seriesCols: ["season", "date", "home", "away", "hs", "as"], teams: T, games, cols: ["id", "date", "home", "away", "hs", "as", "state", "tv", "pHome", "ourMargin", "playoffs"], rosCols: ["espnId", "name", "pos", "ht", "exp", "collegeCbbdId", "ppgLast", "outcome", "gamesLast"] });
   log(`nba games: ${games.length} games, ${Object.keys(T).length} teams`);
   return true;
 }

@@ -10,7 +10,7 @@
    draft pack, so a player drafted years later shows up without rewriting old seasons.
    Seasons: the last ten finished ones (max(2012, S − 9) … S − 1, plus S once it's over). Rewritten when the format changes or the pack is a
    week old, so BoardScores stay on the current model. */
-export const PAST_V = 2;   /* 2: conference records leave out conference tournaments */
+export const PAST_V = 3;   /* 3: conference records leave out conference tournaments (detected, see confTourneyIds) */
 export const PAST_COLS = ["id", "nm", "tm", "p5", "yr", "ht", "g", "gs", "min", "pts", "reb", "orb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "usg", "ortg", "drtg", "porp", "ws40", "score", "prof", "pD", "pR1", "pL"];
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
@@ -23,6 +23,18 @@ export function apPolls(rows) {
   return { fin: at(hi), pre: at(lo) };
 }
 
+/* conference-tournament games (CBBD lists them as ordinary regular-season conference games). From Feb 25 on, a conference's tournament
+   starts at its first neutral-site conference game or the first third meeting of the same two teams (leagues that play the tournament
+   on campus play everyone twice in the season); every conference game of that league from then on is the tournament.
+   rows: [id, date, home, away, hPts, aPts, neutral, confGame, …]; confOf: team id → conference. Returns the set of game ids. */
+export function confTourneyIds(rows, confOf) {
+  const cg = rows.filter(r => r[7]).sort((a, b) => String(a[1]).localeCompare(String(b[1]))), meet = {}, start = {};
+  for (const r of cg) { const k = Math.min(r[2], r[3]) + "-" + Math.max(r[2], r[3]), n = meet[k] = (meet[k] || 0) + 1, c = confOf(r[2]) || confOf(r[3]), md = String(r[1]).slice(5, 10);
+    if (c && !start[c] && md >= "02-25" && md <= "04-30" && (r[6] || n >= 3)) start[c] = r[1] }
+  const out = new Set(); for (const r of cg) { const c = confOf(r[2]) || confOf(r[3]); if (c && start[c] && r[1] >= start[c]) out.add(r[0]) }
+  return out;
+}
+
 /* one season's teams: records from game rows ([id, date, home, away, hPts, aPts, neutral, confGame, …]), ratings, style, bracket */
 export function pastTeams({ adj = {}, games = [], style = {}, ncaaRows = [], polls = { fin: {}, pre: {} } }) {
   const T = {};
@@ -32,8 +44,9 @@ export function pastTeams({ adj = {}, games = [], style = {}, ncaaRows = [], pol
     T[id] = { conf: adj[id][1] || null, rec: [0, 0, 0, 0], o: st[0] ?? null, d: st[1] ?? null, n: r1(adj[id][0]), rn: rn[id] || null, pace: st[2] ?? null, tpr: st[3] ?? null, tovf: st[4] ?? null, efg: st[5] ?? null, oefg: st[6] ?? null, orb: st[7] ?? null,
       ap: polls.fin[id] || null, apPre: polls.pre[id] || null, ncaa: null } }
   /* conference record: regular-season conference games only (CBBD marks conference-tournament games as conference games too) */
-  for (const g of games) { const [, , h, a, hp, ap, , cg, , , post, tour] = g; if (hp == null || ap == null || hp === ap) continue;
-    for (const [id, won] of [[h, hp > ap], [a, ap > hp]]) { const t = T[id]; if (!t) continue; t.rec[won ? 0 : 1]++; if (cg && !post && !tour) t.rec[won ? 2 : 3]++ } }
+  const tourney = confTourneyIds(games, id => (adj[id] || [])[1]);
+  for (const g of games) { const [gid, , h, a, hp, ap, , cg, , , post, tour] = g; if (hp == null || ap == null || hp === ap) continue;
+    for (const [id, won] of [[h, hp > ap], [a, ap > hp]]) { const t = T[id]; if (!t) continue; t.rec[won ? 0 : 1]++; if (cg && !post && !tour && !tourney.has(gid)) t.rec[won ? 2 : 3]++ } }
   for (const r of ncaaRows) { const [, , h, a, hs, as, hp, ap, , , first] = r;
     for (const [id, sd, won] of [[h, hs, hp > ap], [a, as, ap > hp]]) { const t = T[id]; if (!t) continue; const n = t.ncaa = t.ncaa || [sd, 0, 0, 0];
       if (first) { n[2] = 1; continue } n[3] = 1; if (won) n[1]++ } }

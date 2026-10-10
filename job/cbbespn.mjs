@@ -26,7 +26,9 @@ export async function fetchSummary(eventId) {
     try { const r = await fetch(url, { headers: { "User-Agent": "mycbbbigboard data job" } }); if (r.status === 404) return null;
       if (r.ok) { const d = await r.json(), gi = d.gameInfo || {}, tov = {};
         for (const p of d.plays || []) { const t = (p.type || {}).text || "", c = p.coordinate; if (/Turnover/i.test(t) && c && c.x > -100 && c.y > -100 && !(c.x === 25 && c.y === 0)) tov[p.id] = [c.x, c.y] }
-        return { off: (gi.officials || []).map(o => o.displayName || o.fullName).filter(Boolean), att: gi.attendance || null, tov } } } catch { }
+        /* ESPN's own team numbers: points in the paint, fast-break points, points off turnovers — { home: [...], away: [...] } */
+        const ts = {}; for (const t of (d.boxscore || {}).teams || []) { const g = n => { const x = (t.statistics || []).find(z => z.name === n); return x ? +x.displayValue || 0 : null }; ts[t.homeAway] = [g("pointsInPaint"), g("fastBreakPoints"), g("turnoverPoints")] }
+        return { off: (gi.officials || []).map(o => o.displayName || o.fullName).filter(Boolean), att: gi.attendance || null, tov, ts } } } catch { }
     await new Promise(r => setTimeout(r, 1500 * (k + 1)));
   }
   return null;

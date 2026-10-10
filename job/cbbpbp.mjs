@@ -14,7 +14,7 @@
 
    Pack: p{S}_cbb-pbp (plus the season's p{S}_cbb-shots, written alongside). */
 
-export const PBP_V = 13;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment · 8: defense on/off and opponents' shots by zone while on the floor · 9: inferred matchups and a zone clue · 10: zone clue from links off the size matchup · 11: possession context (transition, putbacks, shot clock), fatigue, blocks and assists by range, foul trouble, timeouts · 12: rotation patterns, who subs for whom, real game length · 13: ESPN turnover locations, officials, attendance */
+export const PBP_V = 14;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment · 8: defense on/off and opponents' shots by zone while on the floor · 9: inferred matchups and a zone clue · 10: zone clue from links off the size matchup · 11: possession context (transition, putbacks, shot clock), fatigue, blocks and assists by range, foul trouble, timeouts · 12: rotation patterns, who subs for whom, real game length · 13: ESPN turnover locations, officials, attendance · 14: ESPN official paint / fast-break / off-turnover points */
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const PERIOD = p => p <= 2 ? 1200 : 300;
 const elapsedAt = (period, secLeft) => { let t = 0; for (let p = 1; p < period; p++) t += PERIOD(p); return t + PERIOD(period) - secLeft };
@@ -311,6 +311,7 @@ export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots,
       R.diag = R.diag || { k: [[0, 0], [0, 0], [0, 0]], sized: [0, 0] }; const r = processGame(ps, R.P, R.T, { gid: +gid, size: ctx && ctx.size, diag: R.diag, tovXY: es && es.tov }); if (!r) continue;
       if (es) { R.espnN = (R.espnN || 0) + 1; const fh = r.fouls || [0, 0];
         for (const o of es.off || []) { const X = (R.refs = R.refs || {})[o] = (R.refs || {})[o] || [0, 0, 0, 0, 0]; X[0]++; X[1] += fh[0]; X[2] += fh[1]; X[3] += r.margin || 0; X[4] += r.fta || 0 }
+        if (es.ts) for (const [ha, tid, oid] of [["home", r.home, r.away], ["away", r.away, r.home]]) { const v = es.ts[ha]; if (!v || v[0] == null) continue; const E2 = (R.ets = R.ets || {}); const A = E2[tid] = E2[tid] || [0, 0, 0, 0, 0, 0, 0]; A[0]++; A[1] += v[0]; A[2] += v[1] || 0; A[3] += v[2] || 0; const B = E2[oid] = E2[oid] || [0, 0, 0, 0, 0, 0, 0]; B[4] += v[0]; B[5] += v[1] || 0; B[6] += v[2] || 0 }
         if (es.att) { const h = r.home; const A = (R.att = R.att || {})[h] = (R.att || {})[h] || [0, 0]; A[0]++; A[1] += es.att } }
       have.add(+gid); added++;
       for (const p of ps) { if (!p.shootingPlay || !p.shotInfo) continue; const sh = p.shotInfo.shooter || {};
@@ -326,6 +327,8 @@ export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots,
   const out = finishPbp(R.P, R.T, ctx);
   for (const id of Object.keys(out.teams)) if (!D1.has(+id)) delete out.teams[id];
   for (const [tid, A] of Object.entries(R.att || {})) if (out.teams[tid]) out.teams[tid].att = Math.round(A[1] / A[0]);
+  /* ESPN's official per-game numbers: [games, paint for, fast break for, off turnovers for, paint against, fast break against, off turnovers against] */
+  for (const [tid, A] of Object.entries(R.ets || {})) if (out.teams[tid] && A[0]) out.teams[tid].espn = A;
   const refs = Object.fromEntries(Object.entries(R.refs || {}).filter(([, X]) => X[0] >= 10).map(([n, X]) => [n, { g: X[0], fh: Math.round(10 * X[1] / X[0]) / 10, fa: Math.round(10 * X[2] / X[0]) / 10, hm: Math.round(10 * X[3] / X[0]) / 10, fta: Math.round(10 * X[4] / X[0]) / 10 }]));
   await putPack(`p${S}_cbb-pbp`, { season: S, through: new Date().toISOString().slice(0, 10), games: have.size, espnGames: R.espnN || 0, diag: R.diag || null, refs, ...out });
   /* the shot chart from the same pass */

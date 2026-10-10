@@ -122,12 +122,14 @@ export function parseCoachInfobox(w) {
   return { ov, ncaa, titles, ff, stops };
 }
 export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
-  let W = full ? null : await getPack("p2000_cbb-wiki").catch(() => null); if (!W || !W.c) W = { c: {} };
+  let W = full ? null : await getPack("p2000_cbb-wiki").catch(() => null); if (!W || !W.c || W.v !== 2) W = { v: 2, c: {} };   /* v2: the first pass was rate-limited and cached its misses */
   const todo = coaches.filter(c => !W.c[c.cid] || Date.now() - (W.c[c.cid].at || 0) > 7 * 864e5);
   let n = 0, found = 0;
-  const get = async u => { for (let k = 0; k < 3; k++) { try { const r = await fetch(u, { headers: WUA }); if (r.ok) return await r.json(); if (r.status < 500 && r.status !== 429) return null } catch { } await new Promise(r => setTimeout(r, 1500 * (k + 1))) } return null };
-  let i = 0; await Promise.all(Array.from({ length: 3 }, async () => { while (i < todo.length) { const c = todo[i++];
+  /* one request at a time with a short pause (Wikimedia's API etiquette); a 429 or 403 backs off and retries */
+  const get = async u => { for (let k = 0; k < 5; k++) { try { await new Promise(r => setTimeout(r, 120)); const r = await fetch(u, { headers: WUA }); if (r.ok) return await r.json(); if (r.status === 404) return null } catch { } await new Promise(r => setTimeout(r, 3000 * (k + 1))) } return null };
+  let i = 0; await Promise.all(Array.from({ length: 1 }, async () => { while (i < todo.length) { const c = todo[i++];
     const q = await get(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(c.nm + " basketball coach " + (c.school || ""))}&srlimit=3&format=json`); n++;
+    if (!q) continue;   /* the lookup failed: try again next run, don't remember a miss */
     let rec = { at: Date.now() };
     for (const hit of ((q || {}).query || {}).search || []) { const pg = await get(`https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(hit.title)}&prop=wikitext&section=0&format=json&redirects=1`); n++;
       const w = pg && pg.parse && pg.parse.wikitext ? pg.parse.wikitext["*"] : ""; if (!/coach_team|overall_record/.test(w)) continue;

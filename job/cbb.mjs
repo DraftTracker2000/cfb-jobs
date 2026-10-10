@@ -165,7 +165,7 @@ export function derive(s) {
     porp: s.porp || 0, ws40: s.ws40 || 0, ast2tov: (s.ast + 1) / (s.tov + 1)
   };
 }
-const FEATS = ["y1", "y2", "y3", "pts40", "reb40", "orb40", "ast40", "stl40", "blk40", "tov40", "ts", "tpr", "ftr", "tpp", "ftp", "usg", "ortg", "drtg", "porp", "ws40", "minSh", "ht", "htMiss", "pG", "pC", "net", "confNet", "rec", "recMiss", "ptsYr", "blkHt", "g"];
+const FEATS = ["y1", "y2", "y3", "pts40", "reb40", "orb40", "ast40", "stl40", "blk40", "tov40", "ts", "tpr", "ftr", "tpp", "ftp", "usg", "ortg", "drtg", "porp", "ws40", "minSh", "ht", "htMiss", "pPG", "pSG", "pSF", "pPF", "net", "confNet", "rec", "recMiss", "ptsYr", "blkHt", "g"];
 function featVec(d) { return FEATS.map(k => d[k] ?? 0) }
 
 /* ---------- main ---------- */
@@ -261,8 +261,9 @@ export async function main() {
   const posHt = { G: 75, F: 79, C: 82 };
   function featuresOf(r, yr) {
     const d = derive(r), a = (H.adj[r.s] || {})[r.tm] || [null, null], ht = (H.ht[r.id] || [])[0], rc = REC[r.id];
-    Object.assign(d, { yr, y1: yr === 1 ? 1 : 0, y2: yr === 2 ? 1 : 0, y3: yr === 3 ? 1 : 0, ht: ht || posHt[r.pos] || 78, htMiss: ht ? 0 : 1, pG: r.pos === "G" ? 1 : 0, pC: r.pos === "C" ? 1 : 0,
-      net: a[0] ?? -10, confNet: (confNet[r.s] || {})[a[1]] ?? -10, rec: rc ? (rc[2] || 0) : 0, recMiss: rc ? 0 : 1, ptsYr: d.pts40 / yr, blkHt: d.blk40 * ((ht || 78) - 70) / 10 });
+    Object.assign(d, { yr, y1: yr === 1 ? 1 : 0, y2: yr === 2 ? 1 : 0, y3: yr === 3 ? 1 : 0, ht: ht || posHt[r.pos] || 78, htMiss: ht ? 0 : 1, net: a[0] ?? -10, confNet: (confNet[r.s] || {})[a[1]] ?? -10, rec: rc ? (rc[2] || 0) : 0, recMiss: rc ? 0 : 1, ptsYr: d.pts40 / yr, blkHt: d.blk40 * ((ht || 78) - 70) / 10 });
+    /* five positions (Oct 9 — Sam: "narrow down our ratings and draft profiles more granularly than just the 3 positions") */
+    d.p5 = pos5({ pos: r.pos, ht: ht || null, d }); d.pPG = d.p5 === "PG" ? 1 : 0; d.pSG = d.p5 === "SG" ? 1 : 0; d.pSF = d.p5 === "SF" ? 1 : 0; d.pPF = d.p5 === "PF" ? 1 : 0;
     return d;
   }
   const yrOf = r => Math.max(1, Math.min(5, r.s - Math.min(firstSeason[r.id] || r.s, H.start[r.id] || 9999) + 1));
@@ -322,12 +323,12 @@ export async function main() {
   const BAND_STATS = ["pts40", "reb40", "ast40", "stl40", "blk40", "tov40", "ts", "tpp", "tpr", "ftp", "ftr", "usg", "ortg", "ws40", "porp", "ht", "net"];
   const bands = {};
   for (const h of hist) { if (h.r.s > KNOWN_TO || h.r.min < 400) continue;
-    const b = h.lot ? "L" : h.r1 ? "R1" : h.dr ? "R2" : "U"; const k = h.r.pos + Math.min(4, h.yr);
+    const b = h.lot ? "L" : h.r1 ? "R1" : h.dr ? "R2" : "U"; const k = h.d.p5 + Math.min(4, h.yr);
     const B = (bands[k] = bands[k] || { L: { n: 0 }, R1: { n: 0 }, R2: { n: 0 }, U: { n: 0 } })[b]; B.n++; for (const s of BAND_STATS) B[s] = (B[s] || 0) + h.d[s] }
   for (const k in bands) for (const b in bands[k]) { const B = bands[k][b]; for (const s of BAND_STATS) B[s] = B.n ? r3(B[s] / B.n) : null }
   /* percentiles by position (the Grade column): 21 cut points per stat */
   const QS = {};
-  for (const pos of ["G", "F", "C"]) { const rows = hist.filter(h => h.r.pos === pos && h.r.min >= 400 && h.r.s <= S - 1); QS[pos] = {};
+  for (const pos of ["PG", "SG", "SF", "PF", "C"]) { const rows = hist.filter(h => h.d.p5 === pos && h.r.min >= 400 && h.r.s <= S - 1); QS[pos] = {};
     for (const s of BAND_STATS) { const v = rows.map(h => h.d[s]).sort((a, b) => a - b); QS[pos][s] = Array.from({ length: 21 }, (_, i) => r3(v[Math.min(v.length - 1, Math.floor(i / 20 * (v.length - 1)))])) } }
 
   /* comps: the six closest past player-seasons, same position, class within one */
@@ -336,12 +337,12 @@ export async function main() {
   const cmu = CF.map(k => pool0.reduce((a, h) => a + h.d[k], 0) / pool0.length), csd = CF.map((k, j) => Math.sqrt(pool0.reduce((a, h) => a + (h.d[k] - cmu[j]) ** 2, 0) / pool0.length) || 1);
   const cvec = d => CF.map((k, j) => (d[k] - cmu[j]) / csd[j] * CW[j]);
   for (const h of pool0) h.cv = cvec(h.d);
-  const byPos = { G: [], F: [], C: [] }; for (const h of pool0) byPos[h.r.pos].push(h);
+  const byPos = { PG: [], SG: [], SF: [], PF: [], C: [] }; for (const h of pool0) byPos[h.d.p5].push(h);
   const outcome = h => { const pk = DRAFTED[h.r.id], nb = NBA_BY_CID[h.r.id]; if (pk) return { y: pk.year, pk: pk.overall, nba: pk.draftTeam, tag: nb ? nb.tag.t : null };
     if (nb) return { u: 1, tag: nb.tag.t }; return h.r.s <= KNOWN_TO ? { u: 1 } : { tbd: 1 } };
   function comps(h) {
     const v = cvec(h.d), out = [];
-    for (const c of byPos[h.r.pos]) { if (c.r.id === h.r.id || Math.abs(c.yr - h.yr) > 1) continue; let d2 = 0; for (let j = 0; j < v.length; j++) d2 += (v[j] - c.cv[j]) ** 2; out.push([d2, c]) }
+    for (const c of byPos[h.d.p5]) { if (c.r.id === h.r.id || Math.abs(c.yr - h.yr) > 1) continue; let d2 = 0; for (let j = 0; j < v.length; j++) d2 += (v[j] - c.cv[j]) ** 2; out.push([d2, c]) }
     out.sort((a, b) => a[0] - b[0]); const seen = new Set(), res = [];
     for (const [d2, c] of out) { if (seen.has(c.r.id)) continue; seen.add(c.r.id); res.push({ id: c.r.id, nm: c.r.nm, s: c.r.s, tm: c.r.tm, yr: c.yr, sim: Math.max(1, Math.round(100 * Math.exp(-d2 / 14))), ...outcome(c) }); if (res.length >= 6) break }
     return res;
@@ -355,6 +356,8 @@ export async function main() {
   const H_S = Object.fromEntries(hist.filter(h => h.r.s === S).map(h => [h.r.id + "|" + h.r.tm, h]));
   const board = [];
   const CLS = ["FR", "SO", "JR", "SR", "GR"];
+  /* career totals (every Division I season since 2008) — the tiles show last season and the career side by side */
+  const CAR = {}; for (const [y, rows] of Object.entries(ALL)) for (const x of rows) { if (!x.g) continue; const c = CAR[x.id] = CAR[x.id] || { g: 0, gs: 0, n: 0, min: 0, pts: 0 }; c.g += x.g; c.gs += x.gs; c.n++; c.min += x.min; c.pts += x.pts }
   const statEntry = (r, h, tm, extra = {}) => { const pt = PORT[r.id], ro = RO[r.id] || {}, hw = H.ht[r.id] || [], rc = REC[r.id], yrNext = off ? h.yr + 1 : h.yr;
     return { id: r.id, nm: r.nm, pos: r.pos, posFull: ro.posFull || "", tm, from: tm !== r.tm ? r.tm : null, portal: pt ? { to: pt.destination ? pt.destination.id : null, toName: pt.destination ? pt.destination.name : null, el: pt.eligibility || null } : null,
       cls: CLS[Math.min(4, yrNext - 1)], yr: yrNext, ht: hw[0] || null, wt: hw[1] || null, home: ro.home || "", jersey: ro.jersey || "",
@@ -362,7 +365,7 @@ export async function main() {
       s: { g: r.g, gs: r.gs, min: r.min, pts: r.pts, reb: r.reb, orb: r.orb, ast: r.ast, stl: r.stl, blk: r.blk, tov: r.tov, pf: r.pf, fgm: r.fgm, fga: r.fga, tpm: r.tpm, tpa: r.tpa, ftm: r.ftm, fta: r.fta, usg: r1(r.usg), ortg: r1(r.ortg), drtg: r1(r.drtg), porp: r1(r.porp), ws: r1(r.ws), ws40: r3(r.ws40), wso: r1(r.wso), wsd: r1(r.wsd) },
       d: Object.fromEntries(BAND_STATS.map(k => [k, r3(h.d[k])])),
       g: { score: grade(h.m), pD: r3(h.pD), pR1: r3(h.pR1), pL: r3(h.pL), prof: profileOf(h) },
-      comps: r.min >= 250 ? comps(h) : [], ...extra } };
+      comps: r.min >= 250 ? comps(h) : [], p5: h.d.p5, car: CAR[r.id] || null, ...extra } };
   const recGrade = rc => { const z = RZ([rc.rating || 0, Math.log(rc.ranking || 300), rc.stars || 0]); const pD = predict(RW.dr, z), pR1 = predict(RW.r1, z), pL = predict(RW.lot, z), m = .25 * pD + .45 * pR1 + .30 * pL;
     return { score: grade(m), pD: r3(pD), pR1: r3(pR1), pL: r3(pL), prof: profileOf({ pD, pR1, pL }), recOnly: 1 } };
   /* ESPN's current rosters are the truth for who is where (job/cbbespn.mjs): every listed player, his stats from last season wherever he
@@ -404,7 +407,7 @@ export async function main() {
       home: rc.hometown ? [rc.hometown.city, rc.hometown.state].filter(Boolean).join(", ") : "", hs: rc.school || "", rec: { r: r3(rc.rating), st: rc.stars, rk: rc.ranking },
       s: null, d: { ht: rc.heightInches || null }, g: { score: grade(m), pD: r3(pD), pR1: r3(pR1), pL: r3(pL), prof: profileOf({ pD, pR1, pL }), recOnly: 1 }, comps: [] });
   }
-  for (const p of board) p.p5 = pos5({ pos: p.pos, ht: p.ht, d: p.s ? p.d : null, listed: p.posFull });
+  for (const p of board) if (!p.p5) p.p5 = pos5({ pos: p.pos, ht: p.ht, d: p.s ? p.d : null, listed: p.posFull });
   board.sort((a, b) => b.g.score - a.g.score || (b.g.pR1 - a.g.pR1) || (a.nodata ? 1 : 0) - (b.nodata ? 1 : 0));
   /* the tags are capped by rank, so a class can't have far more "lottery" or "first round" players than a draft takes from college
      (about 11 of the 14 lottery picks and 24 of 30 first-rounders have been college players since 2015) */
@@ -457,7 +460,9 @@ export async function main() {
   /* ---------- shot charts ---------- */
   /* this season: the full play-by-play engine (minutes, on/off, clutch, comebacks, lineups … — job/cbbpbp.mjs), which writes the shot
      chart too; earlier seasons keep their shooting-only charts */
-  const PB = await runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots: { addShot, blankAgg, ZONES }, pool });
+  /* context for the on-court numbers: each opponent's adjusted net (quality of competition) and each teammate's win shares per 40 */
+  const pbpCtx = { adjNet: Object.fromEntries(Object.entries(H.adj[S] || {}).map(([k, v]) => [k, v[0]])), rating: Object.fromEntries(rowsS.filter(r => r.min >= 150 && r.ws40 != null).map(r => [r.id, r.ws40])) };
+  const PB = await runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots: { addShot, blankAgg, ZONES }, pool, ctx: pbpCtx });
   const SHOT_FROM = 2021;
   const shotSeasons = (full ? Array.from({ length: S - SHOT_FROM + 1 }, (_, i) => SHOT_FROM + i) : [S - 1]).filter(y => y !== S);
   for (const y of shotSeasons) {

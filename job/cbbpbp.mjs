@@ -14,15 +14,27 @@
 
    Pack: p{S}_cbb-pbp (plus the season's p{S}_cbb-shots, written alongside). */
 
-export const PBP_V = 3;   /* 2: player names and teams kept · 3: win probability while on the floor (Oct 9) */
+export const PBP_V = 4;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) */
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const PERIOD = p => p <= 2 ? 1200 : 300;
 const elapsedAt = (period, secLeft) => { let t = 0; for (let p = 1; p < period; p++) t += PERIOD(p); return t + PERIOD(period) - secLeft };
 const TOV = /Turnover/i, REB = /Rebound/i, FOUL = /Foul/i;
 const blankP = () => ({ min: 0, gp: 0, pm: 0, onF: 0, onA: 0, teamMin: 0, teamF: 0, teamA: 0,
   c: { min: 0, pm: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, ast: 0, tov: 0, stl: 0, reb: 0, g: 0 },
-  late: { gam: 0, ga: 0, gw: 0 }, wpa: 0, cwpa: 0, fwpa: 0, cfwpa: 0, h1: 0, h2: 0, ast: {}, fed: {} });
-const blankT = () => ({ games: [], c: { pm: 0, min: 0 }, units: {}, mins: {} });
+  late: { gam: 0, ga: 0, gw: 0 }, wpa: 0, cwpa: 0, fwpa: 0, cfwpa: 0,
+  /* his own events, his team's and the opponent's while he's on the floor (Oct 9 — Sam: "all this data when compared to the other players
+     on the court with them"), and minutes against each opponent */
+  own: blankE(), onT: blankE(), onO: blankE(), vs: {}, h1: 0, h2: 0, ast: {}, fed: {} });
+const blankT = () => ({ games: [], c: { pm: 0, min: 0 }, units: {}, mins: {}, pairs: {} });
+const blankE = () => ({ pts: 0, fgm: 0, fga: 0, fga2: 0, tpa: 0, ftm: 0, fta: 0, tov: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0 });
+const OREB = /Offensive Rebound/i, DREB = /Defensive Rebound/i;
+/* one event into a counter (shots: made/attempts, free throws, turnovers, rebounds, assists, steals, blocks) */
+function countEvent(E, p, ownOnly) {
+  const si = p.shotInfo, pt = p.playType || "";
+  if (si && (p.shootingPlay || si.range)) { const made = si.made ? 1 : 0, ft = si.range === "free_throw" || /FreeThrow/.test(pt);
+    if (ft) { E.fta++; E.ftm += made; E.pts += made } else { E.fga++; E.fgm += made; if (si.range === "three_pointer") { E.tpa++; E.pts += 3 * made } else { E.fga2++; E.pts += 2 * made } if (!ownOnly && made && si.assisted) E.ast++ } return }
+  if (TOV.test(pt)) E.tov++; else if (OREB.test(pt)) E.oreb++; else if (DREB.test(pt)) E.dreb++; else if (pt === "Steal") E.stl++; else if (/Block/i.test(pt)) E.blk++;
+}
 
 /* one game's plays → the accumulators */
 export function processGame(plays, P, T, opts = {}) {
@@ -40,13 +52,22 @@ export function processGame(plays, P, T, opts = {}) {
     const p = plays[i], nx = plays[i + 1];
     const floor = { h: [], a: [] };
     for (const f of p.onFloor || []) { const t = nameOf[f.team]; const s = side(t); if (s && f.id != null) { floor[s].push(f.id); if (i === 0 || !P[f.id] || !P[f.id].nm) pl(f.id).nm = f.name } }
+    /* events: the actor's own counter, and both teams' counters for everyone on the floor */
+    if (p.teamId != null) { const es = side(p.teamId);
+      if (es) { const os = es === "h" ? "a" : "h";
+        for (const id of floor[es]) countEvent(pl(id).onT, p); for (const id of floor[os]) countEvent(pl(id).onO, p);
+        const si = p.shotInfo, actorId = si && si.shooter && si.shooter.id != null ? si.shooter.id : ((p.participants || [])[0] || {}).id;
+        if (actorId != null) countEvent(pl(actorId).own, p, true);
+        if (si && si.made && si.assisted && si.assistedBy && si.assistedBy.id != null) pl(si.assistedBy.id).own.ast++ } }
     const marginH = hs - as;                                                        /* before this play */
     const clutchNow = p.period >= 2 && p.secondsRemaining <= 300 && Math.abs(marginH) <= 5;
     /* time until the next play: credited to whoever is on the floor now */
     let dt = 0; if (nx && nx.period === p.period) dt = Math.max(0, p.secondsRemaining - nx.secondsRemaining);
     if (dt > 0 && floor.h.length === 5 && floor.a.length === 5) {
       for (const s of ["h", "a"]) { const tid = s === "h" ? home : away, X = tm(tid); X._sec = (X._sec || 0) + dt; if (clutchNow) X.c.min += dt / 60;
-        for (const id of floor[s]) { const Q = pl(id); Q.min += dt / 60; seen.add(id); Q._team = tid; X.mins[id] = (X.mins[id] || 0) + dt / 60; if (clutchNow) Q.c.min += dt / 60 }
+        const opp = s === "h" ? away : home;
+        for (const id of floor[s]) { const Q = pl(id); Q.min += dt / 60; seen.add(id); Q._team = tid; X.mins[id] = (X.mins[id] || 0) + dt / 60; if (clutchNow) Q.c.min += dt / 60; Q.vs[opp] = (Q.vs[opp] || 0) + dt / 60 }
+        for (let x = 0; x < 5; x++) for (let y = x + 1; y < 5; y++) { const a = floor[s][x], b = floor[s][y], k = a < b ? a + "|" + b : b + "|" + a; X.pairs[k] = (X.pairs[k] || 0) + dt / 60 }
         const key = floor[s].slice().sort((x, y) => x - y).join("-"); const U = X.units[key] = X.units[key] || [0, 0, 0]; U[0] += dt / 60 }
     }
     /* scoring: the score after this play vs before */
@@ -107,14 +128,23 @@ export function processGame(plays, P, T, opts = {}) {
 }
 
 /* turn the sums into what the page shows */
-export function finishPbp(P, T) {
+export function finishPbp(P, T, ctx = {}) {
+  const adjNet = ctx.adjNet || {}, rating = ctx.rating || {};
+  /* teammates: minutes shared with each, from the team's pair counts */
+  const mates = {}; for (const X of Object.values(T)) for (const [k, m] of Object.entries(X.pairs || {})) { const [a, b] = k.split("|"); (mates[a] = mates[a] || []).push([b, m]); (mates[b] = mates[b] || []).push([a, m]) }
   const players = {};
   for (const [id, Q] of Object.entries(P)) {
     if (Q.min < 20) continue;
     const offMin = Math.max(0, Q.teamMin - Q.min), offF = Q.teamF - Q.onF, offA = Q.teamA - Q.onA;
     const on40 = Q.min ? (Q.onF - Q.onA) / Q.min * 40 : null, off40 = offMin >= 20 ? (offF - offA) / offMin * 40 : null;
     const topN = (o, n) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => [+k, v]);
-    players[id] = { nm: Q.nm || null, tm: Q._team ?? null, min: r1(Q.min), gp: Q.gp, pm: Q.pm, on40: r1(on40), off40: r1(off40), onoff: on40 != null && off40 != null ? r1(on40 - off40) : null, offMin: r1(offMin),
+    const o = Q.own, t = Q.onT, x = Q.onO, sh = (a, b) => b > 0 ? Math.round(1000 * a / b) / 1000 : null;
+    const qoc = (() => { let m = 0, v = 0; for (const [tid, mm] of Object.entries(Q.vs)) { const n = adjNet[tid]; if (n != null) { m += mm; v += mm * n } } return m ? r1(v / m) : null })();
+    const qot = (() => { let m = 0, v = 0; for (const [mid, mm] of mates[id] || []) { const r = rating[mid]; if (r != null) { m += mm; v += mm * r } } return m ? Math.round(1000 * v / m) / 1000 : null })();
+    const share = { pts: sh(o.pts, t.pts), fga: sh(o.fga, t.fga), usg: sh(o.fga + .44 * o.fta + o.tov, t.fga + .44 * t.fta + t.tov), ast: sh(o.ast, t.fgm - o.fgm), oreb: sh(o.oreb, t.oreb + x.dreb), dreb: sh(o.dreb, t.dreb + x.oreb),
+      reb: sh(o.oreb + o.dreb, t.oreb + t.dreb + x.oreb + x.dreb), blk: sh(o.blk, x.fga2), stl: sh(o.stl, x.fga + .44 * x.fta + x.tov - x.oreb), tov: sh(o.tov, o.fga + .44 * o.fta + o.tov) };
+    const topMates = (mates[id] || []).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([m, mm]) => [+m, r1(mm)]);
+    players[id] = { nm: Q.nm || null, tm: Q._team ?? null, min: r1(Q.min), share, qoc, qot, mates: topMates, own: o, gp: Q.gp, pm: Q.pm, on40: r1(on40), off40: r1(off40), onoff: on40 != null && off40 != null ? r1(on40 - off40) : null, offMin: r1(offMin),
       c: { ...Q.c, min: r1(Q.c.min) }, late: Q.late, wpa: Math.round(Q.wpa * 1000) / 10, cwpa: Math.round(Q.cwpa * 1000) / 10, fwpa: Math.round(Q.fwpa * 100) / 100, cfwpa: Math.round(Q.cfwpa * 100) / 100, h1: Q.h1, h2: Q.h2, ast: topN(Q.ast, 6), fed: topN(Q.fed, 6) };
   }
   const teams = {};
@@ -132,7 +162,7 @@ export function finishPbp(P, T) {
 
 /* read a season's play-by-play day by day (only days not read before), keep the raw sums (p{S}_cbb-pbpraw, job only) and publish the
    finished numbers (p{S}_cbb-pbp) and the shot chart (p{S}_cbb-shots). shots = { addShot, blankAgg, ZONES } from job/cbb.mjs. */
-export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots, pool, days }) {
+export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots, pool, days, ctx }) {
   /* PBP_V: bump when the engine changes what it adds up — the season is then read again from the start */
   let R = full ? null : await getPack(`p${S}_cbb-pbpraw`).catch(() => null);
   if (!R || !R.P || R.v !== PBP_V) R = { v: PBP_V, season: S, P: {}, T: {}, gameIds: [], sh: { players: {}, teams: {} }, done: false };
@@ -157,7 +187,7 @@ export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots,
   });
   R.gameIds = [...have]; R.done = Date.now() > Date.UTC(S, 3, 20) && G.filter(g => g.season === S && g.status === "final").every(g => have.has(g.id) || !(D1.has(g.homeTeamId) || D1.has(g.awayTeamId)));
   await putPack(`p${S}_cbb-pbpraw`, R);
-  const out = finishPbp(R.P, R.T);
+  const out = finishPbp(R.P, R.T, ctx);
   for (const id of Object.keys(out.teams)) if (!D1.has(+id)) delete out.teams[id];
   await putPack(`p${S}_cbb-pbp`, { season: S, through: new Date().toISOString().slice(0, 10), games: have.size, ...out });
   /* the shot chart from the same pass */

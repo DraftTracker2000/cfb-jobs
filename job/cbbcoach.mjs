@@ -85,3 +85,56 @@ export function coachRecords({ C, seasons, lines, adj, S }) {
   for (const r of rows) out[r[0]].score = Math.round(.5 * P[0](r[1]) + .2 * P[1](r[2]) + .2 * P[2](r[3]) + .1 * P[3](r[4]));
   return { coaches: out, current: cur };
 }
+
+/* ---- each team's style by season (Oct 10 — Sam: "coaches for pace of play for his team and all of that") ----
+   Pack p2000_cbb-teamhist (cache): { seasons: { year: { teamId: [adjO, adjD, pace, 3PA rate, TO% forced, eFG%, opp eFG%, off. reb %] } } }
+   Finished seasons are read once; the current one every run. Two CBBD calls a season. */
+export async function buildTeamHist({ cb, getPack, putPack, log, S, from = 2008, full }) {
+  let TH = full ? null : await getPack("p2000_cbb-teamhist").catch(() => null);
+  if (!TH || !TH.seasons) TH = { seasons: {} };
+  const r1 = x => x == null || isNaN(x) ? null : Math.round(10 * x) / 10, pc = x => x == null ? null : (x < 1 ? 100 * x : x);
+  for (let y = from; y <= S; y++) { if (TH.seasons[y] && y < S) continue;
+    const [adj, ts] = await Promise.all([cb("/ratings/adjusted", { season: y }).catch(() => []), cb("/stats/team/season", { season: y }).catch(() => [])]);
+    const A = Object.fromEntries(adj.map(t => [t.teamId, t])), out = {};
+    for (const t of ts) { const a = A[t.teamId] || {}, u = t.teamStats || {}, o = t.opponentStats || {}, fg = u.fieldGoals || {}, tp = u.threePointFieldGoals || {}, uf = u.fourFactors || {}, of = o.fourFactors || {};
+      out[t.teamId] = [r1(a.offensiveRating), r1(a.defensiveRating), r1(t.pace), fg.attempted ? r1(100 * (tp.attempted || 0) / fg.attempted) : null, r1(pc(of.turnoverRatio)), r1(uf.effectiveFieldGoalPct), r1(of.effectiveFieldGoalPct), r1(uf.offensiveReboundPct)] }
+    if (Object.keys(out).length) TH.seasons[y] = out }
+  await putPack("p2000_cbb-teamhist", TH);
+  log(`team history: ${Object.keys(TH.seasons).length} seasons`);
+  return TH;
+}
+
+/* ---- full coaching careers from Wikipedia (CBBD has no coaches; ESPN's staff lists start in 2014) ----
+   One page per coach (found by search, checked to be a basketball coach at his current school), read from the infobox: overall record,
+   NCAA tournament record, national titles, Final Fours, head-coaching stops. Cached in p2000_cbb-wiki, re-read after 7 days.
+   Shown on the site as "career", credited to Wikipedia with a link. */
+const WUA = { "User-Agent": "mycbbbigboard.com data job (college basketball stats site; contact via the site)" };
+const clean = s => String(s || "").replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1").replace(/\{\{[^}]*\}\}/g, "").replace(/<[^>]+>/g, "").replace(/'''?/g, "").trim();
+export function parseCoachInfobox(w) {
+  const line = k => { const m = w.match(new RegExp("\\|\\s*" + k + "\\s*=\\s*([^\\n]*)")); return m ? m[1] : "" };
+  const wl = s => { let m = s.match(/\{\{\s*(?:Winning percentage|winpct|Win percentage)\s*\|\s*(\d+)\s*\|\s*(\d+)/i); if (m) return [+m[1], +m[2]]; m = clean(s).match(/(\d+)\s*[–-]\s*(\d+)/); return m ? [+m[1], +m[2]] : null };
+  const ov = wl(line("overall_record")), tr = line("tournament_record"); let ncaa = null; { const m = tr.match(/(\d+)\s*[–-]\s*(\d+)\s*\(\s*\[\[NCAA Division I/i) || tr.match(/(\d+)\s*[–-]\s*(\d+)\s*\(\s*NCAA/i); if (m) ncaa = [+m[1], +m[2]] }
+  const champ = (w.match(/\|\s*championships\s*=([\s\S]*?)\n\s*\|\s*[a-z_]+\s*=|\|\s*championships\s*=([\s\S]*?)\n\}\}/i) || [])[1] || "";
+  let titles = 0, ff = 0; for (const l of champ.split(/\n|<br\s*\/?>/)) { const t = clean(l); const years = (t.match(/\b(19|20)\d{2}\b/g) || []).length;
+    if (/Final Four/i.test(t)) { const n = t.match(/^\*?\s*(\d+)\s*[×x]?\s/); ff += n ? +n[1] : years }
+    else if (/NCAA Division I (men's basketball )?(tournament|champion)/i.test(t) && !/regional|Elite|Sweet/i.test(t)) { const n = t.match(/^\*?\s*(\d+)\s*[×x]?\s/); titles += n ? +n[1] : Math.max(1, years) } }
+  const stops = []; for (let i = 1; i <= 25; i++) { const yrs = clean(line("coach_years" + i)), tm = clean(line("coach_team" + i)); if (!yrs && !tm) continue; if (!tm || /assistant|associate|\bHS\b|high school|graduate|director|\(GA\)/i.test(tm)) continue; stops.push([yrs, tm.replace(/\s*\(.*?\)\s*$/, "")]) }
+  return { ov, ncaa, titles, ff, stops };
+}
+export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
+  let W = full ? null : await getPack("p2000_cbb-wiki").catch(() => null); if (!W || !W.c) W = { c: {} };
+  const todo = coaches.filter(c => !W.c[c.cid] || Date.now() - (W.c[c.cid].at || 0) > 7 * 864e5);
+  let n = 0, found = 0;
+  const get = async u => { for (let k = 0; k < 3; k++) { try { const r = await fetch(u, { headers: WUA }); if (r.ok) return await r.json(); if (r.status < 500 && r.status !== 429) return null } catch { } await new Promise(r => setTimeout(r, 1500 * (k + 1))) } return null };
+  let i = 0; await Promise.all(Array.from({ length: 3 }, async () => { while (i < todo.length) { const c = todo[i++];
+    const q = await get(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(c.nm + " basketball coach " + (c.school || ""))}&srlimit=3&format=json`); n++;
+    let rec = { at: Date.now() };
+    for (const hit of ((q || {}).query || {}).search || []) { const pg = await get(`https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(hit.title)}&prop=wikitext&section=0&format=json&redirects=1`); n++;
+      const w = pg && pg.parse && pg.parse.wikitext ? pg.parse.wikitext["*"] : ""; if (!/coach_team|overall_record/.test(w)) continue;
+      const last = String(c.nm).split(" ").pop(); if (!new RegExp(last, "i").test(hit.title) || (c.school && !w.includes(c.school.split(" ")[0]))) continue;
+      rec = { at: Date.now(), t: pg.parse.title, ...parseCoachInfobox(w) }; found++; break }
+    W.c[c.cid] = rec } }));
+  await putPack("p2000_cbb-wiki", W);
+  log(`wikipedia coaches: ${todo.length} looked up (${n} calls), ${found} found · ${Object.values(W.c).filter(x => x.t).length} on file`);
+  return W;
+}

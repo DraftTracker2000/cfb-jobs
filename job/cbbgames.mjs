@@ -12,7 +12,7 @@
    Our pick: Elo before the game (CBBD's own, game by game) and home court → a logistic fit for the win chance and a straight line for
    the margin, trained on earlier seasons and tested on the latest complete ones; the test is published with the games. */
 
-import { buildCoachIds, coachRecords, dedupeCoachSeasons } from "./cbbcoach.mjs";
+import { buildCoachIds, coachRecords, dedupeCoachSeasons, buildTeamHist, wikiCoaches } from "./cbbcoach.mjs";
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 /* date ranges [a, b) that keep every answer under CBBD's 3,000-row cap */
@@ -117,6 +117,14 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   let CO = { coaches: {}, current: {} }, CI = null;
   try { CI = await buildCoachIds({ getPack, putPack, log, teams: teamList, to: NEXT, full });
     CO = coachRecords({ C: CI, seasons: { ...GH.seasons, [S]: curRows }, lines: { ...GH.lines, [S]: curLines }, adj, S });
+    /* style by season: adj O / D, pace, 3-point rate, turnovers forced, eFG for and against, offensive rebounding — with each season's D-I rank for pace */
+    const TH = await buildTeamHist({ cb, getPack, putPack, log, S, full }).catch(e => { log("team history: " + e.message); return null });
+    if (TH) for (const X of Object.values(CO.coaches)) for (const [y, s] of Object.entries(X.seasons)) { const row = (TH.seasons[y] || {})[s.tm]; if (!row) continue; s.st = row;
+      const paces = Object.values(TH.seasons[y]).map(r => r[2]).filter(v => v != null); if (row[2] != null) s.paceRk = paces.filter(v => v > row[2]).length + 1 }
+    /* full careers from Wikipedia, for every coach with a current team */
+    const nameOf = Object.fromEntries((teamList || []).map(t => [t.id, t.school]));
+    const W = await wikiCoaches({ getPack, putPack, log, full, coaches: Object.entries(CO.current).map(([tid, cid]) => ({ cid, nm: (CO.coaches[cid] || {}).nm, school: nameOf[tid] || "" })).filter(c => c.nm) }).catch(e => { log("wikipedia: " + e.message); return null });
+    if (W) for (const [cid, X] of Object.entries(CO.coaches)) { const w = W.c[cid]; if (w && w.t) X.wiki = { t: w.t, ov: w.ov, ncaa: w.ncaa, titles: w.titles, ff: w.ff, stops: w.stops } }
     CI = { ...CI, seasons: dedupeCoachSeasons(CI.seasons) };   /* one team per coach per season everywhere, game cards too */
     await putPack(`p${S}_cbb-coaches`, { season: S, next: NEXT, ...CO, bySeason: CI.seasons });
     log(`coaches: ${Object.keys(CO.coaches).length} with records, ${Object.keys(CO.current).length} current`) } catch (e) { log("coaches: " + e.message) }

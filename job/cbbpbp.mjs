@@ -14,7 +14,7 @@
 
    Pack: p{S}_cbb-pbp (plus the season's p{S}_cbb-shots, written alongside). */
 
-export const PBP_V = 14;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment · 8: defense on/off and opponents' shots by zone while on the floor · 9: inferred matchups and a zone clue · 10: zone clue from links off the size matchup · 11: possession context (transition, putbacks, shot clock), fatigue, blocks and assists by range, foul trouble, timeouts · 12: rotation patterns, who subs for whom, real game length · 13: ESPN turnover locations, officials, attendance · 14: ESPN official paint / fast-break / off-turnover points */
+export const PBP_V = 15;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment · 8: defense on/off and opponents' shots by zone while on the floor · 9: inferred matchups and a zone clue · 10: zone clue from links off the size matchup · 11: possession context (transition, putbacks, shot clock), fatigue, blocks and assists by range, foul trouble, timeouts · 12: rotation patterns, who subs for whom, real game length · 13: ESPN turnover locations, officials, attendance · 14: ESPN official paint / fast-break / off-turnover points · 15: free throws valued against half a possession (getting to the line counts) */
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const PERIOD = p => p <= 2 ? 1200 : 300;
 const elapsedAt = (period, secLeft) => { let t = 0; for (let p = 1; p < period; p++) t += PERIOD(p); return t + PERIOD(period) - secLeft };
@@ -168,13 +168,13 @@ export function processGame(plays, P, T, opts = {}) {
     /* play value: points above an average shot, weighted by how much a point is worth to the win chance right now (Oct 10 — CBBD's
        win probability moves only when the score does, so crediting raw swings made every shooter positive and charged misses
        nothing). Each make or miss counts its points minus what an average shot of that kind scores (rim 1.2, mid-range 0.76,
-       three 1.02, free throw 0.72); a turnover costs an average possession (1.0). The weight is the win-chance change per point
+       three 1.02; a free throw 0.5, so a two-shot trip is measured against an average possession — Sam: "getting to the line should be taken into account"); a turnover costs an average possession (1.0). The weight is the win-chance change per point
        on this game's most recent basket, so late, close moments count most. */
     const wp = p.homeWinProbability;
     if (wp != null && lastWP != null && (nh - hs) + (na - as) > 0 && wp !== lastWP) lev = Math.abs(wp - lastWP) / ((nh - hs) + (na - as));
     if (aside && lev != null) {
       if (si && si.shooter && si.shooter.id != null) { const ft = si.range === "free_throw" || /FreeThrow/.test(p.playType || ""), three = si.range === "three_pointer";
-        const exp = ft ? .72 : three ? 1.02 : si.range === "rim" ? 1.2 : .76, got = si.made ? (ft ? 1 : three ? 3 : 2) : 0, v = lev * (got - exp);
+        const exp = ft ? .5 : three ? 1.02 : si.range === "rim" ? 1.2 : .76,   /* a free throw counts against half an average possession: a two-shot trip is a possession, so getting fouled and making both is worth +1 */ got = si.made ? (ft ? 1 : three ? 3 : 2) : 0, v = lev * (got - exp);
         const Q = pl(si.shooter.id); Q.wpa += v; if (clutchNow) Q.cwpa += v }
       else if (aid != null && TOV.test(p.playType || "")) { const Q = pl(aid); Q.wpa -= lev; if (clutchNow) Q.cwpa -= lev } }
     /* …and the same change to everyone on the floor (zero-sum: one side's gain is the other's loss) */

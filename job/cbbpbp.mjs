@@ -14,6 +14,7 @@
 
    Pack: p{S}_cbb-pbp (plus the season's p{S}_cbb-shots, written alongside). */
 
+export const PBP_V = 2;   /* 2: player names and teams kept (Oct 9) */
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const PERIOD = p => p <= 2 ? 1200 : 300;
 const elapsedAt = (period, secLeft) => { let t = 0; for (let p = 1; p < period; p++) t += PERIOD(p); return t + PERIOD(period) - secLeft };
@@ -38,7 +39,7 @@ export function processGame(plays, P, T, opts = {}) {
   for (let i = 0; i < plays.length; i++) {
     const p = plays[i], nx = plays[i + 1];
     const floor = { h: [], a: [] };
-    for (const f of p.onFloor || []) { const t = nameOf[f.team]; const s = side(t); if (s && f.id != null) floor[s].push(f.id) }
+    for (const f of p.onFloor || []) { const t = nameOf[f.team]; const s = side(t); if (s && f.id != null) { floor[s].push(f.id); if (i === 0 || !P[f.id] || !P[f.id].nm) pl(f.id).nm = f.name } }
     const marginH = hs - as;                                                        /* before this play */
     const clutchNow = p.period >= 2 && p.secondsRemaining <= 300 && Math.abs(marginH) <= 5;
     /* time until the next play: credited to whoever is on the floor now */
@@ -111,7 +112,7 @@ export function finishPbp(P, T) {
     const offMin = Math.max(0, Q.teamMin - Q.min), offF = Q.teamF - Q.onF, offA = Q.teamA - Q.onA;
     const on40 = Q.min ? (Q.onF - Q.onA) / Q.min * 40 : null, off40 = offMin >= 20 ? (offF - offA) / offMin * 40 : null;
     const topN = (o, n) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => [+k, v]);
-    players[id] = { min: r1(Q.min), gp: Q.gp, pm: Q.pm, on40: r1(on40), off40: r1(off40), onoff: on40 != null && off40 != null ? r1(on40 - off40) : null, offMin: r1(offMin),
+    players[id] = { nm: Q.nm || null, tm: Q._team ?? null, min: r1(Q.min), gp: Q.gp, pm: Q.pm, on40: r1(on40), off40: r1(off40), onoff: on40 != null && off40 != null ? r1(on40 - off40) : null, offMin: r1(offMin),
       c: { ...Q.c, min: r1(Q.c.min) }, late: Q.late, wpa: Math.round(Q.wpa * 1000) / 10, cwpa: Math.round(Q.cwpa * 1000) / 10, h1: Q.h1, h2: Q.h2, ast: topN(Q.ast, 6), fed: topN(Q.fed, 6) };
   }
   const teams = {};
@@ -130,8 +131,9 @@ export function finishPbp(P, T) {
 /* read a season's play-by-play day by day (only days not read before), keep the raw sums (p{S}_cbb-pbpraw, job only) and publish the
    finished numbers (p{S}_cbb-pbp) and the shot chart (p{S}_cbb-shots). shots = { addShot, blankAgg, ZONES } from job/cbb.mjs. */
 export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots, pool, days }) {
+  /* PBP_V: bump when the engine changes what it adds up — the season is then read again from the start */
   let R = full ? null : await getPack(`p${S}_cbb-pbpraw`).catch(() => null);
-  if (!R || !R.P) R = { season: S, P: {}, T: {}, gameIds: [], sh: { players: {}, teams: {} }, done: false };
+  if (!R || !R.P || R.v !== PBP_V) R = { v: PBP_V, season: S, P: {}, T: {}, gameIds: [], sh: { players: {}, teams: {} }, done: false };
   if (R.done) { log(`pbp ${S}: complete`); return { skipped: true } }
   const have = new Set(R.gameIds);
   const finals = G.filter(g => g.season === S && g.status === "final" && !have.has(g.id));

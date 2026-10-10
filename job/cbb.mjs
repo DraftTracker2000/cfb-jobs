@@ -21,6 +21,8 @@
    lottery — from per-40 production, efficiency, role, size, class, recruiting rank and team strength. It's trained on seasons whose
    outcome is known (three drafts later) and tested on later seasons it never saw; the test is published with the board. */
 import { gzipSync } from "node:zlib";
+import { buildGames, ranges } from "./cbbgames.mjs";
+import { runPbp } from "./cbbpbp.mjs";
 
 let SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 let JOB = process.env.JOB_TOKEN || "";
@@ -365,9 +367,7 @@ export async function main() {
 
   /* ---------- teams ---------- */
   const games = [];
-  for (const [a, b] of [[`${S - 1}-10-25`, `${S - 1}-12-01`], [`${S - 1}-12-01`, `${S}-01-01`], [`${S}-01-01`, `${S}-02-01`], [`${S}-02-01`, `${S}-03-01`], [`${S}-03-01`, `${S}-04-01`], [`${S}-04-01`, `${S}-04-30`]])
-    games.push(...await cb("/games", { season: S, startDateRange: a + "T00:00:00Z", endDateRange: b + "T00:00:00Z" }));
-  if (off) games.push(...await cb("/games", { season: S + 1 }));
+  for (const y of off ? [S, S + 1] : [S]) for (const [a, b] of ranges(y, 31)) games.push(...await cb("/games", { season: y, startDateRange: a, endDateRange: b }));   /* CBBD answers at most 3,000 rows: a month at a time */
   const seen = new Set(), G = games.filter(g => !seen.has(g.id) && seen.add(g.id));
   const isAP = p => /ap/i.test(p.pollType || "");
   const polls = (await cb("/rankings", { season: NEXT }).catch(() => [])).filter(isAP);
@@ -397,9 +397,15 @@ export async function main() {
   }
   log(`teams: ${Object.keys(teams).length} Division I`);
 
+  /* ---------- games: lines, TV, our pick, series, splits, game logs (job/cbbgames.mjs) ---------- */
+  const GM = await buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full });
+
   /* ---------- shot charts ---------- */
+  /* this season: the full play-by-play engine (minutes, on/off, clutch, comebacks, lineups … — job/cbbpbp.mjs), which writes the shot
+     chart too; earlier seasons keep their shooting-only charts */
+  const PB = await runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots: { addShot, blankAgg, ZONES }, pool });
   const SHOT_FROM = 2021;
-  const shotSeasons = full ? Array.from({ length: S - SHOT_FROM + 1 }, (_, i) => SHOT_FROM + i) : [S - 1, S];
+  const shotSeasons = (full ? Array.from({ length: S - SHOT_FROM + 1 }, (_, i) => SHOT_FROM + i) : [S - 1]).filter(y => y !== S);
   for (const y of shotSeasons) {
     let P = full ? null : await getPack(`p${y}_cbb-shots`).catch(() => null);
     if (P && P.done) { log(`shots ${y}: complete`); continue }
@@ -440,7 +446,7 @@ export async function main() {
   const hBy = {}; for (const h of hist) (hBy[h.r.id] = hBy[h.r.id] || []).push(h);
   const finalGrade = d => { const a = (hBy[d._id] || []).filter(h => h.r.s <= d.year).sort((x, y) => y.r.s - x.r.s || y.r.min - x.r.min)[0]; return a ? { g: grade(a.m), s: a.r.s, fresh: a.r.s > KNOWN_TO ? 1 : 0 } : null };
   const draftOut = draft.map(d => ({ y: d.year, pk: d.overall, rd: d.round, nm: d.name, nba: d.draftTeam, col: d.sourceTeamCollegeId || null, from: d.sourceTeamCollegeId ? null : [d.sourceTeamLocation, d.sourceTeamName].filter(Boolean).join(" "), rk: d.overallRank || null, pos: d.position, ht: d.height, id: d._id || null, our: d._id ? finalGrade(d) : null }));
-  const meta = { built: Date.now(), season: S, next: NEXT, off, test, trainSeasons: `${TRAIN_FROM}–${KNOWN_TO}`, nTrain: train.length, recTrain: recRows.length, calls: CALLS, feats: FEATS };
+  const meta = { built: Date.now(), season: S, next: NEXT, off, test, pickTest: GM.test, trainSeasons: `${TRAIN_FROM}–${KNOWN_TO}`, nTrain: train.length, recTrain: recRows.length, calls: CALLS, feats: FEATS };
   await putPack(`p${S}_cbb-core`, { meta, players: board, bands, qs: QS, bandStats: BAND_STATS, teamNames: Object.fromEntries(Object.entries(TEAM).map(([id, t]) => [id, [t.school, t.abbreviation, t.primaryColor]])) });
   await putPack(`p${S}_cbb-careers`, careers);
   await putPack(`p${S}_cbb-teams`, { season: S, next: NEXT, teams });

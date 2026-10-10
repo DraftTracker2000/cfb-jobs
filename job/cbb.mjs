@@ -530,9 +530,13 @@ export async function main() {
   /* ---------- publish ---------- */
   /* each pick's grade from his final college season before the draft (seasons after ${KNOWN_TO} were never in the fit) */
   const hBy = {}; for (const h of hist) (hBy[h.r.id] = hBy[h.r.id] || []).push(h);
+  /* every NBA player's college seasons (Oct 10 — Sam: "do pro players not have profiles?" … "like college"): the College tab of his NBA page */
+  { const want = new Set(Object.values(NBA).map(X => X.cid).filter(Boolean)), car = {};
+    for (const [y, rows] of Object.entries(ALL)) for (const r of rows) if (want.has(r.id) && r.min > 0) (car[r.id] = car[r.id] || []).push([+y, r.tm, r.g, r.gs, r.min, r.pts, r.reb, r.ast, r.stl, r.blk, r.tov, r.fgm, r.fga, r.tpm, r.tpa, r.ftm, r.fta, r3(r.ws40)]);
+    for (const X of Object.values(NBA)) if (car[X.cid]) X.car = car[X.cid].sort((a, b) => a[0] - b[0]) }
   /* each NBA player's final college season, for the Blind résumé game and his NBA profile */
   for (const X of Object.values(NBA)) { const a = (hBy[X.cid] || []).filter(h => h.r.min >= 200).sort((x, y) => y.r.s - x.r.s)[0];
-    if (a) X.cl = { s: a.r.s, tm: a.r.tm, yr: a.yr, pos: a.r.pos, g: a.r.g, mpg: r1(a.d.mpg), grade: grade(a.m), ...Object.fromEntries(["pts40", "reb40", "ast40", "stl40", "blk40", "tov40", "ts", "tpp", "tpr", "ftp", "usg", "ws40", "ht", "net"].map(k => [k, r3(a.d[k])])) } }
+    if (a) X.cl = { s: a.r.s, tm: a.r.tm, yr: a.yr, pos: a.r.pos, p5: a.d.p5, g: a.r.g, mpg: r1(a.d.mpg), grade: grade(a.m), prof: profileOf(a), pD: r3(a.pD), pR1: r3(a.pR1), pL: r3(a.pL), ...Object.fromEntries(["pts40", "reb40", "ast40", "stl40", "blk40", "tov40", "ts", "tpp", "tpr", "ftp", "usg", "ws40", "ht", "net"].map(k => [k, r3(a.d[k])])) } }
   const finalGrade = d => { const a = (hBy[d._id] || []).filter(h => h.r.s <= d.year).sort((x, y) => y.r.s - x.r.s || y.r.min - x.r.min)[0]; return a ? { g: grade(a.m), s: a.r.s, fresh: a.r.s > KNOWN_TO ? 1 : 0, p5: a.d.p5 } : null };
   const draftOut = draft.map(d => ({ y: d.year, pk: d.overall, rd: d.round, nm: d.name, nba: d.draftTeam, col: d.sourceTeamCollegeId || null, from: d.sourceTeamCollegeId ? null : [...new Set([d.sourceTeamLocation, d.sourceTeamName].filter(Boolean))].join(" "), rk: d.overallRank || null, pos: d.position, ht: d.height, id: d._id || null, our: d._id ? finalGrade(d) : null }));
   const meta = { built: Date.now(), season: S, next: NEXT, off, test, pickTest: GM.test, trainSeasons: `${TRAIN_FROM}–${KNOWN_TO}`, nTrain: train.length, recTrain: recRows.length, calls: CALLS, feats: FEATS };
@@ -540,7 +544,7 @@ export async function main() {
   await putPack(`p${S}_cbb-careers`, careers);
   await putPack(`p${S}_cbb-teams`, { season: S, next: NEXT, teams });
   await putPack(`p${S}_cbb-draft`, { picks: draftOut.map(d => ({ ...d, tag: d.id && NBA_BY_CID[d.id] ? NBA_BY_CID[d.id].tag.t : null })), test });
-  await putPack(`p${S}_cbb-nba`, { curNba, players: NBA, cols: ["season", "team", "gp", "gs", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "playoffs[gp,gs,min,pts]"] });
+  await putPack(`p${S}_cbb-nba`, { curNba, players: NBA, cols: ["season", "team", "gp", "gs", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "playoffs[gp,gs,min,pts]"], carCols: ["season", "team", "g", "gs", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "ws40"] });
   await site("PUT", "/api/pack-index", { body: INDEX });
   const mins = ((Date.now() - started) / 60e3).toFixed(1);
   const msg = `Basketball · ${board.length} players · ${Object.keys(teams).length} teams · test AUC ${test.aucDrafted}/${test.aucR1}/${test.aucLottery} · ${CALLS} CBBD calls${LEFT != null ? ` (${LEFT.toLocaleString()} left)` : ""} · ${mins} min`;

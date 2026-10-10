@@ -23,7 +23,7 @@
 import { gzipSync } from "node:zlib";
 import { buildGames, ranges } from "./cbbgames.mjs";
 import { runPbp } from "./cbbpbp.mjs";
-import { buildNba } from "./cbbnba.mjs";
+import { buildNba, buildNbaGames } from "./cbbnba.mjs";
 import { fetchRosters, fetchSummary } from "./cbbespn.mjs";
 
 let SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
@@ -242,6 +242,7 @@ export async function main() {
   for (const t of rosterS) for (const p of t.players || []) if (p.sourceId && !sidToCbbd[p.sourceId]) sidToCbbd[p.sourceId] = p.id;
   const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
   let NBA = {}; try { NBA = await buildNba({ getPack, putPack, log, full, curNba, live: nbaLive, sidToCbbd, draftById: DRAFTED }) } catch (e) { log("nba: " + e.message) }
+  try { await buildNbaGames({ getPack, putPack, log, S, curNba: M >= 7 ? Yr + 1 : Yr, players: NBA }) } catch (e) { log("nba games: " + e.message) }
   /* an old NBA ESPN id can be a different person's college ESPN id (Tony Parker's 1015 matched a 2009 college player): the surnames must agree */
   { const nmOf = {}; for (const rows of Object.values(ALL)) for (const r of rows) if (r.sid) nmOf[r.sid] = r.nm;
     const sur = n => String(n || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\s+/).map(w => w.replace(/[^a-z]/g, "")).filter(w => w && !/^(jr|sr|ii|iii|iv|v)$/.test(w)).pop() || "";

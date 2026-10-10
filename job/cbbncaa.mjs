@@ -16,7 +16,9 @@ const REGION = /-\s*(East|West|South|Midwest|Southeast|Southwest)\s+Region/i;
 export function seasonRuns(y, games) {
   const G = games.filter(g => g.status === "final" && g.homePoints != null && g.awayPoints != null).sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
   const firstMain = G.find(g => g.homeSeed !== g.awaySeed);
-  const ff = new Set(firstMain ? G.filter(g => g.homeSeed === g.awaySeed && g.startDate < firstMain.startDate).map(g => g.id) : []);
+  /* a stored row keeps the flag worked out from full timestamps: a 10 pm Eastern First Four game is the next day in UTC (UCLA 2021),
+     so date-only rows can't re-derive it */
+  const ff = new Set(G.some(g => g.first != null) ? G.filter(g => g.first).map(g => g.id) : firstMain ? G.filter(g => g.homeSeed === g.awaySeed && g.startDate < firstMain.startDate).map(g => g.id) : []);
   const T = {}, rows = [];
   for (const g of G) {
     const m0 = REGION.exec(g.gameNotes || ""), m = m0 && [m0[0], m0[1][0].toUpperCase() + m0[1].slice(1).toLowerCase()], first = ff.has(g.id) ? 1 : 0;
@@ -45,7 +47,7 @@ export async function buildNcaaRuns({ cb, getPack, putPack, log, S, full }) {
   }
   P.runs = [];
   for (const [y, rows] of Object.entries(P.seasons)) {
-    const games = rows.map((r, i) => ({ id: i, status: "final", startDate: r[0], gameNotes: r[1] ? `- ${r[1]} Region` : "", homeTeamId: r[2], awayTeamId: r[3], homeSeed: r[4], awaySeed: r[5], homePoints: r[6], awayPoints: r[7] }));
+    const games = rows.map((r, i) => ({ id: i, status: "final", startDate: r[0], gameNotes: r[1] ? `- ${r[1]} Region` : "", homeTeamId: r[2], awayTeamId: r[3], homeSeed: r[4], awaySeed: r[5], homePoints: r[6], awayPoints: r[7], first: r[10] }));
     P.runs.push(...seasonRuns(+y, games).runs);
   }
   P.runs.sort((a, b) => a[0] - b[0] || b[3] - a[3]);

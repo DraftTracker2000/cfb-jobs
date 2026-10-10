@@ -398,7 +398,7 @@ export async function main() {
   log(`teams: ${Object.keys(teams).length} Division I`);
 
   /* ---------- games: lines, TV, our pick, series, splits, game logs (job/cbbgames.mjs) ---------- */
-  const GM = await buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full });
+  const GM = await buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList: teamsRaw.filter(t => D1.has(t.id)), adj: H.adj });
 
   /* ---------- shot charts ---------- */
   /* this season: the full play-by-play engine (minutes, on/off, clutch, comebacks, lineups … — job/cbbpbp.mjs), which writes the shot

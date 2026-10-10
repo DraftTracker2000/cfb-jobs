@@ -55,12 +55,12 @@ export function coachRecords({ C, seasons, lines, adj, S }) {
       const L = (lines[y] || {})[r[0]]; if (L && L[0] != null && L[0] !== 0) { const sp = side === "h" ? L[0] : -L[0], v = my - th + sp; if (v > 0) s.aw++; else if (v < 0) s.al++; else s.ap++; (sp < 0 ? s.fav : s.dog)[won ? 0 : 1]++ }
     }
   }
-  for (const [y, map] of Object.entries(C.seasons)) if (+y >= S) for (const [tid, cid] of Object.entries(map)) cur[tid] = cid;
+  for (const [y, map] of Object.entries(C.seasons)) if (+y >= S) for (const [tid, cid] of Object.entries(map)) { cur[tid] = cid; if (!out[cid]) out[cid] = { nm: C.names[cid] || "Coach " + cid, seasons: {} } }   /* new hires: named, no record yet */
   /* CoachScore (0–100): percentiles among coaches with 3+ seasons, of his teams' average adjusted net rating (50%), win share (20%),
      NCAA tournament wins per season (20%) and covers (10%) */
   const rows = [];
   for (const [cid, X] of Object.entries(out)) {
-    const ss = Object.entries(X.seasons); let w = 0, l = 0, nw = 0, aw = 0, al = 0, netSum = 0, netN = 0;
+    const ss = Object.entries(X.seasons); if (!ss.length) { X.tot = { seasons: 0, w: 0, l: 0, nw: 0, nl: 0, aw: 0, al: 0, net: null }; continue } let w = 0, l = 0, nw = 0, aw = 0, al = 0, netSum = 0, netN = 0;
     for (const [y, s] of ss) { s.net = ((adj[y] || {})[s.tm] || [])[0] ?? null; w += s.w; l += s.l; nw += s.nw; aw += s.aw; al += s.al; const a = ((adj[y] || {})[s.tm] || [])[0]; if (a != null) { netSum += a; netN++ } }
     X.tot = { seasons: ss.length, w, l, nw, nl: ss.reduce((a, [, s]) => a + s.nl, 0), aw, al, net: netN ? Math.round(10 * netSum / netN) / 10 : null };
     if (ss.length >= 3 && netN) rows.push([cid, netSum / netN, w / Math.max(1, w + l), nw / ss.length, aw / Math.max(1, aw + al)]);

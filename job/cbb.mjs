@@ -382,7 +382,7 @@ export async function main() {
         if (!r) { const c = (rowByName[normName(a.nm)] || []).filter(x => x.tm === tid || (x.id && !cid)); if (c.length === 1) { r = lastRow[c[0].id] || c[0]; cid = r.id } }
         const h = r ? H_S[r.id + "|" + r.tm] : null;
         const espn = { cls: a.cls || undefined, jersey: a.jersey || undefined, inj: a.inj || undefined, eid: a.eid };
-        if (r && h && r.min >= 20) { const e = statEntry(r, h, tid, {}); if (a.cls) e.cls = a.cls; if (a.jersey) e.jersey = a.jersey; if (a.inj) e.inj = a.inj; if (a.ht && !e.ht) e.ht = a.ht; if (a.wt && !e.wt) e.wt = a.wt; e.eid = a.eid; board.push(e); continue }
+        if (r && h && r.min >= 20) { const e = statEntry(r, h, tid, {}); /* class: ours (seasons played) — ESPN's preseason lists still carry last season's class */ if (a.jersey) e.jersey = a.jersey; if (a.inj) e.inj = a.inj; if (a.ht && !e.ht) e.ht = a.ht; if (a.wt && !e.wt) e.wt = a.wt; e.eid = a.eid; board.push(e); continue }
         const rc = recByName[normName(a.nm)];
         if (rc && RW) { usedRec.add(rc.id); board.push({ id: "r" + rc.id, eid: a.eid, nm: a.nm, pos: posGroup(rc.position || a.pos), posFull: rc.position || a.pos || "", tm: tid, from: (rc.committedTo || {}).id && rc.committedTo.id !== tid ? rc.committedTo.id : null, fr: 1, cls: a.cls || "FR", yr: 1,
           ht: a.ht || rc.heightInches || null, wt: a.wt || rc.weightPounds || null, home: a.home || (rc.hometown ? [rc.hometown.city, rc.hometown.state].filter(Boolean).join(", ") : ""), hs: rc.school || "", jersey: a.jersey || "", inj: a.inj || undefined,

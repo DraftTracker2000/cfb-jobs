@@ -23,6 +23,7 @@
 import { gzipSync } from "node:zlib";
 import { buildGames, ranges } from "./cbbgames.mjs";
 import { runPbp } from "./cbbpbp.mjs";
+import { buildNba } from "./cbbnba.mjs";
 
 let SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 let JOB = process.env.JOB_TOKEN || "";
@@ -169,14 +170,14 @@ export async function main() {
   log(`stats season ${S}; the board is for ${NEXT - 1}–${String(NEXT).slice(2)}${off ? " (off-season)" : ""}`);
 
   /* the history cache: every season's player rows, rosters (height), team ratings and recruits */
-  const trimRow = r => ({ id: r.athleteId, tm: r.teamId, s: r.season, nm: r.name, pos: posGroup(r.position), g: r.games || 0, gs: r.starts || 0, min: r.minutes || 0, pts: r.points || 0, tov: r.turnovers || 0, pf: r.fouls || 0, ast: r.assists || 0, stl: r.steals || 0, blk: r.blocks || 0,
+  const trimRow = r => ({ id: r.athleteId, sid: r.athleteSourceId || null, tm: r.teamId, s: r.season, nm: r.name, pos: posGroup(r.position), g: r.games || 0, gs: r.starts || 0, min: r.minutes || 0, pts: r.points || 0, tov: r.turnovers || 0, pf: r.fouls || 0, ast: r.assists || 0, stl: r.steals || 0, blk: r.blocks || 0,
     usg: r.usage, ortg: r.offensiveRating, drtg: r.defensiveRating, porp: r.PORPAG, fgm: (r.fieldGoals || {}).made || 0, fga: (r.fieldGoals || {}).attempted || 0, tpm: (r.threePointFieldGoals || {}).made || 0, tpa: (r.threePointFieldGoals || {}).attempted || 0,
     ftm: (r.freeThrows || {}).made || 0, fta: (r.freeThrows || {}).attempted || 0, orb: (r.rebounds || {}).offensive || 0, drb: (r.rebounds || {}).defensive || 0, reb: (r.rebounds || {}).total || 0, ws: (r.winShares || {}).total, ws40: (r.winShares || {}).totalPer40, wso: (r.winShares || {}).offensive, wsd: (r.winShares || {}).defensive });
   let H = full ? null : await getPack("p2000_cbb-hist").catch(() => null);
   const HFROM = 2008;
-  if (!H || !H.stats || H.through < S - 1) {
+  if (!H || !H.stats || H.through < S - 1 || H.v !== 2) {
     log("building the history cache…");
-    H = { stats: {}, ht: {}, start: {}, adj: {}, rec: {}, through: S - 1 };
+    H = { v: 2, stats: {}, ht: {}, start: {}, adj: {}, rec: {}, through: S - 1 };
     const seasons = []; for (let y = HFROM; y < S; y++) seasons.push(y);
     await pool(seasons, 3, async y => {
       const st = await cb("/stats/player/season", { season: y }); H.stats[y] = st.filter(r => r.minutes > 0).map(trimRow);
@@ -215,6 +216,15 @@ export async function main() {
     d._id = id; if (id && (!DRAFTED[id] || DRAFTED[id].overall > d.overall)) DRAFTED[id] = d;
   }
   log(`draft: ${draft.length} picks, ${Object.keys(DRAFTED).length} linked to college players`);
+
+  /* NBA careers (job/cbbnba.mjs), joined on the ESPN id CBBD keeps for every college player */
+  const sidToCbbd = {}; for (const rows of Object.values(ALL)) for (const r of rows) if (r.sid) sidToCbbd[r.sid] = r.id;
+  for (const t of rosterS) for (const p of t.players || []) if (p.sourceId && !sidToCbbd[p.sourceId]) sidToCbbd[p.sourceId] = p.id;
+  const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
+  let NBA = {}; try { NBA = await buildNba({ getPack, putPack, log, full, curNba, live: nbaLive, sidToCbbd, draftById: DRAFTED }) } catch (e) { log("nba: " + e.message) }
+  const lastTeamOf = {}; for (const y of Object.keys(ALL).sort()) for (const r of ALL[y]) lastTeamOf[r.id] = [r.tm, +y];
+  for (const X of Object.values(NBA)) { const lt = lastTeamOf[X.cid]; if (lt) { X.col = lt[0]; X.colY = lt[1] } }
+  const NBA_BY_CID = {}; for (const [eid, X] of Object.entries(NBA)) NBA_BY_CID[X.cid] = { eid, tag: X.tag };
 
   /* recruits → athletes: the class year before a player's first season, by name and school */
   const REC = {};
@@ -309,7 +319,8 @@ export async function main() {
   const cvec = d => CF.map((k, j) => (d[k] - cmu[j]) / csd[j] * CW[j]);
   for (const h of pool0) h.cv = cvec(h.d);
   const byPos = { G: [], F: [], C: [] }; for (const h of pool0) byPos[h.r.pos].push(h);
-  const outcome = h => { const pk = DRAFTED[h.r.id]; if (pk) return { y: pk.year, pk: pk.overall, nba: pk.draftTeam }; return h.r.s <= KNOWN_TO ? { u: 1 } : { tbd: 1 } };
+  const outcome = h => { const pk = DRAFTED[h.r.id], nb = NBA_BY_CID[h.r.id]; if (pk) return { y: pk.year, pk: pk.overall, nba: pk.draftTeam, tag: nb ? nb.tag.t : null };
+    if (nb) return { u: 1, tag: nb.tag.t }; return h.r.s <= KNOWN_TO ? { u: 1 } : { tbd: 1 } };
   function comps(h) {
     const v = cvec(h.d), out = [];
     for (const c of byPos[h.r.pos]) { if (c.r.id === h.r.id || Math.abs(c.yr - h.yr) > 1) continue; let d2 = 0; for (let j = 0; j < v.length; j++) d2 += (v[j] - c.cv[j]) ** 2; out.push([d2, c]) }
@@ -450,7 +461,8 @@ export async function main() {
   await putPack(`p${S}_cbb-core`, { meta, players: board, bands, qs: QS, bandStats: BAND_STATS, teamNames: Object.fromEntries(Object.entries(TEAM).map(([id, t]) => [id, [t.school, t.abbreviation, t.primaryColor]])) });
   await putPack(`p${S}_cbb-careers`, careers);
   await putPack(`p${S}_cbb-teams`, { season: S, next: NEXT, teams });
-  await putPack(`p${S}_cbb-draft`, { picks: draftOut, test });
+  await putPack(`p${S}_cbb-draft`, { picks: draftOut.map(d => ({ ...d, tag: d.id && NBA_BY_CID[d.id] ? NBA_BY_CID[d.id].tag.t : null })), test });
+  await putPack(`p${S}_cbb-nba`, { curNba, players: NBA, cols: ["season", "team", "gp", "gs", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "playoffs[gp,gs,min,pts]"] });
   await site("PUT", "/api/pack-index", { body: INDEX });
   const mins = ((Date.now() - started) / 60e3).toFixed(1);
   const msg = `Basketball · ${board.length} players · ${Object.keys(teams).length} teams · test AUC ${test.aucDrafted}/${test.aucR1}/${test.aucLottery} · ${CALLS} CBBD calls${LEFT != null ? ` (${LEFT.toLocaleString()} left)` : ""} · ${mins} min`;

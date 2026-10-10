@@ -12,6 +12,7 @@
    Our pick: Elo before the game (CBBD's own, game by game) and home court → a logistic fit for the win chance and a straight line for
    the margin, trained on earlier seasons and tested on the latest complete ones; the test is published with the games. */
 
+import { buildCoachIds, coachRecords } from "./cbbcoach.mjs";
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 /* date ranges [a, b) that keep every answer under CBBD's 3,000-row cap */
@@ -46,15 +47,15 @@ function solve3(A, b) { const M = A.map((r, i) => [...r, b[i]]); for (let c = 0;
 export const pickP = (P, eloDiff, home) => 1 / (1 + Math.exp(-(P.w[0] + P.w[1] * eloDiff / 100 + P.w[2] * home)));
 export const pickM = (P, eloDiff, home) => P.mw[0] + P.mw[1] * eloDiff / 100 + P.mw[2] * home;
 
-export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full }) {
+export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList, adj }) {
   /* ---- past seasons: results + lines (cached) ---- */
   let GH = full ? null : await getPack("p2000_cbb-ghist").catch(() => null);
-  if (!GH || GH.through < S - 1) {
-    GH = { through: S - 1, seasons: {}, lines: {} };
+  if (!GH || GH.through < S - 1 || GH.v !== 2) {
+    GH = { v: 2, through: S - 1, seasons: {}, lines: {} };
     for (let y = 2008; y < S; y++) {
       const rows = [];
       for (const [a, b] of ranges(y, 31)) for (const g of await cb("/games", { season: y, startDateRange: a, endDateRange: b })) if (g.status === "final")
-        rows.push([g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, g.homeTeamEloStart ?? null, g.awayTeamEloStart ?? null, g.seasonType === "postseason" ? 1 : 0]);
+        rows.push([g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, g.homeTeamEloStart ?? null, g.awayTeamEloStart ?? null, g.seasonType === "postseason" ? 1 : 0, g.tournament || null]);
       const seen = new Set(); GH.seasons[y] = rows.filter(r => !seen.has(r[0]) && seen.add(r[0]));
     }
     for (let y = Math.max(2014, S - 4); y < S; y++) { GH.lines[y] = {}; for (const [a, b] of ranges(y, 31)) for (const l of await cb("/lines", { season: y, startDateRange: a, endDateRange: b })) { const L = pickLine(l.lines); if (L && L.sp != null) GH.lines[y][l.gameId] = [L.sp, L.ou] } }
@@ -77,7 +78,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   const sY = Object.keys(GH.seasons).map(Number).sort();
   const testYs = [S - 1, S].filter(y => off || y < S);
   const trainRows = sY.filter(y => y >= S - 8 && y < testYs[0]).flatMap(y => rowsOf(GH.seasons[y]));
-  const curRows = G.filter(g => g.season === S && g.status === "final").map(g => [g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, g.homeTeamEloStart ?? null, g.awayTeamEloStart ?? null, g.seasonType === "postseason" ? 1 : 0]);
+  const curRows = G.filter(g => g.season === S && g.status === "final").map(g => [g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, g.homeTeamEloStart ?? null, g.awayTeamEloStart ?? null, g.seasonType === "postseason" ? 1 : 0, g.tournament || null]);
   const curLines = Object.fromEntries(Object.entries(LINES).filter(([, L]) => L.sp != null).map(([k, L]) => [k, [L.sp, L.ou]]));
   const P0 = fitPick(trainRows.map(r => [r.d, r.h, r.y, r.m]));
   const test = { train: `${Math.max(2008, S - 8)}–${testYs[0] - 1}`, seasons: [] };
@@ -109,6 +110,13 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   const pollWeeks = {}; for (const p of polls) { const k = (p.pollDate || "").slice(0, 10); (pollWeeks[k] = pollWeeks[k] || {})[p.teamId] = p.ranking }
   const pollDates = Object.keys(pollWeeks).filter(Boolean).sort();
   const rankAt = (team, date) => { let k = null; for (const d of pollDates) if (d <= date) k = d; return k ? pollWeeks[k][team] || null : null };
+  /* ---- head coaches (ESPN staff lists; records from our results — job/cbbcoach.mjs) ---- */
+  let CO = { coaches: {}, current: {} }, CI = null;
+  try { CI = await buildCoachIds({ getPack, putPack, log, teams: teamList, to: NEXT, full });
+    CO = coachRecords({ C: CI, seasons: { ...GH.seasons, [S]: curRows }, lines: { ...GH.lines, [S]: curLines }, adj, S });
+    await putPack(`p${S}_cbb-coaches`, { season: S, next: NEXT, ...CO, bySeason: CI.seasons });
+    log(`coaches: ${Object.keys(CO.coaches).length} with records, ${Object.keys(CO.current).length} current`) } catch (e) { log("coaches: " + e.message) }
+  const coachOf = (tid, y) => { const m = CI && (CI.seasons[y] || CI.seasons[y - 1]); return m ? m[tid] || null : null };
   /* ---- games out ---- */
   const games = G.filter(g => D1.has(g.homeTeamId) || D1.has(g.awayTeamId)).map(g => {
     const he = eloFor(g, true), ae = eloFor(g, false), home = g.neutralSite ? 0 : 1;
@@ -117,7 +125,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
       t: g.tournament || null, note: g.gameNotes || null, post: g.seasonType === "postseason" ? 1 : 0, hSeed: g.homeSeed ?? null, aSeed: g.awaySeed ?? null, venue: g.venue || null, city: [g.city, g.state].filter(Boolean).join(", "),
       tv: TV[g.id] || null, ln: LINES[g.id] || null, p: r3(p), m: r1(m), elo: [he != null ? Math.round(he) : null, ae != null ? Math.round(ae) : null],
       hr: g.season === S ? rankAt(g.homeTeamId, g.startDate.slice(0, 10)) : null, ar: g.season === S ? rankAt(g.awayTeamId, g.startDate.slice(0, 10)) : null,
-      ser: seriesFor(g.homeTeamId, g.awayTeamId, g.startDate.slice(0, 10)), exc: r1(g.excitement) };
+      ser: seriesFor(g.homeTeamId, g.awayTeamId, g.startDate.slice(0, 10)), exc: r1(g.excitement), co: [coachOf(g.homeTeamId, g.season), coachOf(g.awayTeamId, g.season)] };
   });
   /* ---- each team's splits: season S straight up and against the spread, and favourite/underdog against the spread over three seasons ---- */
   const SPL = {};

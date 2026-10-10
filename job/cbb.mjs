@@ -24,6 +24,7 @@ import { gzipSync } from "node:zlib";
 import { buildGames, ranges } from "./cbbgames.mjs";
 import { runPbp } from "./cbbpbp.mjs";
 import { buildNba } from "./cbbnba.mjs";
+import { fetchRosters } from "./cbbespn.mjs";
 
 let SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 let JOB = process.env.JOB_TOKEN || "";
@@ -337,32 +338,56 @@ export async function main() {
   const H_S = Object.fromEntries(hist.filter(h => h.r.s === S).map(h => [h.r.id + "|" + h.r.tm, h]));
   const board = [];
   const CLS = ["FR", "SO", "JR", "SR", "GR"];
-  for (const r of Object.values(lastRow)) {
-    if (r.min < 100 || !D1.has(r.tm)) continue;
-    const h = H_S[r.id + "|" + r.tm]; if (!h) continue;
-    const pk = DRAFTED[r.id];
-    if (off && pk && pk.year >= S) continue;                       // gone to the NBA
-    const pt = PORT[r.id], ro = RO[r.id] || {}, hw = H.ht[r.id] || [];
-    const nowTeam = off && pt && pt.destination && pt.destination.id ? pt.destination.id : r.tm;
-    const yrNext = off ? h.yr + 1 : h.yr;
-    const rc = REC[r.id];
-    board.push({ id: r.id, nm: r.nm, pos: r.pos, posFull: ro.posFull || "", tm: nowTeam, from: nowTeam !== r.tm ? r.tm : null, portal: pt ? { to: pt.destination ? pt.destination.id : null, toName: pt.destination ? pt.destination.name : null, el: pt.eligibility || null } : null,
+  const statEntry = (r, h, tm, extra = {}) => { const pt = PORT[r.id], ro = RO[r.id] || {}, hw = H.ht[r.id] || [], rc = REC[r.id], yrNext = off ? h.yr + 1 : h.yr;
+    return { id: r.id, nm: r.nm, pos: r.pos, posFull: ro.posFull || "", tm, from: tm !== r.tm ? r.tm : null, portal: pt ? { to: pt.destination ? pt.destination.id : null, toName: pt.destination ? pt.destination.name : null, el: pt.eligibility || null } : null,
       cls: CLS[Math.min(4, yrNext - 1)], yr: yrNext, ht: hw[0] || null, wt: hw[1] || null, home: ro.home || "", jersey: ro.jersey || "",
       rec: rc ? { r: r3(rc[2]), st: rc[3], rk: rc[4] } : null,
       s: { g: r.g, gs: r.gs, min: r.min, pts: r.pts, reb: r.reb, orb: r.orb, ast: r.ast, stl: r.stl, blk: r.blk, tov: r.tov, pf: r.pf, fgm: r.fgm, fga: r.fga, tpm: r.tpm, tpa: r.tpa, ftm: r.ftm, fta: r.fta, usg: r1(r.usg), ortg: r1(r.ortg), drtg: r1(r.drtg), porp: r1(r.porp), ws: r1(r.ws), ws40: r3(r.ws40), wso: r1(r.wso), wsd: r1(r.wsd) },
       d: Object.fromEntries(BAND_STATS.map(k => [k, r3(h.d[k])])),
       g: { score: grade(h.m), pD: r3(h.pD), pR1: r3(h.pR1), pL: r3(h.pL), prof: profileOf(h) },
-      comps: r.min >= 250 ? comps(h) : [] });
+      comps: r.min >= 250 ? comps(h) : [], ...extra } };
+  const recGrade = rc => { const z = RZ([rc.rating || 0, Math.log(rc.ranking || 300), rc.stars || 0]); const pD = predict(RW.dr, z), pR1 = predict(RW.r1, z), pL = predict(RW.lot, z), m = .25 * pD + .45 * pR1 + .30 * pL;
+    return { score: grade(m), pD: r3(pD), pR1: r3(pR1), pL: r3(pL), prof: profileOf({ pD, pR1, pL }), recOnly: 1 } };
+  /* ESPN's current rosters are the truth for who is where (job/cbbespn.mjs): every listed player, his stats from last season wherever he
+     played them, incoming freshmen graded from their recruiting rank, anyone else listed with no grade yet */
+  let ESPN = { rosters: {} }; try { ESPN = await fetchRosters({ teams: teamsRaw.filter(t => D1.has(t.id)), log }) } catch (e) { log("ESPN rosters: " + e.message) }
+  const useEspn = Object.keys(ESPN.rosters).length >= .8 * D1.size;   /* most of Division I answered */
+  const rowByName = {}; for (const r of rowsS) (rowByName[normName(r.nm)] = rowByName[normName(r.nm)] || []).push(r);
+  const recByName = {}; for (const rc of recFresh) recByName[normName(rc.name)] = rc;
+  const usedRec = new Set();
+  if (useEspn) {
+    for (const [tidS, list] of Object.entries(ESPN.rosters)) { const tid = +tidS;
+      for (const a of list) {
+        let cid = sidToCbbd[a.eid] || null; let r = cid ? lastRow[cid] : null;
+        if (!r) { const c = (rowByName[normName(a.nm)] || []).filter(x => x.tm === tid || (x.id && !cid)); if (c.length === 1) { r = lastRow[c[0].id] || c[0]; cid = r.id } }
+        const h = r ? H_S[r.id + "|" + r.tm] : null;
+        const espn = { cls: a.cls || undefined, jersey: a.jersey || undefined, inj: a.inj || undefined, eid: a.eid };
+        if (r && h && r.min >= 20) { const e = statEntry(r, h, tid, {}); if (a.cls) e.cls = a.cls; if (a.jersey) e.jersey = a.jersey; if (a.inj) e.inj = a.inj; if (a.ht && !e.ht) e.ht = a.ht; if (a.wt && !e.wt) e.wt = a.wt; e.eid = a.eid; board.push(e); continue }
+        const rc = recByName[normName(a.nm)];
+        if (rc && RW) { usedRec.add(rc.id); board.push({ id: "r" + rc.id, eid: a.eid, nm: a.nm, pos: posGroup(rc.position || a.pos), posFull: rc.position || a.pos || "", tm: tid, from: (rc.committedTo || {}).id && rc.committedTo.id !== tid ? rc.committedTo.id : null, fr: 1, cls: a.cls || "FR", yr: 1,
+          ht: a.ht || rc.heightInches || null, wt: a.wt || rc.weightPounds || null, home: a.home || (rc.hometown ? [rc.hometown.city, rc.hometown.state].filter(Boolean).join(", ") : ""), hs: rc.school || "", jersey: a.jersey || "", inj: a.inj || undefined,
+          rec: { r: r3(rc.rating), st: rc.stars, rk: rc.ranking }, s: null, d: { ht: a.ht || rc.heightInches || null }, g: recGrade(rc), comps: [] }); continue }
+        /* listed, but no Division I stats and not a ranked recruit (walk-ons, internationals, players from other levels) */
+        board.push({ id: "e" + a.eid, eid: a.eid, nm: a.nm, pos: posGroup(a.pos), posFull: a.pos || "", tm: tid, from: null, cls: a.cls || "FR", yr: 1, ht: a.ht, wt: a.wt, home: a.home, jersey: a.jersey || "", inj: a.inj || undefined, nodata: 1, s: null, d: { ht: a.ht }, g: { score: 0, pD: 0, pR1: 0, pL: 0, prof: "Undrafted", none: 1 }, comps: [] });
+      } }
+  } else for (const r of Object.values(lastRow)) {
+    /* no ESPN lists: last season's players, minus NBA draftees and (off-season) anyone out of eligibility (four seasons played, or five since his first) */
+    if (r.min < 100 || !D1.has(r.tm)) continue;
+    const h = H_S[r.id + "|" + r.tm]; if (!h) continue;
+    const pk = DRAFTED[r.id]; if (off && pk && pk.year >= S) continue;
+    const played = Object.values(ALL).filter(rows => rows.some(x => x.id === r.id && x.g > 0)).length; if (off && (played >= 4 || h.yr >= 5)) continue;
+    const pt = PORT[r.id]; const nowTeam = off && pt && pt.destination && pt.destination.id ? pt.destination.id : r.tm;
+    board.push(statEntry(r, h, nowTeam));
   }
   /* incoming freshmen (off-season only): graded on recruiting rank alone until they play */
-  if (off && RW) for (const rc of recFresh) {
+  if (off && RW && !useEspn) for (const rc of recFresh) {
     const to = (rc.committedTo || {}).id; if (!to || !D1.has(to) || !rc.rating) continue;
     const z = RZ([rc.rating || 0, Math.log(rc.ranking || 300), rc.stars || 0]); const pD = predict(RW.dr, z), pR1 = predict(RW.r1, z), pL = predict(RW.lot, z), m = .25 * pD + .45 * pR1 + .30 * pL;
     board.push({ id: "r" + rc.id, nm: rc.name, pos: posGroup(rc.position), posFull: rc.position || "", tm: to, from: null, fr: 1, cls: "FR", yr: 1, ht: rc.heightInches || null, wt: rc.weightPounds || null,
       home: rc.hometown ? [rc.hometown.city, rc.hometown.state].filter(Boolean).join(", ") : "", hs: rc.school || "", rec: { r: r3(rc.rating), st: rc.stars, rk: rc.ranking },
       s: null, d: { ht: rc.heightInches || null }, g: { score: grade(m), pD: r3(pD), pR1: r3(pR1), pL: r3(pL), prof: profileOf({ pD, pR1, pL }), recOnly: 1 }, comps: [] });
   }
-  board.sort((a, b) => b.g.score - a.g.score || (b.g.pR1 - a.g.pR1));
+  board.sort((a, b) => b.g.score - a.g.score || (b.g.pR1 - a.g.pR1) || (a.nodata ? 1 : 0) - (b.nodata ? 1 : 0));
   /* the tags are capped by rank, so a class can't have far more "lottery" or "first round" players than a draft takes from college
      (about 11 of the 14 lottery picks and 24 of 30 first-rounders have been college players since 2015) */
   const CAP = [18, 36, 72, 140];
@@ -455,6 +480,9 @@ export async function main() {
   /* ---------- publish ---------- */
   /* each pick's grade from his final college season before the draft (seasons after ${KNOWN_TO} were never in the fit) */
   const hBy = {}; for (const h of hist) (hBy[h.r.id] = hBy[h.r.id] || []).push(h);
+  /* each NBA player's final college season, for the Blind résumé game and his NBA profile */
+  for (const X of Object.values(NBA)) { const a = (hBy[X.cid] || []).filter(h => h.r.min >= 200).sort((x, y) => y.r.s - x.r.s)[0];
+    if (a) X.cl = { s: a.r.s, tm: a.r.tm, yr: a.yr, pos: a.r.pos, g: a.r.g, mpg: r1(a.d.mpg), grade: grade(a.m), ...Object.fromEntries(["pts40", "reb40", "ast40", "stl40", "blk40", "tov40", "ts", "tpp", "tpr", "ftp", "usg", "ws40", "ht", "net"].map(k => [k, r3(a.d[k])])) } }
   const finalGrade = d => { const a = (hBy[d._id] || []).filter(h => h.r.s <= d.year).sort((x, y) => y.r.s - x.r.s || y.r.min - x.r.min)[0]; return a ? { g: grade(a.m), s: a.r.s, fresh: a.r.s > KNOWN_TO ? 1 : 0 } : null };
   const draftOut = draft.map(d => ({ y: d.year, pk: d.overall, rd: d.round, nm: d.name, nba: d.draftTeam, col: d.sourceTeamCollegeId || null, from: d.sourceTeamCollegeId ? null : [d.sourceTeamLocation, d.sourceTeamName].filter(Boolean).join(" "), rk: d.overallRank || null, pos: d.position, ht: d.height, id: d._id || null, our: d._id ? finalGrade(d) : null }));
   const meta = { built: Date.now(), season: S, next: NEXT, off, test, pickTest: GM.test, trainSeasons: `${TRAIN_FROM}–${KNOWN_TO}`, nTrain: train.length, recTrain: recRows.length, calls: CALLS, feats: FEATS };

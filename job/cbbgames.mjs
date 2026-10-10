@@ -29,23 +29,25 @@ export function pickLine(lines) {
   const L = lines.find(l => /consensus/i.test(l.provider) && l.spread != null) || lines.find(l => l.spread != null) || lines[0];
   return { sp: L.spread, ou: L.overUnder, sp0: L.spreadOpen ?? null, ou0: L.overUnderOpen ?? null, ml: [L.homeMoneyline ?? null, L.awayMoneyline ?? null], prov: L.provider };
 }
-/* the pick: P(home wins) = σ(a + b·eloDiff + c·home); margin = d + e·eloDiff + f·home */
+/* the pick. CBBD's Elo starts every team at 1500 each November, so early in a season it knows little; last season's adjusted net
+   rating carries the early games and Elo takes over as games are played. Features (x): Elo difference × how far into the season,
+   last season's adjusted net difference × how early it is, the same prior on its own, and home court.
+   P(home wins) = σ(w·x), margin = m·x (least squares). */
+export const pickX = (eloDiff, priorDiff, home, frac) => [1, (eloDiff || 0) / 100 * frac, (priorDiff || 0) / 10 * (1 - frac), (priorDiff || 0) / 10, home];
+export const seasonFrac = (dateIso, season) => Math.max(0, Math.min(1, (Date.parse(dateIso) - Date.UTC(season - 1, 10, 1)) / (70 * 864e5)));
+function solveN(A, b) { const n = b.length, M = A.map((r, i) => [...r, b[i]]); for (let c = 0; c < n; c++) { let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r; [M[c], M[p]] = [M[p], M[c]]; for (let r = 0; r < n; r++) if (r !== c) { const f = M[r][c] / (M[c][c] || 1e-12); for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k] } } return M.map((r, i) => r[n] / (r[i] || 1e-12)) }
 export function fitPick(rows) {
-  /* rows: [eloDiff, home(1/0), homeWon(1/0), margin] — two-parameter-plus-intercept logistic by Newton steps, least squares for margin */
-  let w = [0, 0, 0];
-  for (let it = 0; it < 25; it++) {
-    const g = [0, 0, 0], H = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-    for (const [d, h, y] of rows) { const x = [1, d / 100, h]; const z = w[0] + w[1] * x[1] + w[2] * x[2]; const p = 1 / (1 + Math.exp(-z)); for (let i = 0; i < 3; i++) { g[i] += (y - p) * x[i]; for (let j = 0; j < 3; j++) H[i][j] -= p * (1 - p) * x[i] * x[j] } }
-    const dw = solve3(H, g.map(v => -v)); for (let i = 0; i < 3; i++) w[i] += dw[i];
-  }
-  const A = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], b = [0, 0, 0];
-  for (const [d, h, , m] of rows) { const x = [1, d / 100, h]; for (let i = 0; i < 3; i++) { b[i] += x[i] * m; for (let j = 0; j < 3; j++) A[i][j] += x[i] * x[j] } }
-  const mw = solve3(A, b);
-  return { w, mw };
+  /* rows: [x, homeWon, margin] */
+  const n = rows[0] ? rows[0][0].length : 5; let w = new Array(n).fill(0);
+  for (let it = 0; it < 25; it++) { const g = new Array(n).fill(0), H = Array.from({ length: n }, () => new Array(n).fill(1e-6));
+    for (const [x, y] of rows) { let z = 0; for (let i = 0; i < n; i++) z += w[i] * x[i]; const p = 1 / (1 + Math.exp(-z)); for (let i = 0; i < n; i++) { g[i] += (y - p) * x[i]; for (let j = 0; j < n; j++) H[i][j] += p * (1 - p) * x[i] * x[j] } }
+    const dw = solveN(H, g); for (let i = 0; i < n; i++) w[i] += dw[i] }
+  const A = Array.from({ length: n }, () => new Array(n).fill(1e-6)), b = new Array(n).fill(0);
+  for (const [x, , m] of rows) for (let i = 0; i < n; i++) { b[i] += x[i] * m; for (let j = 0; j < n; j++) A[i][j] += x[i] * x[j] }
+  return { w, mw: solveN(A, b) };
 }
-function solve3(A, b) { const M = A.map((r, i) => [...r, b[i]]); for (let c = 0; c < 3; c++) { let p = c; for (let r = c + 1; r < 3; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r; [M[c], M[p]] = [M[p], M[c]]; for (let r = 0; r < 3; r++) if (r !== c) { const f = M[r][c] / (M[c][c] || 1e-12); for (let k = c; k < 4; k++) M[r][k] -= f * M[c][k] } } return M.map((r, i) => r[3] / (r[i] || 1e-12)) }
-export const pickP = (P, eloDiff, home) => 1 / (1 + Math.exp(-(P.w[0] + P.w[1] * eloDiff / 100 + P.w[2] * home)));
-export const pickM = (P, eloDiff, home) => P.mw[0] + P.mw[1] * eloDiff / 100 + P.mw[2] * home;
+export const pickP = (P, x) => { let z = 0; for (let i = 0; i < x.length; i++) z += P.w[i] * x[i]; return 1 / (1 + Math.exp(-z)) };
+export const pickM = (P, x) => { let z = 0; for (let i = 0; i < x.length; i++) z += P.mw[i] * x[i]; return z };
 
 export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList, adj }) {
   /* ---- past seasons: results + lines (cached) ---- */
@@ -74,30 +76,29 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     }
   }
   /* ---- the pick: fit on older seasons, test on the newest complete ones ---- */
-  const rowsOf = (list, lines) => list.filter(r => r[8] != null && r[9] != null).map(r => ({ d: r[8] - r[9], h: r[6] ? 0 : 1, y: r[4] > r[5] ? 1 : 0, m: r[4] - r[5], ln: lines && lines[r[0]] }));
+  /* last season's adjusted net for each team (the early-season prior) */
+  const priorNet = (tid, season) => { const a = (adj[season - 1] || {})[tid]; return a ? a[0] : null };
+  const xOf = (eh, ea, h, a, home, date, season) => { const ph = priorNet(h, season), pa = priorNet(a, season); return pickX(eh != null && ea != null ? eh - ea : 0, ph != null && pa != null ? ph - pa : 0, home, seasonFrac(date + "T00:00:00Z", season)) };
+  const rowsOf = (list, lines, season) => list.filter(r => r[4] != null && r[5] != null).map(r => ({ x: xOf(r[8], r[9], r[2], r[3], r[6] ? 0 : 1, r[1], season), y: r[4] > r[5] ? 1 : 0, m: r[4] - r[5], ln: lines && lines[r[0]] }));
   const sY = Object.keys(GH.seasons).map(Number).sort();
   const testYs = [S - 1, S].filter(y => off || y < S);
-  const trainRows = sY.filter(y => y >= S - 8 && y < testYs[0]).flatMap(y => rowsOf(GH.seasons[y]));
+  const trainRows = sY.filter(y => y >= S - 8 && y < testYs[0]).flatMap(y => rowsOf(GH.seasons[y], null, y));
   const curRows = G.filter(g => g.season === S && g.status === "final").map(g => [g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, g.homeTeamEloStart ?? null, g.awayTeamEloStart ?? null, g.seasonType === "postseason" ? 1 : 0, g.tournament || null]);
   const curLines = Object.fromEntries(Object.entries(LINES).filter(([, L]) => L.sp != null).map(([k, L]) => [k, [L.sp, L.ou]]));
-  const P0 = fitPick(trainRows.map(r => [r.d, r.h, r.y, r.m]));
+  const P0 = fitPick(trainRows.map(r => [r.x, r.y, r.m]));
   const test = { train: `${Math.max(2008, S - 8)}–${testYs[0] - 1}`, seasons: [] };
   for (const y of testYs) {
-    const rows = rowsOf(y === S ? curRows : GH.seasons[y], y === S ? curLines : GH.lines[y]);
+    const rows = rowsOf(y === S ? curRows : GH.seasons[y], y === S ? curLines : GH.lines[y], y);
     if (!rows.length) continue;
     let right = 0, brier = 0, withLine = 0, lineRight = 0, ourRight = 0, ats = 0, atsN = 0, mae = 0;
-    for (const r of rows) { const p = pickP(P0, r.d, r.h); right += (p >= .5) === (r.y === 1) ? 1 : 0; brier += (p - r.y) ** 2; mae += Math.abs(pickM(P0, r.d, r.h) - r.m);
+    for (const r of rows) { const p = pickP(P0, r.x); right += (p >= .5) === (r.y === 1) ? 1 : 0; brier += (p - r.y) ** 2; mae += Math.abs(pickM(P0, r.x) - r.m);
       if (r.ln && r.ln[0] != null && r.ln[0] !== 0) { withLine++; lineRight += (r.ln[0] < 0) === (r.y === 1) ? 1 : 0; ourRight += (p >= .5) === (r.y === 1) ? 1 : 0;
-        const our = -pickM(P0, r.d, r.h); if (Math.abs(our - r.ln[0]) >= 3) { atsN++; const homeSide = our < r.ln[0]; const c = homeCover(r.m, 0, r.ln[0]); if (c !== .5) ats += (homeSide ? c : 1 - c) } } }
+        const our = -pickM(P0, r.x); if (Math.abs(our - r.ln[0]) >= 3) { atsN++; const homeSide = our < r.ln[0]; const c = homeCover(r.m, 0, r.ln[0]); if (c !== .5) ats += (homeSide ? c : 1 - c) } } }
     test.seasons.push({ season: y, games: rows.length, pickRight: r3(right / rows.length), brier: r3(brier / rows.length), marginMiss: r1(mae / rows.length), withLine, lineFavRight: withLine ? r3(lineRight / withLine) : null, ourRightSameGames: withLine ? r3(ourRight / withLine) : null, atsDisagree3: atsN, atsWin: atsN ? r3(ats / atsN) : null });
   }
   /* the pick the site uses: the same fit, now including the test seasons */
-  const PK = fitPick([...trainRows, ...testYs.flatMap(y => rowsOf(y === S ? curRows : GH.seasons[y]))].map(r => [r.d, r.h, r.y, r.m]));
+  const PK = fitPick([...trainRows, ...testYs.flatMap(y => rowsOf(y === S ? curRows : GH.seasons[y], null, y))].map(r => [r.x, r.y, r.m]));
   log(`pick test: ${test.seasons.map(t => `${t.season} ${Math.round(100 * t.pickRight)}% right (Vegas favourite ${t.lineFavRight != null ? Math.round(100 * t.lineFavRight) + "%" : "—"})`).join(" · ")}`);
-  /* latest Elo per team, for games that don't have one yet (next season): a quarter of the way back to 1500 between seasons */
-  const lastElo = {};
-  for (const g of [...G].filter(g => g.status === "final").sort((a, b) => a.startDate.localeCompare(b.startDate))) { if (g.homeTeamEloEnd != null) lastElo[g.homeTeamId] = g.homeTeamEloEnd; if (g.awayTeamEloEnd != null) lastElo[g.awayTeamId] = g.awayTeamEloEnd }
-  const eloFor = (g, home) => { const v = home ? g.homeTeamEloStart : g.awayTeamEloStart; if (v != null) return v; const id = home ? g.homeTeamId : g.awayTeamId; const e = lastElo[id]; if (e == null) return null; return g.season > S ? 1500 + .75 * (e - 1500) : e };
   /* ---- series since 2008 ---- */
   const pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
   const SER = {};
@@ -119,8 +120,10 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   const coachOf = (tid, y) => { const m = CI && (CI.seasons[y] || CI.seasons[y - 1]); return m ? m[tid] || null : null };
   /* ---- games out ---- */
   const games = G.filter(g => D1.has(g.homeTeamId) || D1.has(g.awayTeamId)).map(g => {
-    const he = eloFor(g, true), ae = eloFor(g, false), home = g.neutralSite ? 0 : 1;
-    const p = he != null && ae != null ? pickP(PK, he - ae, home) : null, m = he != null && ae != null ? pickM(PK, he - ae, home) : null;
+    const he = g.homeTeamEloStart ?? null, ae = g.awayTeamEloStart ?? null, home = g.neutralSite ? 0 : 1;
+    const x = xOf(he, ae, g.homeTeamId, g.awayTeamId, home, g.startDate.slice(0, 10), g.season);
+    const known = (he != null && ae != null) || (priorNet(g.homeTeamId, g.season) != null && priorNet(g.awayTeamId, g.season) != null);
+    const p = known ? pickP(PK, x) : null, m = known ? pickM(PK, x) : null;
     return { id: g.id, s: g.season, d: g.startDate, tbd: g.startTimeTbd ? 1 : 0, h: g.homeTeamId, a: g.awayTeamId, hs: g.homePoints ?? null, as: g.awayPoints ?? null, st: g.status, n: g.neutralSite ? 1 : 0, c: g.conferenceGame ? 1 : 0,
       t: g.tournament || null, note: g.gameNotes || null, post: g.seasonType === "postseason" ? 1 : 0, hSeed: g.homeSeed ?? null, aSeed: g.awaySeed ?? null, venue: g.venue || null, city: [g.city, g.state].filter(Boolean).join(", "),
       tv: TV[g.id] || null, ln: LINES[g.id] || null, p: r3(p), m: r1(m), elo: [he != null ? Math.round(he) : null, ae != null ? Math.round(ae) : null],

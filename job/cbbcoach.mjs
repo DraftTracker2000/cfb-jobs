@@ -126,7 +126,10 @@ export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
   const todo = coaches.filter(c => !W.c[c.cid] || Date.now() - (W.c[c.cid].at || 0) > 7 * 864e5);
   let n = 0, found = 0;
   /* one request at a time with a short pause (Wikimedia's API etiquette); a 429 or 403 backs off and retries */
-  const get = async u => { for (let k = 0; k < 5; k++) { try { await new Promise(r => setTimeout(r, 120)); const r = await fetch(u, { headers: WUA }); if (r.ok) return await r.json(); if (r.status === 404) return null } catch { } await new Promise(r => setTimeout(r, 3000 * (k + 1))) } return null };
+  /* a refusal (403) or repeated rate limits stop the whole pass for this run, so a blocked job can't stall for hours; the time box is 4 minutes */
+  let fails = 0, stop = false; const t0 = Date.now(), codes = {};
+  const get = async u => { if (stop) return null; for (let k = 0; k < 3; k++) { try { await new Promise(r => setTimeout(r, 150)); const r = await fetch(u, { headers: WUA }); codes[r.status] = (codes[r.status] || 0) + 1; if (r.ok) { fails = 0; return await r.json() } if (r.status === 404) return null; if (r.status === 403) { stop = true; return null } } catch (e) { codes.err = (codes.err || 0) + 1 } await new Promise(r => setTimeout(r, 2000 * (k + 1))) }
+    if (++fails >= 5 || Date.now() - t0 > 240e3) stop = true; return null };
   let i = 0; await Promise.all(Array.from({ length: 1 }, async () => { while (i < todo.length) { const c = todo[i++];
     const q = await get(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(c.nm + " basketball coach " + (c.school || ""))}&srlimit=3&format=json`); n++;
     if (!q) continue;   /* the lookup failed: try again next run, don't remember a miss */
@@ -137,6 +140,7 @@ export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
       rec = { at: Date.now(), t: pg.parse.title, ...parseCoachInfobox(w) }; found++; break }
     W.c[c.cid] = rec } }));
   await putPack("p2000_cbb-wiki", W);
-  log(`wikipedia coaches: ${todo.length} looked up (${n} calls), ${found} found · ${Object.values(W.c).filter(x => x.t).length} on file`);
+  W.lastRun = { at: Date.now(), calls: n, found, codes, stopped: stop };   /* visible in the pack, since the job's log isn't */
+  log(`wikipedia coaches: ${todo.length} to look up (${n} calls), ${found} found · ${Object.values(W.c).filter(x => x.t).length} on file · ${JSON.stringify(codes)}${stop ? " · stopped early" : ""}`);
   return W;
 }

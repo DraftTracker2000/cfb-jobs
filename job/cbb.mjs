@@ -393,7 +393,8 @@ export async function main() {
         const espn = { cls: a.cls || undefined, jersey: a.jersey || undefined, inj: a.inj || undefined, eid: a.eid };
         if (r && h && r.min >= 20) { const e = statEntry(r, h, tid, {}); /* class: ours (seasons played) — ESPN's preseason lists still carry last season's class */ if (a.jersey) e.jersey = a.jersey; if (a.inj) e.inj = a.inj; if (a.ht && !e.ht) e.ht = a.ht; if (a.wt && !e.wt) e.wt = a.wt; e.eid = a.eid; board.push(e); continue }
         const rc = recByName[normName(a.nm)];
-        if (rc && RW) { usedRec.add(rc.id); board.push({ id: "r" + rc.id, eid: a.eid, nm: a.nm, pos: posGroup(rc.position || a.pos), posFull: rc.position || a.pos || "", tm: tid, from: (rc.committedTo || {}).id && rc.committedTo.id !== tid ? rc.committedTo.id : null, fr: 1, cls: a.cls || "FR", yr: 1,
+        if (rc && RW && !usedRec.has(rc.id) && ((rc.committedTo || {}).id === tid || !a.cls || a.cls === "FR")) { usedRec.add(rc.id);   /* the recruit must be headed here (two Marcus Johnsons shared one recruit id) */
+          board.push({ id: "r" + rc.id, eid: a.eid, nm: a.nm, pos: posGroup(rc.position || a.pos), posFull: rc.position || a.pos || "", tm: tid, from: (rc.committedTo || {}).id && rc.committedTo.id !== tid ? rc.committedTo.id : null, fr: 1, cls: a.cls || "FR", yr: 1,
           ht: a.ht || rc.heightInches || null, wt: a.wt || rc.weightPounds || null, home: a.home || (rc.hometown ? [rc.hometown.city, rc.hometown.state].filter(Boolean).join(", ") : ""), hs: rc.school || "", jersey: a.jersey || "", inj: a.inj || undefined,
           rec: { r: r3(rc.rating), st: rc.stars, rk: rc.ranking }, s: null, d: { ht: a.ht || rc.heightInches || null }, g: recGrade(rc), comps: [] }); continue }
         /* listed, but no Division I stats and not a ranked recruit (walk-ons, internationals, players from other levels) */

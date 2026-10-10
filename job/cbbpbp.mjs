@@ -14,7 +14,7 @@
 
    Pack: p{S}_cbb-pbp (plus the season's p{S}_cbb-shots, written alongside). */
 
-export const PBP_V = 6;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) */
+export const PBP_V = 7;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment */
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const PERIOD = p => p <= 2 ? 1200 : 300;
 const elapsedAt = (period, secLeft) => { let t = 0; for (let p = 1; p < period; p++) t += PERIOD(p); return t + PERIOD(period) - secLeft };
@@ -47,7 +47,7 @@ export function processGame(plays, P, T, opts = {}) {
   const tm = id => T[id] = T[id] || blankT();
   const pl = id => P[id] = P[id] || blankP();
   const seen = new Set();
-  let hs = 0, as = 0, maxH = 0, minH = 0, half = null, leadCh = 0, lastLead = 0, runTeam = null, run = 0, bestRun = { h: 0, a: 0 }, lastWP = null, goAheadLast = null, lastMiss = null;
+  let hs = 0, as = 0, maxH = 0, minH = 0, half = null, leadCh = 0, lastLead = 0, runTeam = null, run = 0, bestRun = { h: 0, a: 0 }, lastWP = null, goAheadLast = null, lev = .01;   /* a point early in a game moves the chance about 1% */
   const unitsOn = { h: null, a: null };
   for (let i = 0; i < plays.length; i++) {
     const p = plays[i], nx = plays[i + 1];
@@ -100,14 +100,18 @@ export function processGame(plays, P, T, opts = {}) {
       const Q = pl(aid), pt = p.playType || "";
       if (clutchNow) { if (TOV.test(pt)) Q.c.tov++; else if (pt === "Steal") Q.c.stl++; else if (REB.test(pt) && !/Dead Ball/.test(pt)) Q.c.reb++ }
     }
-    /* win probability added: the change in the actor's team's chance, credited to the actor */
-    /* (a missed shot barely moves the chance; the swing shows up on the other team's defensive rebound. That swing is charged to the
-       shooter who missed, not credited to the rebounder, so a player's value counts his misses as well as his makes.) */
+    /* play value: points above an average shot, weighted by how much a point is worth to the win chance right now (Oct 10 — CBBD's
+       win probability moves only when the score does, so crediting raw swings made every shooter positive and charged misses
+       nothing). Each make or miss counts its points minus what an average shot of that kind scores (rim 1.2, mid-range 0.76,
+       three 1.02, free throw 0.72); a turnover costs an average possession (1.0). The weight is the win-chance change per point
+       on this game's most recent basket, so late, close moments count most. */
     const wp = p.homeWinProbability;
-    if (wp != null && lastWP != null && aside) { const d = (wp - lastWP) * (aside === "h" ? 1 : -1); let who = si && si.shooter && si.shooter.id != null ? si.shooter.id : aid, sign = 1;
-      if (DREB.test(p.playType || "") && lastMiss && lastMiss.side !== aside) { who = lastMiss.id; sign = -1 }
-      if (who != null && !/Substitution|TimeOut|End|Jumpball/i.test(p.playType || "")) { const Q = pl(who); Q.wpa += sign * d; if (clutchNow) Q.cwpa += sign * d } }
-    if (si && si.shooter && si.shooter.id != null && aside) lastMiss = si.made ? null : { id: si.shooter.id, side: aside }; else if (!DREB.test(p.playType || "") && !/Substitution|TimeOut|Block|Foul/i.test(p.playType || "")) lastMiss = null;
+    if (wp != null && lastWP != null && (nh - hs) + (na - as) > 0 && wp !== lastWP) lev = Math.abs(wp - lastWP) / ((nh - hs) + (na - as));
+    if (aside && lev != null) {
+      if (si && si.shooter && si.shooter.id != null) { const ft = si.range === "free_throw" || /FreeThrow/.test(p.playType || ""), three = si.range === "three_pointer";
+        const exp = ft ? .72 : three ? 1.02 : si.range === "rim" ? 1.2 : .76, got = si.made ? (ft ? 1 : three ? 3 : 2) : 0, v = lev * (got - exp);
+        const Q = pl(si.shooter.id); Q.wpa += v; if (clutchNow) Q.cwpa += v }
+      else if (aid != null && TOV.test(p.playType || "")) { const Q = pl(aid); Q.wpa -= lev; if (clutchNow) Q.cwpa -= lev } }
     /* …and the same change to everyone on the floor (zero-sum: one side's gain is the other's loss) */
     if (wp != null && lastWP != null && wp !== lastWP) { const d = wp - lastWP; for (const id of floor.h) { const Q = pl(id); Q.fwpa += d; if (clutchNow) Q.cfwpa += d } for (const id of floor.a) { const Q = pl(id); Q.fwpa -= d; if (clutchNow) Q.cfwpa -= d } }
     if (wp != null) lastWP = wp;

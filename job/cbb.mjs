@@ -76,7 +76,8 @@ async function pool(items, n, fn) { let i = 0; const out = []; await Promise.all
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 export const normName = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "");
-const posGroup = p => { p = String(p || "").toUpperCase(); if (p.startsWith("C")) return "C"; if (/^(F|PF|SF|W)/.test(p) || p === "FORWARD") return "F"; if (/^(G|PG|SG)/.test(p) || p === "GUARD") return "G"; return p === "CENTER" ? "C" : "F" };
+/* G / F / C from any of CBBD's spellings ("G", "Guard", "PG", "CG" = combo guard, "SF", "Forward", "C", "Center"…) */
+export const posGroup = p => { p = String(p || "").toUpperCase().trim(); if (/^(PG|SG|CG|G\b|G$|GUARD|COMBO)/.test(p)) return "G"; if (/^(C|CENTER)$/.test(p)) return "C"; return "F" };
 
 /* ---------- shot zones (shared with the page — keep the two in step) ----------
    Court coordinates from CBBD are tenths of a foot on the full 94×50 court. Each shot is folded onto one half court:
@@ -272,8 +273,9 @@ export async function main() {
   const allM = hist.filter(h => h.r.min >= 150).map(h => h.m).sort((a, b) => a - b);
   const pct0 = m => { let lo = 0, hi = allM.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (allM[mid] < m) lo = mid + 1; else hi = mid } return 100 * lo / allM.length };
   const pct = pct0;
-  /* spread the top: 1 − √(1 − percentile), so the ~1% who get drafted aren't all a 99 (99.9th pct → 97, 99th → 90, 95th → 78, 50th → 29) */
-  const grade = m => Math.min(99, Math.round(100 * (1 - Math.sqrt(1 - pct(m) / 100.0001))));
+  /* spread the top: 1 − (1 − percentile)^0.35, so the ~2% who get drafted aren't all a 99 (99.99th pct → 96, 99.5th → 85, 97.5th → 73,
+     90th → 55, 50th → 22) */
+  const grade = m => Math.min(99, Math.round(100 * (1 - Math.pow(1 - pct(m) / 100.0001, .35))));
   const PROF = ["Lottery", "Round 1", "Round 2", "Fringe", "Undrafted"];
   const profileOf = h => h.pL >= .4 ? "Lottery" : h.pR1 >= .45 ? "Round 1" : h.pD >= .45 ? "Round 2" : h.pD >= .15 ? "Fringe" : "Undrafted";
 
@@ -305,7 +307,7 @@ export async function main() {
   const cvec = d => CF.map((k, j) => (d[k] - cmu[j]) / csd[j] * CW[j]);
   for (const h of pool0) h.cv = cvec(h.d);
   const byPos = { G: [], F: [], C: [] }; for (const h of pool0) byPos[h.r.pos].push(h);
-  const outcome = h => { const pk = DRAFTED[h.r.id]; if (pk) return { y: pk.year, pk: pk.overall, tm: pk.draftTeam }; return h.r.s <= KNOWN_TO ? { u: 1 } : { tbd: 1 } };
+  const outcome = h => { const pk = DRAFTED[h.r.id]; if (pk) return { y: pk.year, pk: pk.overall, nba: pk.draftTeam }; return h.r.s <= KNOWN_TO ? { u: 1 } : { tbd: 1 } };
   function comps(h) {
     const v = cvec(h.d), out = [];
     for (const c of byPos[h.r.pos]) { if (c.r.id === h.r.id || Math.abs(c.yr - h.yr) > 1) continue; let d2 = 0; for (let j = 0; j < v.length; j++) d2 += (v[j] - c.cv[j]) ** 2; out.push([d2, c]) }

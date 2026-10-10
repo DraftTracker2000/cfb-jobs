@@ -121,6 +121,14 @@ export function parseCoachInfobox(w) {
   const stops = []; for (let i = 1; i <= 25; i++) { const yrs = clean(line("coach_years" + i)), tm = clean(line("coach_team" + i)); if (!yrs && !tm) continue; if (!tm || /assistant|associate|\bHS\b|high school|graduate|director|\(GA\)/i.test(tm)) continue; stops.push([yrs, tm.replace(/\s*\(.*?\)\s*$/, "")]) }
   return { ov, ncaa, titles, ff, stops };
 }
+/* Wikipedia's infobox can lag a season (Oct 10 audit: Greg Gard 237-128 there, 244-132 in our own Wisconsin games) or fail to parse
+   (0-0). Its career and NCAA records are only used when they cover at least as many games as we can count ourselves. */
+export function trustWiki(w, seasons) {
+  if (!w || !w.t) return null;
+  const S = Object.values(seasons || {}), ours = S.reduce((a, x) => a + (x.w || 0) + (x.l || 0), 0), oursN = S.reduce((a, x) => a + (x.nw || 0) + (x.nl || 0), 0);
+  const ov = w.ov && w.ov[0] + w.ov[1] > 0 && w.ov[0] + w.ov[1] >= ours ? w.ov : null, ncaa = w.ncaa && w.ncaa[0] + w.ncaa[1] >= oursN ? w.ncaa : null;
+  return { t: w.t, ov, ncaa, titles: w.titles, ff: w.ff, stops: w.stops };
+}
 export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
   let W = full ? null : await getPack("p2000_cbb-wiki").catch(() => null); if (!W || !W.c || W.v !== 3) W = { v: 3, c: {} };   /* v3: batched */
   const todo = coaches.filter(c => !W.c[c.cid] || Date.now() - (W.c[c.cid].at || 0) > 7 * 864e5);

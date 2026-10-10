@@ -12,7 +12,7 @@
    Our pick: Elo before the game (CBBD's own, game by game) and home court → a logistic fit for the win chance and a straight line for
    the margin, trained on earlier seasons and tested on the latest complete ones; the test is published with the games. */
 
-import { buildCoachIds, coachRecords, dedupeCoachSeasons, buildTeamHist, wikiCoaches } from "./cbbcoach.mjs";
+import { buildCoachIds, coachRecords, dedupeCoachSeasons, buildTeamHist, wikiCoaches, trustWiki } from "./cbbcoach.mjs";
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 /* date ranges [a, b) that keep every answer under CBBD's 3,000-row cap */
@@ -124,7 +124,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     /* full careers from Wikipedia, for every coach with a current team */
     const nameOf = Object.fromEntries((teamList || []).map(t => [t.id, t.school]));
     const W = await wikiCoaches({ getPack, putPack, log, full, coaches: Object.entries(CO.current).map(([tid, cid]) => ({ cid, nm: (CO.coaches[cid] || {}).nm, school: nameOf[tid] || "" })).filter(c => c.nm) }).catch(e => { log("wikipedia: " + e.message); return null });
-    if (W) for (const [cid, X] of Object.entries(CO.coaches)) { const w = W.c[cid]; if (w && w.t) X.wiki = { t: w.t, ov: w.ov, ncaa: w.ncaa, titles: w.titles, ff: w.ff, stops: w.stops } }
+    if (W) for (const [cid, X] of Object.entries(CO.coaches)) { const w = trustWiki(W.c[cid], X.seasons); if (w) X.wiki = w }
     CI = { ...CI, seasons: dedupeCoachSeasons(CI.seasons) };   /* one team per coach per season everywhere, game cards too */
     await putPack(`p${S}_cbb-coaches`, { season: S, next: NEXT, ...CO, bySeason: CI.seasons });
     log(`coaches: ${Object.keys(CO.coaches).length} with records, ${Object.keys(CO.current).length} current`) } catch (e) { log("coaches: " + e.message) }

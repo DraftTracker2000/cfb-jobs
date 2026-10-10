@@ -40,7 +40,7 @@ function countEvent(E, p, ownOnly) {
 export function processGame(plays, P, T, opts = {}) {
   plays = plays.slice().sort((a, b) => a.period - b.period || b.secondsRemaining - a.secondsRemaining || a.id - b.id);
   const first = plays.find(p => p.teamId != null && p.isHomeTeam != null); if (!first) return null;
-  { const last = plays[plays.length - 1]; if (!(last.homeScore || 0) && !(last.awayScore || 0)) return null }   /* an empty game: nothing counted, so nothing to undo */
+  if (!plays.some(p => (p.homeScore || 0) + (p.awayScore || 0) > 0)) return null;   /* an empty game: nothing counted, so nothing to undo */
   const home = first.isHomeTeam ? first.teamId : first.opponentId, away = first.isHomeTeam ? first.opponentId : first.teamId;
   const nameOf = {}; for (const p of plays) { if (p.teamId != null && p.team) nameOf[p.team] = p.teamId; if (p.opponentId != null && p.opponent) nameOf[p.opponent] = p.opponentId }
   const side = id => id === home ? "h" : id === away ? "a" : null;
@@ -107,7 +107,7 @@ export function processGame(plays, P, T, opts = {}) {
     if (wp != null && lastWP != null && aside) { const d = (wp - lastWP) * (aside === "h" ? 1 : -1); let who = si && si.shooter && si.shooter.id != null ? si.shooter.id : aid, sign = 1;
       if (DREB.test(p.playType || "") && lastMiss && lastMiss.side !== aside) { who = lastMiss.id; sign = -1 }
       if (who != null && !/Substitution|TimeOut|End|Jumpball/i.test(p.playType || "")) { const Q = pl(who); Q.wpa += sign * d; if (clutchNow) Q.cwpa += sign * d } }
-    if (si && si.shooter && si.shooter.id != null && aside) lastMiss = si.made ? null : { id: si.shooter.id, side: aside }; else if (!DREB.test(p.playType || "") && !/Substitution|TimeOut/i.test(p.playType || "")) lastMiss = null;
+    if (si && si.shooter && si.shooter.id != null && aside) lastMiss = si.made ? null : { id: si.shooter.id, side: aside }; else if (!DREB.test(p.playType || "") && !/Substitution|TimeOut|Block|Foul/i.test(p.playType || "")) lastMiss = null;
     /* …and the same change to everyone on the floor (zero-sum: one side's gain is the other's loss) */
     if (wp != null && lastWP != null && wp !== lastWP) { const d = wp - lastWP; for (const id of floor.h) { const Q = pl(id); Q.fwpa += d; if (clutchNow) Q.cfwpa += d } for (const id of floor.a) { const Q = pl(id); Q.fwpa -= d; if (clutchNow) Q.cfwpa -= d } }
     if (wp != null) lastWP = wp;

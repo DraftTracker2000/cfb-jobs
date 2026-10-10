@@ -1,0 +1,80 @@
+# The data job for mycfbbigboard.com: builds the shared data and publishes it to the site. Started by the site's own scheduler
+# (Cloudflare) through workflow_dispatch, or by hand. Nothing here runs on pull requests or pushes.
+# Published from the site's private repo by tools/sync-jobs.mjs — edit it there.
+name: Data job
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "live · catchup · weekly · look · qb · views · avail · coaches · cdef · nfl · nflhistory · nfldraft · history · full"
+        default: live
+        type: choice
+        options: [live, look, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, nfl, nflhistory, nfldraft, history, full]
+      page:
+        description: "Which version of the site runs the build: / (live) or /lab/"
+        default: "/"
+        type: choice
+        options: ["/", "/lab/"]
+
+# read-only: the job only reads public data and talks to the site with its token
+permissions:
+  contents: read
+
+# never two runs at once — a new one waits for the one in progress
+concurrency:
+  group: data-job
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Decide what kind of run this is
+        id: mode
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          [ "$MODE" = "full" ] && MODE=weekly
+          CATCHUP=0
+          [ "$MODE" = "catchup" ] && MODE=live && CATCHUP=1
+          [ "${{ github.event.schedule }}" = "5 10 * * 0" ] && CATCHUP=1
+          echo "catchup=$CATCHUP" >> $GITHUB_OUTPUT
+          if [ -z "$MODE" ]; then
+            if [ "${{ github.event.schedule }}" = "15 10 * * 1,2" ]; then MODE=weekly
+            elif [ "${{ github.event.schedule }}" = "0 23 * * 3,5" ]; then MODE=nfl
+            elif [ "${{ github.event.schedule }}" = "35 11 * * 0" ]; then MODE=cdef
+            elif [ "${{ github.event.schedule }}" = "50 11 * * 1-6" ]; then MODE=nfl
+            else MODE=live; fi
+          fi
+          # outside the season (February – July) the game-day runs have nothing to do
+          M=$(date -u +%-m)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$MODE" = "live" ] && [ $M -ge 2 ] && [ $M -le 7 ]; then
+            echo "Off-season — skipping game-day run."; echo "skip=1" >> $GITHUB_OUTPUT
+          fi
+          echo "mode=$MODE" >> $GITHUB_OUTPUT
+          echo "Mode: $MODE"
+
+      - uses: actions/checkout@v5
+        if: steps.mode.outputs.skip != '1'
+
+      - uses: actions/setup-node@v5
+        if: steps.mode.outputs.skip != '1'
+        with:
+          node-version: 24
+
+      - name: Install the headless browser
+        if: steps.mode.outputs.skip != '1'
+        run: |
+          npm install --no-save playwright@1
+          npx playwright install --with-deps chromium
+
+      - name: Build and publish
+        if: steps.mode.outputs.skip != '1'
+        env:
+          SITE_URL: ${{ secrets.SITE_URL || 'https://mycfbbigboard.com' }}
+          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
+          MODE: ${{ steps.mode.outputs.mode }}
+          CATCHUP: ${{ steps.mode.outputs.catchup }}
+          PAGE_PATH: ${{ github.event.inputs.page || '/' }}
+        run: node job/build.mjs

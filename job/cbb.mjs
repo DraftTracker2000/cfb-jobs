@@ -455,7 +455,7 @@ export async function main() {
     const t = TEAM[id] || {}, a = ADJ[id] || {}, ts = TST[id] || {};
     const gs = G.filter(g => g.season === S && (g.homeTeamId === id || g.awayTeamId === id) && g.status === "final");
     let w = 0, l = 0, cw = 0, cl = 0; const res = [];
-    for (const g of gs.sort((p, q) => new Date(p.startDate) - new Date(q.startDate))) { const home = g.homeTeamId === id; const won = home ? g.homeWinner : g.awayWinner; won ? w++ : l++; if (g.conferenceGame) won ? cw++ : cl++;
+    for (const g of gs.sort((p, q) => new Date(p.startDate) - new Date(q.startDate))) { const home = g.homeTeamId === id; const won = home ? g.homeWinner : g.awayWinner; won ? w++ : l++; if (g.conferenceGame && g.seasonType !== "postseason" && !g.tournament) won ? cw++ : cl++;   /* conference record: not the conference tournament */
       res.push([g.startDate.slice(0, 10), home ? g.awayTeamId : g.homeTeamId, g.neutralSite ? 0 : home ? 1 : -1, home ? g.homePoints : g.awayPoints, home ? g.awayPoints : g.homePoints, g.tournament || (g.seasonType === "postseason" ? "Post" : "")]) }
     const next = G.filter(g => g.season === NEXT && NEXT !== S && (g.homeTeamId === id || g.awayTeamId === id)).sort((p, q) => new Date(p.startDate) - new Date(q.startDate)).map(g => { const home = g.homeTeamId === id; return [g.startDate.slice(0, 16), home ? g.awayTeamId : g.homeTeamId, g.neutralSite ? 0 : home ? 1 : -1, g.status, home ? g.homePoints : g.awayPoints, home ? g.awayPoints : g.homePoints] });
     const u = ts.teamStats || {}, o = ts.opponentStats || {};
@@ -479,7 +479,7 @@ export async function main() {
   try { await buildCombine({ getPack, putPack, log, S, full }) } catch (e) { log("combine: " + e.message) }
 
   /* the last ten finished seasons, for the season picker (job/cbbpast.mjs) */
-  try { const curGames = G.filter(g => g.season === S && g.status === "final").map(g => [g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0]);
+  try { const curGames = G.filter(g => g.season === S && g.status === "final").map(g => [g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, null, null, g.seasonType === "postseason" ? 1 : 0, g.tournament || null]);
     await buildPast({ cb, getPack, putPack, log, S, off, full, hist, grade, profileOf, H, NCAA, curGames }) } catch (e) { log("past seasons: " + e.message) }
 
   /* ---------- shot charts ---------- */

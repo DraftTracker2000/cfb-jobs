@@ -10,7 +10,7 @@
    draft pack, so a player drafted years later shows up without rewriting old seasons.
    Seasons: the last ten finished ones (max(2012, S − 9) … S − 1, plus S once it's over). Rewritten when the format changes or the pack is a
    week old, so BoardScores stay on the current model. */
-export const PAST_V = 1;
+export const PAST_V = 2;   /* 2: conference records leave out conference tournaments */
 export const PAST_COLS = ["id", "nm", "tm", "p5", "yr", "ht", "g", "gs", "min", "pts", "reb", "orb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "usg", "ortg", "drtg", "porp", "ws40", "score", "prof", "pD", "pR1", "pL"];
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
@@ -31,8 +31,9 @@ export function pastTeams({ adj = {}, games = [], style = {}, ncaaRows = [], pol
   for (const id of ids) { const st = style[id] || [];
     T[id] = { conf: adj[id][1] || null, rec: [0, 0, 0, 0], o: st[0] ?? null, d: st[1] ?? null, n: r1(adj[id][0]), rn: rn[id] || null, pace: st[2] ?? null, tpr: st[3] ?? null, tovf: st[4] ?? null, efg: st[5] ?? null, oefg: st[6] ?? null, orb: st[7] ?? null,
       ap: polls.fin[id] || null, apPre: polls.pre[id] || null, ncaa: null } }
-  for (const g of games) { const [, , h, a, hp, ap, , cg] = g; if (hp == null || ap == null || hp === ap) continue;
-    for (const [id, won] of [[h, hp > ap], [a, ap > hp]]) { const t = T[id]; if (!t) continue; t.rec[won ? 0 : 1]++; if (cg) t.rec[won ? 2 : 3]++ } }
+  /* conference record: regular-season conference games only (CBBD marks conference-tournament games as conference games too) */
+  for (const g of games) { const [, , h, a, hp, ap, , cg, , , post, tour] = g; if (hp == null || ap == null || hp === ap) continue;
+    for (const [id, won] of [[h, hp > ap], [a, ap > hp]]) { const t = T[id]; if (!t) continue; t.rec[won ? 0 : 1]++; if (cg && !post && !tour) t.rec[won ? 2 : 3]++ } }
   for (const r of ncaaRows) { const [, , h, a, hs, as, hp, ap, , , first] = r;
     for (const [id, sd, won] of [[h, hs, hp > ap], [a, as, ap > hp]]) { const t = T[id]; if (!t) continue; const n = t.ncaa = t.ncaa || [sd, 0, 0, 0];
       if (first) { n[2] = 1; continue } n[3] = 1; if (won) n[1]++ } }

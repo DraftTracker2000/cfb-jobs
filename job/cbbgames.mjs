@@ -12,7 +12,7 @@
    Our pick: Elo before the game (CBBD's own, game by game) and home court → a logistic fit for the win chance and a straight line for
    the margin, trained on earlier seasons and tested on the latest complete ones; the test is published with the games. */
 
-import { buildCoachIds, coachRecords } from "./cbbcoach.mjs";
+import { buildCoachIds, coachRecords, dedupeCoachSeasons } from "./cbbcoach.mjs";
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 /* date ranges [a, b) that keep every answer under CBBD's 3,000-row cap */
@@ -117,6 +117,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   let CO = { coaches: {}, current: {} }, CI = null;
   try { CI = await buildCoachIds({ getPack, putPack, log, teams: teamList, to: NEXT, full });
     CO = coachRecords({ C: CI, seasons: { ...GH.seasons, [S]: curRows }, lines: { ...GH.lines, [S]: curLines }, adj, S });
+    CI = { ...CI, seasons: dedupeCoachSeasons(CI.seasons) };   /* one team per coach per season everywhere, game cards too */
     await putPack(`p${S}_cbb-coaches`, { season: S, next: NEXT, ...CO, bySeason: CI.seasons });
     log(`coaches: ${Object.keys(CO.coaches).length} with records, ${Object.keys(CO.current).length} current`) } catch (e) { log("coaches: " + e.message) }
   const coachOf = (tid, y) => { const m = CI && (CI.seasons[y] || CI.seasons[y - 1]); return m ? m[tid] || null : null };

@@ -14,7 +14,7 @@
 
    Pack: p{S}_cbb-pbp (plus the season's p{S}_cbb-shots, written alongside). */
 
-export const PBP_V = 12;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment · 8: defense on/off and opponents' shots by zone while on the floor · 9: inferred matchups and a zone clue · 10: zone clue from links off the size matchup · 11: possession context (transition, putbacks, shot clock), fatigue, blocks and assists by range, foul trouble, timeouts · 12: rotation patterns, who subs for whom, real game length */
+export const PBP_V = 13;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment · 8: defense on/off and opponents' shots by zone while on the floor · 9: inferred matchups and a zone clue · 10: zone clue from links off the size matchup · 11: possession context (transition, putbacks, shot clock), fatigue, blocks and assists by range, foul trouble, timeouts · 12: rotation patterns, who subs for whom, real game length · 13: ESPN turnover locations, officials, attendance */
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const PERIOD = p => p <= 2 ? 1200 : 300;
 const elapsedAt = (period, secLeft) => { let t = 0; for (let p = 1; p < period; p++) t += PERIOD(p); return t + PERIOD(period) - secLeft };
@@ -29,8 +29,8 @@ const blankP = () => ({ min: 0, gp: 0, pm: 0, onF: 0, onA: 0, teamMin: 0, teamF:
      minutes into his stint [0–4, 4–8, 8+] as [fga, fgm]; his blocks and the baskets he assisted by range [rim, mid, three]; points
      allowed by phase while he was on the floor; first-half foul trouble [games, his seconds on after the 2nd foul, window seconds,
      team margin over the window] */
-  ph: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]], st: [[0, 0], [0, 0], [0, 0]], rot: [0, 0, 0, 0, 0, 0], subBy: {}, blkR: [0, 0, 0], azR: [0, 0, 0], dph: [0, 0, 0, 0, 0], ft2: [0, 0, 0, 0], h1: 0, h2: 0, ast: {}, fed: {} });
-const blankT = () => ({ games: [], c: { pm: 0, min: 0 }, units: {}, mins: {}, pairs: {}, dE: blankE(), wall: [0, 0], ph: { o: [0, 0, 0, 0, 0], d: [0, 0, 0, 0, 0] }, pot: [0, 0], sc: [0, 0], to: [0, 0], ftw: [0, 0] });
+  ph: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]], st: [[0, 0], [0, 0], [0, 0]], tz: [0, 0, 0, 0, 0], sz: [0, 0, 0, 0, 0], dtz: [0, 0, 0, 0, 0], rot: [0, 0, 0, 0, 0, 0], subBy: {}, blkR: [0, 0, 0], azR: [0, 0, 0], dph: [0, 0, 0, 0, 0], ft2: [0, 0, 0, 0], h1: 0, h2: 0, ast: {}, fed: {} });
+const blankT = () => ({ games: [], c: { pm: 0, min: 0 }, units: {}, mins: {}, pairs: {}, dE: blankE(), wall: [0, 0], tz: { o: [0, 0, 0, 0, 0], d: [0, 0, 0, 0, 0] }, ph: { o: [0, 0, 0, 0, 0], d: [0, 0, 0, 0, 0] }, pot: [0, 0], sc: [0, 0], to: [0, 0], ftw: [0, 0] });
 const blankE = () => ({ pts: 0, fgm: 0, fga: 0, fga2: 0, tpa: 0, tpm: 0, ftm: 0, fta: 0, tov: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, pf: 0 });
 const OREB = /Offensive Rebound/i, DREB = /Defensive Rebound/i;
 /* one event into a counter (shots: made/attempts, free throws, turnovers, rebounds, assists, steals, blocks) */
@@ -85,6 +85,7 @@ export function processGame(plays, P, T, opts = {}) {
   let hs = 0, as = 0, maxH = 0, minH = 0, half = null, leadCh = 0, lastLead = 0, runTeam = null, run = 0, bestRun = { h: 0, a: 0 }, lastWP = null, goAheadLast = null, lev = .01;   /* a point early in a game moves the chance about 1% */
   const unitsOn = { h: null, a: null };
   /* possession context: who has the ball, since when (game seconds), and how they got it */
+  const gFouls = { h: 0, a: 0 }, gFta = { h: 0, a: 0 };
   let pos = { s: null, el: 0, kind: "start", per: 0 }; let startersSet = false, prevFloor = { h: [], a: [] }; const stintIn = {}, offAt = {}, starters = new Set(), firstOut = new Set(), pf1 = {}, trouble = {}, tos = [];
   /* real time: the wallclock on the first and last plays */
   { const w0 = Date.parse(plays[0].wallclock || ""), w1 = Date.parse(plays[plays.length - 1].wallclock || ""); if (w0 && w1 && w1 > w0 && w1 - w0 < 5 * 3600e3) for (const t of [home, away]) { tm(t).wall[0]++; tm(t).wall[1] += (w1 - w0) / 60000 } }
@@ -206,6 +207,12 @@ export function processGame(plays, P, T, opts = {}) {
       /* timeouts: the team's margin over the next two minutes of game time */
       if (/TimeOut/i.test(pt) && !/Official/i.test(pt) && xs) tos.push({ s: xs, el, m: xs === "h" ? nh - na : na - nh, done: false });
       for (const t of tos) if (!t.done && (el - t.el >= 120 || p.period !== plays[Math.max(0, i - 1)].period)) { t.done = true; const X = tm(t.s === "h" ? home : away); X.to[0]++; X.to[1] += (t.s === "h" ? nh - na : na - nh) - t.m }
+      /* turnover locations (ESPN): paint · left · top · right · backcourt — his own, the steal paired with it, and every defender on the floor */
+      if (xs && TOV.test(pt) && opts.tovXY && opts.tovXY[p.sourceId]) { const [x, y] = opts.tovXY[p.sourceId], z = y > 47 ? 4 : Math.abs(x - 25) <= 6 && y <= 15 ? 0 : Math.abs(x - 25) <= 8 ? 2 : x < 25 ? 1 : 3;
+        const a = ((p.participants || [])[0] || {}).id; if (a != null) pl(a).tz[z]++; tm(xs === "h" ? home : away).tz.o[z]++; tm(xs === "h" ? away : home).tz.d[z]++; for (const id of floor[oth(xs)]) pl(id).dtz[z]++;
+        for (let j = Math.max(0, i - 3); j < Math.min(plays.length, i + 4); j++) { const q = plays[j]; if (j !== i && q.playType === "Steal" && q.period === p.period && q.secondsRemaining === p.secondsRemaining) { const st = ((q.participants || [])[0] || {}).id; if (st != null) pl(st).sz[z]++; break } } }
+      if (FOUL.test(pt) && !/Technical/i.test(pt) && xs) gFouls[xs]++;
+      if (isFT && xs) gFta[xs]++;
       /* the next possession */
       if (xs) { if (si && !isFT && si.made) pos = { s: oth(xs), el, kind: "make", per: p.period };
         else if (isFT && si.made) pos = { s: oth(xs), el, kind: "make", per: p.period };
@@ -233,7 +240,7 @@ export function processGame(plays, P, T, opts = {}) {
     const sec = X._sec || 0, F = X._f || 0, A = X._a || 0; X._sec = 0; X._f = 0; X._a = 0;
     for (const id of seen) { const Q = P[id]; if (!Q || Q._team !== tid) continue; Q.gp++; Q.teamMin += sec / 60; Q.teamF += F; Q.teamA += A; if (clutchGame) Q.c.g++ }
   }
-  return { home, away, hs, as };
+  return { home, away, hs, as, fouls: [gFouls.h, gFouls.a], fta: gFta.h + gFta.a, margin: hs - as };
 }
 
 /* turn the sums into what the page shows */
@@ -265,7 +272,7 @@ export function finishPbp(P, T, ctx = {}) {
       if (sec < 600) return null; const min = sec / 60;
       return { min: r1(min), pts, fga, fgm, tpa, tpm, fta, tov, exp: r1(eP), expFga: r1(eF), expTpa: r1(e3), expTov: r1(eT), held40: r1((pts - eP) / min * 40), links: [stl, blk, pf], top: list.sort((x, y) => y[1] - x[1]).slice(0, 8) } })();
     const topMates = (mates[id] || []).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([m, mm]) => [+m, r1(mm)]);
-    players[id] = { nm: Q.nm || null, tm: Q._team ?? null, min: r1(Q.min), share, def, mu, rot: Q.rot[0] ? Q.rot.map(Math.round) : null, subBy: Object.entries(Q.subBy).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => [+k, v]), ph: Q.ph, st: Q.st, blkR: Q.blkR, azR: Q.azR, dph: Q.dph, ft2: Q.ft2[0] ? [Q.ft2[0], Math.round(Q.ft2[1]), Math.round(Q.ft2[2]), Q.ft2[3]] : null, qoc, qot, mates: topMates, own: o, gp: Q.gp, pm: Q.pm, on40: r1(on40), off40: r1(off40), onoff: on40 != null && off40 != null ? r1(on40 - off40) : null, offMin: r1(offMin),
+    players[id] = { nm: Q.nm || null, tm: Q._team ?? null, min: r1(Q.min), share, def, mu, tz: Q.tz.some(x => x) ? Q.tz : null, sz: Q.sz.some(x => x) ? Q.sz : null, dtz: Q.dtz.some(x => x) ? Q.dtz : null, rot: Q.rot[0] ? Q.rot.map(Math.round) : null, subBy: Object.entries(Q.subBy).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => [+k, v]), ph: Q.ph, st: Q.st, blkR: Q.blkR, azR: Q.azR, dph: Q.dph, ft2: Q.ft2[0] ? [Q.ft2[0], Math.round(Q.ft2[1]), Math.round(Q.ft2[2]), Q.ft2[3]] : null, qoc, qot, mates: topMates, own: o, gp: Q.gp, pm: Q.pm, on40: r1(on40), off40: r1(off40), onoff: on40 != null && off40 != null ? r1(on40 - off40) : null, offMin: r1(offMin),
       c: { ...Q.c, min: r1(Q.c.min) }, late: Q.late, wpa: Math.round(Q.wpa * 1000) / 10, cwpa: Math.round(Q.cwpa * 1000) / 10, fwpa: Math.round(Q.fwpa * 100) / 100, cfwpa: Math.round(Q.cfwpa * 100) / 100, h1: Q.h1, h2: Q.h2, ast: topN(Q.ast, 6), fed: topN(Q.fed, 6) };
   }
   const teams = {};
@@ -276,14 +283,14 @@ export function finishPbp(P, T, ctx = {}) {
     const totMin = Object.values(X.mins).reduce((a, b) => a + b, 0) / 5;
     teams[id] = { n: G.length, close: rec(g => Math.abs(g[3]) <= 5 || g[10]), clutch: rec(g => g[11]), ot: rec(g => g[10]), comeback10: G.filter(g => g[3] > 0 && g[5] >= 10).length, blown10: G.filter(g => g[3] < 0 && g[4] >= 10).length,
       trailHalf: rec(g => g[6] != null && g[6] < 0), leadHalf: rec(g => g[6] != null && g[6] > 0), bigComeback: Math.max(0, ...G.filter(g => g[3] > 0).map(g => g[5])), bigBlown: Math.max(0, ...G.filter(g => g[3] < 0).map(g => g[4])),
-      cpm: X.c.pm, cmin: r1(X.c.min), wall: X.wall[0] ? Math.round(X.wall[1] / X.wall[0]) : null, ph: X.ph, pot: X.pot, sc: X.sc, to: X.to, ftPlay: (() => { let on = 0, win = 0; for (const Q of Object.values(P)) if (Q._team == id && Q.ft2[2]) { on += Q.ft2[1]; win += Q.ft2[2] } return win ? Math.round(1000 * on / win) / 1000 : null })(), zone: X.zone && X.zone.length ? { mis: X.zm && X.zm[1] ? Math.round(1000 * (1 - X.zm[0] / X.zm[1])) / 1000 : null, g: X.zone.length, spread: Math.round(100 * X.zone.reduce((a, z) => a + z[0] * z[1], 0) / Math.max(1, X.zone.reduce((a, z) => a + z[0], 0))) / 100, links: X.zone.reduce((a, z) => a + z[0], 0) } : null, units, minShare: Object.entries(X.mins).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([pid, m]) => [+pid, r1(m), totMin ? Math.round(1000 * m / totMin) / 1000 : null]), games: G };
+      cpm: X.c.pm, cmin: r1(X.c.min), tz: X.tz, wall: X.wall[0] ? Math.round(X.wall[1] / X.wall[0]) : null, ph: X.ph, pot: X.pot, sc: X.sc, to: X.to, ftPlay: (() => { let on = 0, win = 0; for (const Q of Object.values(P)) if (Q._team == id && Q.ft2[2]) { on += Q.ft2[1]; win += Q.ft2[2] } return win ? Math.round(1000 * on / win) / 1000 : null })(), zone: X.zone && X.zone.length ? { mis: X.zm && X.zm[1] ? Math.round(1000 * (1 - X.zm[0] / X.zm[1])) / 1000 : null, g: X.zone.length, spread: Math.round(100 * X.zone.reduce((a, z) => a + z[0] * z[1], 0) / Math.max(1, X.zone.reduce((a, z) => a + z[0], 0))) / 100, links: X.zone.reduce((a, z) => a + z[0], 0) } : null, units, minShare: Object.entries(X.mins).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([pid, m]) => [+pid, r1(m), totMin ? Math.round(1000 * m / totMin) / 1000 : null]), games: G };
   }
   return { players, teams };
 }
 
 /* read a season's play-by-play day by day (only days not read before), keep the raw sums (p{S}_cbb-pbpraw, job only) and publish the
    finished numbers (p{S}_cbb-pbp) and the shot chart (p{S}_cbb-shots). shots = { addShot, blankAgg, ZONES } from job/cbb.mjs. */
-export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots, pool, days, ctx }) {
+export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots, pool, days, ctx, summary }) {
   /* PBP_V: bump when the engine changes what it adds up — the season is then read again from the start */
   let R = full ? null : await getPack(`p${S}_cbb-pbpraw`).catch(() => null);
   if (!R || !R.P || R.v !== PBP_V) R = { v: PBP_V, season: S, P: {}, T: {}, gameIds: [], sh: { players: {}, teams: {}, def: {} }, done: false };
@@ -296,9 +303,15 @@ export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots,
   await pool(dates, 3, async dt => {
     const plays = await cb("/plays/date", { date: dt });
     const byGame = {}; for (const p of plays) { if (p.season !== S || have.has(p.gameId)) continue; (byGame[p.gameId] = byGame[p.gameId] || []).push(p) }
+    /* ESPN's summary for each game: turnover locations, officials, attendance */
+    const ES = {}; if (summary) await pool(Object.keys(byGame), 6, async gid => { const ev = (byGame[gid][0] || {}).gameSourceId; if (ev) ES[gid] = await summary(ev).catch(() => null) });
     for (const [gid, ps] of Object.entries(byGame)) {
       if (have.has(+gid)) continue;
-      R.diag = R.diag || { k: [[0, 0], [0, 0], [0, 0]], sized: [0, 0] }; const r = processGame(ps, R.P, R.T, { gid: +gid, size: ctx && ctx.size, diag: R.diag }); if (!r) continue;
+      const es = ES[gid] || null;
+      R.diag = R.diag || { k: [[0, 0], [0, 0], [0, 0]], sized: [0, 0] }; const r = processGame(ps, R.P, R.T, { gid: +gid, size: ctx && ctx.size, diag: R.diag, tovXY: es && es.tov }); if (!r) continue;
+      if (es) { R.espnN = (R.espnN || 0) + 1; const fh = r.fouls || [0, 0];
+        for (const o of es.off || []) { const X = (R.refs = R.refs || {})[o] = (R.refs || {})[o] || [0, 0, 0, 0, 0]; X[0]++; X[1] += fh[0]; X[2] += fh[1]; X[3] += r.margin || 0; X[4] += r.fta || 0 }
+        if (es.att) { const h = r.home; const A = (R.att = R.att || {})[h] = (R.att || {})[h] || [0, 0]; A[0]++; A[1] += es.att } }
       have.add(+gid); added++;
       for (const p of ps) { if (!p.shootingPlay || !p.shotInfo) continue; const sh = p.shotInfo.shooter || {};
         if (sh.id) shots.addShot(R.sh.players[sh.id] = R.sh.players[sh.id] || shots.blankAgg(), p);
@@ -312,7 +325,9 @@ export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots,
   await putPack(`p${S}_cbb-pbpraw`, R);
   const out = finishPbp(R.P, R.T, ctx);
   for (const id of Object.keys(out.teams)) if (!D1.has(+id)) delete out.teams[id];
-  await putPack(`p${S}_cbb-pbp`, { season: S, through: new Date().toISOString().slice(0, 10), games: have.size, diag: R.diag || null, ...out });
+  for (const [tid, A] of Object.entries(R.att || {})) if (out.teams[tid]) out.teams[tid].att = Math.round(A[1] / A[0]);
+  const refs = Object.fromEntries(Object.entries(R.refs || {}).filter(([, X]) => X[0] >= 10).map(([n, X]) => [n, { g: X[0], fh: Math.round(10 * X[1] / X[0]) / 10, fa: Math.round(10 * X[2] / X[0]) / 10, hm: Math.round(10 * X[3] / X[0]) / 10, fta: Math.round(10 * X[4] / X[0]) / 10 }]));
+  await putPack(`p${S}_cbb-pbp`, { season: S, through: new Date().toISOString().slice(0, 10), games: have.size, espnGames: R.espnN || 0, diag: R.diag || null, refs, ...out });
   /* the shot chart from the same pass */
   const avg = shots.ZONES.map(() => [0, 0]); for (const [id, X] of Object.entries(R.sh.teams)) if (D1.has(+id)) X.o.z.forEach((v, i) => { avg[i][0] += v[0]; avg[i][1] += v[1] });
   const keep = {}; for (const [id, A] of Object.entries(R.sh.players)) if (A.z.reduce((a, v) => a + v[1], 0) + A.r.reduce((a, v) => a + v[1], 0) >= 25 || A.ft[1] >= 25) keep[id] = A;

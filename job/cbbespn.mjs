@@ -16,3 +16,18 @@ export async function fetchRosters({ teams, log }) {
   log(`ESPN rosters: ${Object.keys(out).length} teams, ${Object.values(out).reduce((a, r) => a + r.length, 0)} players (season ${seasonLabel})`);
   return { rosters: out, season: seasonLabel };
 }
+
+/* ESPN's game summary (Oct 10 — found while hunting hidden data): the same plays as CBBD (CBBD's play sourceId is ESPN's play id) but
+   with a court coordinate on every TURNOVER, plus the officials and attendance. One call per game; only what we use is kept:
+   { off: [referee names], att, tov: { espnPlayId: [x, y] } } — x 0–50 across the floor, y feet out from the offense's baseline. */
+export async function fetchSummary(eventId) {
+  const url = `https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/summary?event=${eventId}`;
+  for (let k = 0; k < 3; k++) {
+    try { const r = await fetch(url, { headers: { "User-Agent": "mycbbbigboard data job" } }); if (r.status === 404) return null;
+      if (r.ok) { const d = await r.json(), gi = d.gameInfo || {}, tov = {};
+        for (const p of d.plays || []) { const t = (p.type || {}).text || "", c = p.coordinate; if (/Turnover/i.test(t) && c && c.x > -100 && c.y > -100 && !(c.x === 25 && c.y === 0)) tov[p.id] = [c.x, c.y] }
+        return { off: (gi.officials || []).map(o => o.displayName || o.fullName).filter(Boolean), att: gi.attendance || null, tov } } } catch { }
+    await new Promise(r => setTimeout(r, 1500 * (k + 1)));
+  }
+  return null;
+}

@@ -97,7 +97,8 @@ export async function buildTeamHist({ cb, getPack, putPack, log, S, from = 2008,
     const [adj, ts] = await Promise.all([cb("/ratings/adjusted", { season: y }).catch(() => []), cb("/stats/team/season", { season: y }).catch(() => [])]);
     const A = Object.fromEntries(adj.map(t => [t.teamId, t])), out = {};
     for (const t of ts) { const a = A[t.teamId] || {}, u = t.teamStats || {}, o = t.opponentStats || {}, fg = u.fieldGoals || {}, tp = u.threePointFieldGoals || {}, uf = u.fourFactors || {}, of = o.fourFactors || {};
-      out[t.teamId] = [r1(a.offensiveRating), r1(a.defensiveRating), r1(t.pace), fg.attempted ? r1(100 * (tp.attempted || 0) / fg.attempted) : null, r1(pc(of.turnoverRatio)), r1(uf.effectiveFieldGoalPct), r1(of.effectiveFieldGoalPct), r1(uf.offensiveReboundPct)] }
+      const okR = v => v != null && v > 60 && v < 150 ? v : null;   /* broken source ratings (2020 CAA: 1148 adj offense) are left out */
+      out[t.teamId] = [r1(okR(a.offensiveRating)), r1(okR(a.defensiveRating)), r1(t.pace), fg.attempted ? r1(100 * (tp.attempted || 0) / fg.attempted) : null, r1(pc(of.turnoverRatio)), r1(uf.effectiveFieldGoalPct), r1(of.effectiveFieldGoalPct), r1(uf.offensiveReboundPct)] }
     if (Object.keys(out).length) TH.seasons[y] = out }
   await putPack("p2000_cbb-teamhist", TH);
   log(`team history: ${Object.keys(TH.seasons).length} seasons`);

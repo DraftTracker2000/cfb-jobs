@@ -23,6 +23,7 @@
 import { gzipSync } from "node:zlib";
 import { buildGames, ranges } from "./cbbgames.mjs";
 import { buildNcaaRuns } from "./cbbncaa.mjs";
+import { buildCombine } from "./cbbcombine.mjs";
 import { runPbp } from "./cbbpbp.mjs";
 import { buildNba, buildNbaGames } from "./cbbnba.mjs";
 import { fetchRosters, fetchSummary } from "./cbbespn.mjs";
@@ -217,6 +218,9 @@ export async function main() {
   let adjS = await cb("/ratings/adjusted", { season: S });
   const ADJ = Object.fromEntries(adjS.map(t => [t.teamId, t]));
   H.adj[S] = Object.fromEntries(adjS.map(t => [t.teamId, [r1(t.netRating), t.conference]]));
+  /* the source's 2020 ratings for five CAA teams are broken (William & Mary +556, James Madison −205; Oct 10 audit): a net beyond ±45
+     isn't a basketball team, so it's dropped wherever it's read (player model, coach seasons, conference strength) */
+  for (const m of Object.values(H.adj)) for (const v of Object.values(m)) if (v[0] != null && Math.abs(v[0]) > 45) v[0] = null;
   const D1 = new Set(adjS.map(t => t.teamId));
   const srsS = await cb("/ratings/srs", { season: S }); const SRS = Object.fromEntries(srsS.map(t => [t.teamId, t.rating]));
   if (!H.rec[S - 1]) { const rc = await cb("/recruiting/players", { year: S - 1 }); H.rec[S - 1] = rc.map(r => [normName(r.name), (r.committedTo || {}).id || null, r.rating, r.stars, r.ranking, r.heightInches, r.athleteId || null]) }
@@ -470,6 +474,8 @@ export async function main() {
   const GM = await buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList: teamsRaw.filter(t => D1.has(t.id)), adj: H.adj });
   /* NCAA tournament runs since 2008, for the "Name the run" game (job/cbbncaa.mjs) */
   try { await buildNcaaRuns({ cb, getPack, putPack, log, S, full }) } catch (e) { log("ncaa runs: " + e.message) }
+  /* NBA draft combine measurements since 2001 (job/cbbcombine.mjs) */
+  try { await buildCombine({ getPack, putPack, log, S, full }) } catch (e) { log("combine: " + e.message) }
 
   /* ---------- shot charts ---------- */
   /* this season: the full play-by-play engine (minutes, on/off, clutch, comebacks, lineups … — job/cbbpbp.mjs), which writes the shot

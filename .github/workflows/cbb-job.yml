@@ -29,6 +29,9 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+      # the NBA combine files are Parquet: hyparquet (pure JavaScript, no dependencies), pinned
+      - name: Parquet reader
+        run: npm install --no-save --no-audit --no-fund hyparquet@1.31.3
       - name: Build and publish
         env:
           SITE_URL: ${{ secrets.SITE_URL || 'https://mycfbbigboard.com' }}

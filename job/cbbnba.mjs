@@ -75,13 +75,13 @@ function rowsOf(text) { const rows = []; let row = [], cur = "", q = false;
     else if (c === '"') q = true; else if (c === ",") { row.push(cur); cur = "" } else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cur); cur = ""; if (row.length > 1 || row[0]) rows.push(row); row = [] } else cur += c }
   if (cur || row.length) { row.push(cur); rows.push(row) }
   const H = rows.shift() || []; return rows.map(f => { const o = {}; H.forEach((h, j) => o[h] = f[j]); return o }) }
-export function nbaTeamRatings(box) {
+export function nbaTeamRatings(box, minG = 20) {
   const T = {};
   for (const r of box) { if (+r.season_type !== 2) continue; const a = r.team_abbreviation; const X = T[a] = T[a] || { nm: r.team_display_name, id: +r.team_id, c1: r.team_color, g: 0, w: 0, pf: 0, pa: 0, poss: 0, fga: 0, tpa: 0, paint: 0, fb: 0, tov: 0 };
     const poss = (+r.field_goals_attempted || 0) - (+r.offensive_rebounds || 0) + (+r.total_turnovers || +r.turnovers || 0) + .44 * (+r.free_throws_attempted || 0);
     X.g++; if (/true/i.test(r.team_winner)) X.w++; X.pf += +r.team_score || 0; X.pa += +r.opponent_team_score || 0; X.poss += poss; X.fga += +r.field_goals_attempted || 0; X.tpa += +r.three_point_field_goals_attempted || 0; X.paint += +r.points_in_paint || 0; X.fb += +r.fast_break_points || 0; X.tov += +r.total_turnovers || 0 }
   const r1 = x => Math.round(10 * x) / 10;
-  for (const [k, X] of Object.entries(T)) if (X.g < 20) delete T[k];   /* the All-Star teams */
+  for (const [k, X] of Object.entries(T)) if (X.g < minG) delete T[k];   /* the All-Star teams (a whole season: under 20 games) */
   for (const X of Object.values(T)) { const p = X.poss || 1; X.l = X.g - X.w; X.ortg = r1(100 * X.pf / p); X.drtg = r1(100 * X.pa / p); X.net = r1(X.ortg - X.drtg); X.pace = r1(p / Math.max(1, X.g)); X.tpr = r1(100 * X.tpa / Math.max(1, X.fga)); X.paint = r1(X.paint / Math.max(1, X.g)); X.fb = r1(X.fb / Math.max(1, X.g)); X.tovp = r1(100 * X.tov / p); delete X.poss; delete X.fga; delete X.tpa; delete X.tov; X.pf = r1(X.pf / Math.max(1, X.g)); X.pa = r1(X.pa / Math.max(1, X.g)) }
   return T;
 }
@@ -146,6 +146,11 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players 
   const sched = await getCsv(REL("espn_nba_schedules", `nba_schedule_${curNba}.csv`)), box = await getCsv(REL("espn_nba_team_boxscores", `team_box_${curNba - 1}.csv`)), ros = await getCsv(REL("espn_nba_rosters", `rosters_${curNba}.csv`));
   if (!sched || !box) { log("nba games: files not out yet"); return null }
   const T = nbaTeamRatings(rowsOf(box));
+  /* this season, once it starts (Oct 10 — "ready to start populating with the new season?"): this season's box scores blend into the
+     rating behind our pick, game by game (15 games = half each), and each team's record this season rides along */
+  const curBox = await getCsv(REL("espn_nba_team_boxscores", `team_box_${curNba}.csv`)).catch(() => null), TC = curBox ? nbaTeamRatings(rowsOf(curBox), 1) : {};
+  for (const [ab, X] of Object.entries(T)) { const c = TC[ab]; X.pnet = X.net;
+    if (c && c.g) { const w = c.g / (c.g + 15); X.pnet = Math.round(10 * (w * c.net + (1 - w) * X.net)) / 10; X.cw = c.w; X.cl = c.l; X.cnet = c.net } }
   /* this season's rosters: every player, with his college (our ESPN-id join) and last season's NBA line */
   const byE = {}; for (const [eid, X] of Object.entries(players || {})) byE[eid] = X;
   /* last season's line for everyone (college or not) from the box-score cache */
@@ -153,7 +158,7 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players 
   if (ros) for (const r of rowsOf(ros)) { const X = T[r.team_abbreviation]; if (!X) continue; const P = byE[r.athlete_id], ls = lastS[r.athlete_id];
     (X.ros = X.ros || []).push([r.athlete_id, r.display_name, r.position_abbreviation, r.height, +r.experience_years || 0, P ? P.cid : null, ls && ls[2] ? Math.round(10 * ls[5] / ls[2]) / 10 : null, P ? P.tag.t : null, ls ? ls[2] : 0]) }
   const games = []; for (const g of rowsOf(sched)) { const st = +g.season_type; if (st !== 2 && st !== 3) continue; const h = g.home_abbreviation, a = g.away_abbreviation; if (!T[h] || !T[a]) continue;
-    const pk = nbaPick(T[h], T[a], /true/i.test(g.neutral_site)); games.push([+g.id, g.date, h, a, g.status_type_completed === "true" ? +g.home_score : null, g.status_type_completed === "true" ? +g.away_score : null, g.status_type_state, g.broadcast_name || g.broadcast || "", pk.p, pk.m, st === 3 ? 1 : 0]) }
+    const pk = nbaPick({ net: T[h].pnet }, { net: T[a].pnet }, /true/i.test(g.neutral_site)); games.push([+g.id, g.date, h, a, g.status_type_completed === "true" ? +g.home_score : null, g.status_type_completed === "true" ? +g.away_score : null, g.status_type_state, g.broadcast_name || g.broadcast || "", pk.p, pk.m, st === 3 ? 1 : 0]) }
   games.sort((x, y) => x[1].localeCompare(y[1]));
   /* shot zones, close games and the series from the play-by-play: last season's is cached (it won't change); this season's is
      re-read each run and takes over once there are 150 games */

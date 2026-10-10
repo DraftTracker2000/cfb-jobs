@@ -119,7 +119,9 @@ export function processGame(plays, P, T, opts = {}) {
       const am = { h: assign(floor.h, floor.a), a: assign(floor.a, floor.h) };   /* home defenders on away attackers, and the reverse */
       const as_ = p.teamId != null ? side(p.teamId) : null, ds_ = as_ === "h" ? "a" : as_ === "a" ? "h" : null;
       /* zone clue: does each link land on the man his size says he'd guard? (man-to-man: mostly yes; zone: often not) */
-      for (const [d, a, , , lds] of linkAt[i] || []) { const so = assignFor(floor[lds], floor[lds === "h" ? "a" : "h"], {}, opts.size); if (so[a] == null) continue; zm[lds][1]++; if (so[a] === d) zm[lds][0]++ }
+      for (const [d, a, , k, lds] of linkAt[i] || []) { const so = assignFor(floor[lds], floor[lds === "h" ? "a" : "h"], {}, opts.size); if (so[a] == null) continue; zm[lds][1]++; if (so[a] === d) zm[lds][0]++;
+        /* a check on the method, published in the pack: how often each kind of link lands on the size match, and how many of the ten had a size */
+        const DG = opts.diag; if (DG) { DG.k[k][1]++; if (so[a] === d) DG.k[k][0]++; DG.sized[1] += 10; DG.sized[0] += [...floor.h, ...floor.a].filter(x => opts.size && opts.size[x]).length } }
       const ev = (a, f) => { const d = ds_ && am[ds_][a]; if (d == null) return; const M = (pl(d).mu[a] = pl(d).mu[a] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]); f(M) };
       if (ds_) { const si = p.shotInfo;
         if (si && si.shooter && si.shooter.id != null) { const ft = si.range === "free_throw" || /FreeThrow/.test(p.playType || ""), three = si.range === "three_pointer", made = si.made ? 1 : 0;
@@ -296,7 +298,7 @@ export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots,
     const byGame = {}; for (const p of plays) { if (p.season !== S || have.has(p.gameId)) continue; (byGame[p.gameId] = byGame[p.gameId] || []).push(p) }
     for (const [gid, ps] of Object.entries(byGame)) {
       if (have.has(+gid)) continue;
-      const r = processGame(ps, R.P, R.T, { gid: +gid, size: ctx && ctx.size }); if (!r) continue;
+      R.diag = R.diag || { k: [[0, 0], [0, 0], [0, 0]], sized: [0, 0] }; const r = processGame(ps, R.P, R.T, { gid: +gid, size: ctx && ctx.size, diag: R.diag }); if (!r) continue;
       have.add(+gid); added++;
       for (const p of ps) { if (!p.shootingPlay || !p.shotInfo) continue; const sh = p.shotInfo.shooter || {};
         if (sh.id) shots.addShot(R.sh.players[sh.id] = R.sh.players[sh.id] || shots.blankAgg(), p);
@@ -310,7 +312,7 @@ export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots,
   await putPack(`p${S}_cbb-pbpraw`, R);
   const out = finishPbp(R.P, R.T, ctx);
   for (const id of Object.keys(out.teams)) if (!D1.has(+id)) delete out.teams[id];
-  await putPack(`p${S}_cbb-pbp`, { season: S, through: new Date().toISOString().slice(0, 10), games: have.size, ...out });
+  await putPack(`p${S}_cbb-pbp`, { season: S, through: new Date().toISOString().slice(0, 10), games: have.size, diag: R.diag || null, ...out });
   /* the shot chart from the same pass */
   const avg = shots.ZONES.map(() => [0, 0]); for (const [id, X] of Object.entries(R.sh.teams)) if (D1.has(+id)) X.o.z.forEach((v, i) => { avg[i][0] += v[0]; avg[i][1] += v[1] });
   const keep = {}; for (const [id, A] of Object.entries(R.sh.players)) if (A.z.reduce((a, v) => a + v[1], 0) + A.r.reduce((a, v) => a + v[1], 0) >= 25 || A.ft[1] >= 25) keep[id] = A;

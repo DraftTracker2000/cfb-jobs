@@ -152,6 +152,8 @@ export function auc(scores, labels) {
 }
 
 /* one player-season → the numbers the grade and the comparisons use */
+/* CBBD gives the turnover rate as a fraction (0.18): kept as a percent so one decimal still tells teams apart */
+const pctOf = x => x == null ? x : (x < 1 ? 100 * x : x);
 export function derive(s) {
   const g = s.g || 0, mn = s.min || 0, p40 = v => mn > 0 ? v * 40 / mn : 0;
   const fga = s.fga || 0, fta = s.fta || 0, tpa = s.tpa || 0;
@@ -445,7 +447,7 @@ export async function main() {
     teams[id] = { id, nm: t.school, mascot: t.mascot, ab: t.abbreviation, c1: t.primaryColor, c2: t.secondaryColor, conf: t.conference || a.conference, venue: t.currentVenue, city: [t.currentCity, t.currentState].filter(Boolean).join(", "),
       adj: a.offensiveRating ? { o: r1(a.offensiveRating), d: r1(a.defensiveRating), n: r1(a.netRating), ro: (a.rankings || {}).offense, rd: (a.rankings || {}).defense, rn: (a.rankings || {}).net } : null, srs: r1(SRS[id]),
       rec: [w, l, cw, cl], ap: AP[id] || null, apLast: APlast[id] || null, pace: r1(ts.pace),
-      ff: u.fourFactors ? { efg: r1(u.fourFactors.effectiveFieldGoalPct), tov: r1(u.fourFactors.turnoverRatio), orb: r1(u.fourFactors.offensiveReboundPct), ftr: r1(u.fourFactors.freeThrowRate), oefg: r1((o.fourFactors || {}).effectiveFieldGoalPct), otov: r1((o.fourFactors || {}).turnoverRatio), oorb: r1((o.fourFactors || {}).offensiveReboundPct), oftr: r1((o.fourFactors || {}).freeThrowRate) } : null,
+      ff: u.fourFactors ? { efg: r1(u.fourFactors.effectiveFieldGoalPct), tov: r1(pctOf(u.fourFactors.turnoverRatio)), orb: r1(u.fourFactors.offensiveReboundPct), ftr: r1(u.fourFactors.freeThrowRate), oefg: r1((o.fourFactors || {}).effectiveFieldGoalPct), otov: r1(pctOf((o.fourFactors || {}).turnoverRatio)), oorb: r1((o.fourFactors || {}).offensiveReboundPct), oftr: r1((o.fourFactors || {}).freeThrowRate) } : null,
       games: res, next, roster: board.filter(p => p.tm === id).map(p => p.id),
       recruits: recFresh.filter(r => (r.committedTo || {}).id === id).map(r => ({ nm: r.name, pos: r.position, st: r.stars, rk: r.ranking, r: r3(r.rating), ht: r.heightInches })),
       portalIn: [...portal, ...portalNext].filter(p => p.destination && p.destination.id === id).map(p => ({ nm: p.firstName + " " + p.lastName, pos: p.position, from: (p.origin || {}).name, st: p.stars, y: p.year })),
@@ -506,8 +508,8 @@ export async function main() {
   /* each NBA player's final college season, for the Blind résumé game and his NBA profile */
   for (const X of Object.values(NBA)) { const a = (hBy[X.cid] || []).filter(h => h.r.min >= 200).sort((x, y) => y.r.s - x.r.s)[0];
     if (a) X.cl = { s: a.r.s, tm: a.r.tm, yr: a.yr, pos: a.r.pos, g: a.r.g, mpg: r1(a.d.mpg), grade: grade(a.m), ...Object.fromEntries(["pts40", "reb40", "ast40", "stl40", "blk40", "tov40", "ts", "tpp", "tpr", "ftp", "usg", "ws40", "ht", "net"].map(k => [k, r3(a.d[k])])) } }
-  const finalGrade = d => { const a = (hBy[d._id] || []).filter(h => h.r.s <= d.year).sort((x, y) => y.r.s - x.r.s || y.r.min - x.r.min)[0]; return a ? { g: grade(a.m), s: a.r.s, fresh: a.r.s > KNOWN_TO ? 1 : 0 } : null };
-  const draftOut = draft.map(d => ({ y: d.year, pk: d.overall, rd: d.round, nm: d.name, nba: d.draftTeam, col: d.sourceTeamCollegeId || null, from: d.sourceTeamCollegeId ? null : [d.sourceTeamLocation, d.sourceTeamName].filter(Boolean).join(" "), rk: d.overallRank || null, pos: d.position, ht: d.height, id: d._id || null, our: d._id ? finalGrade(d) : null }));
+  const finalGrade = d => { const a = (hBy[d._id] || []).filter(h => h.r.s <= d.year).sort((x, y) => y.r.s - x.r.s || y.r.min - x.r.min)[0]; return a ? { g: grade(a.m), s: a.r.s, fresh: a.r.s > KNOWN_TO ? 1 : 0, p5: a.d.p5 } : null };
+  const draftOut = draft.map(d => ({ y: d.year, pk: d.overall, rd: d.round, nm: d.name, nba: d.draftTeam, col: d.sourceTeamCollegeId || null, from: d.sourceTeamCollegeId ? null : [...new Set([d.sourceTeamLocation, d.sourceTeamName].filter(Boolean))].join(" "), rk: d.overallRank || null, pos: d.position, ht: d.height, id: d._id || null, our: d._id ? finalGrade(d) : null }));
   const meta = { built: Date.now(), season: S, next: NEXT, off, test, pickTest: GM.test, trainSeasons: `${TRAIN_FROM}–${KNOWN_TO}`, nTrain: train.length, recTrain: recRows.length, calls: CALLS, feats: FEATS };
   await putPack(`p${S}_cbb-core`, { meta, players: board, bands, qs: QS, bandStats: BAND_STATS, teamNames: Object.fromEntries(Object.entries(TEAM).map(([id, t]) => [id, [t.school, t.abbreviation, t.primaryColor]])) });
   await putPack(`p${S}_cbb-careers`, careers);

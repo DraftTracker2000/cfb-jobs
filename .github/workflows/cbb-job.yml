@@ -1,0 +1,37 @@
+# The college basketball data job for mycbbbigboard.com (job/cbb.mjs): reads CollegeBasketballData through the site and publishes the
+# basketball board's files. Started by the site's own scheduler (Cloudflare) through workflow_dispatch, or by hand.
+# Published from the site's private repo by tools/sync-jobs.mjs — edit it there.
+name: Basketball job
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "cbb (everyday) · cbbhistory (rebuild history and every shot chart)"
+        default: cbb
+        type: choice
+        options: [cbb, cbbhistory]
+
+permissions:
+  contents: read
+
+# its own queue: never waits behind the football job, never two basketball runs at once
+concurrency:
+  group: cbb-job
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Build and publish
+        env:
+          SITE_URL: ${{ secrets.SITE_URL || 'https://mycfbbigboard.com' }}
+          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
+          MODE: ${{ github.event.inputs.mode || 'cbb' }}
+        run: node job/cbb.mjs

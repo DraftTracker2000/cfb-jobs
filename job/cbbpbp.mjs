@@ -14,7 +14,7 @@
 
    Pack: p{S}_cbb-pbp (plus the season's p{S}_cbb-shots, written alongside). */
 
-export const PBP_V = 9;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment · 8: defense on/off and opponents' shots by zone while on the floor · 9: inferred matchups and a zone clue */
+export const PBP_V = 10;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment · 8: defense on/off and opponents' shots by zone while on the floor · 9: inferred matchups and a zone clue · 10: zone clue from links off the size matchup */
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const PERIOD = p => p <= 2 ? 1200 : 300;
 const elapsedAt = (period, secLeft) => { let t = 0; for (let p = 1; p < period; p++) t += PERIOD(p); return t + PERIOD(period) - secLeft };
@@ -52,11 +52,11 @@ export function gameLinks(plays, sideOf) {
   const actor = p => ((p.participants || [])[0] || {}).id ?? null, shooter = p => p.shotInfo && p.shotInfo.shooter ? p.shotInfo.shooter.id : null;
   for (let i = 0; i < n; i++) { const p = plays[i], pt = p.playType || "", ds = sideOf(p.teamId); if (!ds) continue; const d = actor(p); if (d == null) continue;
     const near = []; for (let j = Math.max(0, i - 4); j < Math.min(n, i + 6); j++) if (j !== i && same(plays[j], p) && sideOf(plays[j].teamId) && sideOf(plays[j].teamId) !== ds) near.push([j, plays[j]]);
-    if (pt === "Steal") { const t = near.find(([, q]) => TOV.test(q.playType || "")); if (t && actor(t[1]) != null) L.push([d, actor(t[1]), 2, 0, ds]) }
-    else if (/Block/i.test(pt)) { const t = near.find(([, q]) => q.shotInfo && !q.shotInfo.made && shooter(q) != null); if (t) L.push([d, shooter(t[1]), 1.2, 1, ds]) }
+    if (pt === "Steal") { const t = near.find(([, q]) => TOV.test(q.playType || "")); if (t && actor(t[1]) != null) L.push([d, actor(t[1]), 2, 0, ds, i]) }
+    else if (/Block/i.test(pt)) { const t = near.find(([, q]) => q.shotInfo && !q.shotInfo.made && shooter(q) != null); if (t) L.push([d, shooter(t[1]), 1.2, 1, ds, i]) }
     else if (FOUL.test(pt) && !/Technical|Offensive/i.test(pt)) {
       const ft = near.find(([j, q]) => j > i && /FreeThrow/.test(q.playType || "") && shooter(q) != null), sh = near.find(([j, q]) => j < i && q.shotInfo && q.shotInfo.range !== "free_throw" && shooter(q) != null), rb = near.find(([j, q]) => j < i && OREB.test(q.playType || "") && actor(q) != null);
-      if (ft) L.push([d, shooter(ft[1]), 2, 2, ds]); else if (sh) L.push([d, shooter(sh[1]), 2, 2, ds]); else if (rb) L.push([d, actor(rb[1]), .7, 2, ds]) } }
+      if (ft) L.push([d, shooter(ft[1]), 2, 2, ds, i]); else if (sh) L.push([d, shooter(sh[1]), 2, 2, ds, i]); else if (rb) L.push([d, actor(rb[1]), .7, 2, ds, i]) } }
   return L;
 }
 export function assignFor(D, A, E, size) {
@@ -82,6 +82,7 @@ export function processGame(plays, P, T, opts = {}) {
   /* matchups: the game's links first, then a matched defender for each attacker in every stretch */
   const links = gameLinks(plays, id => side(id)), E = {}; for (const [d, a, w] of links) E[d + "|" + a] = (E[d + "|" + a] || 0) + w;
   for (const [d, a, , k] of links) { const M = (pl(d).mu[a] = pl(d).mu[a] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]); M[8 + k]++ }
+  const linkAt = {}; for (const l of links) (linkAt[l[5]] = linkAt[l[5]] || []).push(l); const zm = { h: [0, 0], a: [0, 0] };
   const amemo = {}, assign = (D, A) => { const k = D.join(",") + "/" + A.join(","); return amemo[k] || (amemo[k] = assignFor(D, A, E, opts.size)) };
   /* zone or man, a clue: in man-to-man a defender's links keep landing on the same player; in a zone they spread over whoever comes to his area */
   for (const s of ["h", "a"]) { const tid = s === "h" ? home : away, by = {}; for (const [d, a, , , ds] of links) if (ds === s) (by[d] = by[d] || []).push(a);
@@ -107,6 +108,8 @@ export function processGame(plays, P, T, opts = {}) {
     if (floor.h.length === 5 && floor.a.length === 5) {
       const am = { h: assign(floor.h, floor.a), a: assign(floor.a, floor.h) };   /* home defenders on away attackers, and the reverse */
       const as_ = p.teamId != null ? side(p.teamId) : null, ds_ = as_ === "h" ? "a" : as_ === "a" ? "h" : null;
+      /* zone clue: does each link land on the man his size says he'd guard? (man-to-man: mostly yes; zone: often not) */
+      for (const [d, a, , , lds] of linkAt[i] || []) { const so = assignFor(floor[lds], floor[lds === "h" ? "a" : "h"], {}, opts.size); if (so[a] == null) continue; zm[lds][1]++; if (so[a] === d) zm[lds][0]++ }
       const ev = (a, f) => { const d = ds_ && am[ds_][a]; if (d == null) return; const M = (pl(d).mu[a] = pl(d).mu[a] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]); f(M) };
       if (ds_) { const si = p.shotInfo;
         if (si && si.shooter && si.shooter.id != null) { const ft = si.range === "free_throw" || /FreeThrow/.test(p.playType || ""), three = si.range === "three_pointer", made = si.made ? 1 : 0;
@@ -169,6 +172,7 @@ export function processGame(plays, P, T, opts = {}) {
     const lead = Math.sign(m); if (lead !== 0 && lastLead !== 0 && lead !== lastLead) leadCh++; if (lead !== 0) lastLead = lead;
     if (half == null && p.period >= 2) half = plays[i - 1] ? (plays[i - 1].homeScore ?? 0) - (plays[i - 1].awayScore ?? 0) : 0;
   }
+  for (const s of ["h", "a"]) if (zm[s][1] >= 4) (tm(s === "h" ? home : away).zm = tm(s === "h" ? home : away).zm || [0, 0]).forEach((_, k, arr) => arr[k] += zm[s][k]);
   if (hs === 0 && as === 0) return null;
   const won = hs > as ? "h" : "a";
   /* game-winner: the last go-ahead make, in the last minute, by the winning side */
@@ -226,7 +230,7 @@ export function finishPbp(P, T, ctx = {}) {
     const totMin = Object.values(X.mins).reduce((a, b) => a + b, 0) / 5;
     teams[id] = { n: G.length, close: rec(g => Math.abs(g[3]) <= 5 || g[10]), clutch: rec(g => g[11]), ot: rec(g => g[10]), comeback10: G.filter(g => g[3] > 0 && g[5] >= 10).length, blown10: G.filter(g => g[3] < 0 && g[4] >= 10).length,
       trailHalf: rec(g => g[6] != null && g[6] < 0), leadHalf: rec(g => g[6] != null && g[6] > 0), bigComeback: Math.max(0, ...G.filter(g => g[3] > 0).map(g => g[5])), bigBlown: Math.max(0, ...G.filter(g => g[3] < 0).map(g => g[4])),
-      cpm: X.c.pm, cmin: r1(X.c.min), zone: X.zone && X.zone.length ? { g: X.zone.length, spread: Math.round(100 * X.zone.reduce((a, z) => a + z[0] * z[1], 0) / Math.max(1, X.zone.reduce((a, z) => a + z[0], 0))) / 100, links: X.zone.reduce((a, z) => a + z[0], 0) } : null, units, minShare: Object.entries(X.mins).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([pid, m]) => [+pid, r1(m), totMin ? Math.round(1000 * m / totMin) / 1000 : null]), games: G };
+      cpm: X.c.pm, cmin: r1(X.c.min), zone: X.zone && X.zone.length ? { mis: X.zm && X.zm[1] ? Math.round(1000 * (1 - X.zm[0] / X.zm[1])) / 1000 : null, g: X.zone.length, spread: Math.round(100 * X.zone.reduce((a, z) => a + z[0] * z[1], 0) / Math.max(1, X.zone.reduce((a, z) => a + z[0], 0))) / 100, links: X.zone.reduce((a, z) => a + z[0], 0) } : null, units, minShare: Object.entries(X.mins).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([pid, m]) => [+pid, r1(m), totMin ? Math.round(1000 * m / totMin) / 1000 : null]), games: G };
   }
   return { players, teams };
 }

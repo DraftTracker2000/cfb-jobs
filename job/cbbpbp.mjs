@@ -14,7 +14,7 @@
 
    Pack: p{S}_cbb-pbp (plus the season's p{S}_cbb-shots, written alongside). */
 
-export const PBP_V = 8;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment · 8: defense on/off and opponents' shots by zone while on the floor */
+export const PBP_V = 9;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment · 8: defense on/off and opponents' shots by zone while on the floor · 9: inferred matchups and a zone clue */
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const PERIOD = p => p <= 2 ? 1200 : 300;
 const elapsedAt = (period, secLeft) => { let t = 0; for (let p = 1; p < period; p++) t += PERIOD(p); return t + PERIOD(period) - secLeft };
@@ -24,7 +24,7 @@ const blankP = () => ({ min: 0, gp: 0, pm: 0, onF: 0, onA: 0, teamMin: 0, teamF:
   late: { gam: 0, ga: 0, gw: 0 }, wpa: 0, cwpa: 0, fwpa: 0, cfwpa: 0,
   /* his own events, his team's and the opponent's while he's on the floor (Oct 9 — Sam: "all this data when compared to the other players
      on the court with them"), and minutes against each opponent */
-  own: blankE(), onT: blankE(), onO: blankE(), vs: {}, h1: 0, h2: 0, ast: {}, fed: {} });
+  own: blankE(), onT: blankE(), onO: blankE(), vs: {}, mu: {}, h1: 0, h2: 0, ast: {}, fed: {} });
 const blankT = () => ({ games: [], c: { pm: 0, min: 0 }, units: {}, mins: {}, pairs: {}, dE: blankE() });
 const blankE = () => ({ pts: 0, fgm: 0, fga: 0, fga2: 0, tpa: 0, tpm: 0, ftm: 0, fta: 0, tov: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, pf: 0 });
 const OREB = /Offensive Rebound/i, DREB = /Defensive Rebound/i;
@@ -34,6 +34,36 @@ function countEvent(E, p, ownOnly) {
   if (si && (p.shootingPlay || si.range)) { const made = si.made ? 1 : 0, ft = si.range === "free_throw" || /FreeThrow/.test(pt);
     if (ft) { E.fta++; E.ftm += made; E.pts += made } else { E.fga++; E.fgm += made; if (si.range === "three_pointer") { E.tpa++; E.tpm += made; E.pts += 3 * made } else { E.fga2++; E.pts += 2 * made } if (!ownOnly && made && si.assisted) E.ast++ } return }
   if (TOV.test(pt)) E.tov++; else if (OREB.test(pt)) E.oreb++; else if (DREB.test(pt)) E.dreb++; else if (pt === "Steal") E.stl++; else if (/Block/i.test(pt)) E.blk++; else if (FOUL.test(pt) && !/Technical|Offensive/i.test(pt)) E.pf++;
+}
+
+
+/* ---- who guarded whom (Oct 10 — Sam: "you can match up size for size … who is stealing from who, who is committing fouls on who …
+   you can start to nail down who is guarding who"). CBBD never says, so it's inferred, game by game:
+   1. Links: a steal is paired with the other team's turnover in the same second (stealer took it from that player); a block with the
+      missed shot it stopped; a foul with the free throws or the shot that follows it in the same second (fouler → shooter), or with
+      an offensive rebound (weaker).
+   2. Every stretch of the same ten players: each defender is matched to one attacker, choosing the five pairs that best fit size and
+      position (height, PG…C) and the game's links (a guard who fouls and steals from the same guard all night is on him).
+   Each of the attacker's shots, points and turnovers in that stretch then count against his matched defender. */
+const POSI = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4 };
+const PERMS5 = (() => { const out = []; const go = (a, rest) => { if (!rest.length) return out.push(a); rest.forEach((x, i) => go([...a, x], rest.filter((_, j) => j !== i))) }; go([], [0, 1, 2, 3, 4]); return out })();
+export function gameLinks(plays, sideOf) {
+  const L = [], n = plays.length, same = (a, b) => a.period === b.period && a.secondsRemaining === b.secondsRemaining;
+  const actor = p => ((p.participants || [])[0] || {}).id ?? null, shooter = p => p.shotInfo && p.shotInfo.shooter ? p.shotInfo.shooter.id : null;
+  for (let i = 0; i < n; i++) { const p = plays[i], pt = p.playType || "", ds = sideOf(p.teamId); if (!ds) continue; const d = actor(p); if (d == null) continue;
+    const near = []; for (let j = Math.max(0, i - 4); j < Math.min(n, i + 6); j++) if (j !== i && same(plays[j], p) && sideOf(plays[j].teamId) && sideOf(plays[j].teamId) !== ds) near.push([j, plays[j]]);
+    if (pt === "Steal") { const t = near.find(([, q]) => TOV.test(q.playType || "")); if (t && actor(t[1]) != null) L.push([d, actor(t[1]), 2, 0, ds]) }
+    else if (/Block/i.test(pt)) { const t = near.find(([, q]) => q.shotInfo && !q.shotInfo.made && shooter(q) != null); if (t) L.push([d, shooter(t[1]), 1.2, 1, ds]) }
+    else if (FOUL.test(pt) && !/Technical|Offensive/i.test(pt)) {
+      const ft = near.find(([j, q]) => j > i && /FreeThrow/.test(q.playType || "") && shooter(q) != null), sh = near.find(([j, q]) => j < i && q.shotInfo && q.shotInfo.range !== "free_throw" && shooter(q) != null), rb = near.find(([j, q]) => j < i && OREB.test(q.playType || "") && actor(q) != null);
+      if (ft) L.push([d, shooter(ft[1]), 2, 2, ds]); else if (sh) L.push([d, shooter(sh[1]), 2, 2, ds]); else if (rb) L.push([d, actor(rb[1]), .7, 2, ds]) } }
+  return L;
+}
+export function assignFor(D, A, E, size) {
+  const sz = id => size && size[id], cost = (d, a) => { const x = sz(d), y = sz(a); let c = x && y ? Math.abs(x[1] - y[1]) + (x[0] && y[0] ? Math.abs(x[0] - y[0]) / 3 : .7) : 1.5; return c - 1.5 * Math.min(4, E[d + "|" + a] || 0) };
+  const C = D.map(d => A.map(a => cost(d, a))); let best = null, bc = 1e9;
+  for (const pm of PERMS5) { let c = 0; for (let k = 0; k < 5; k++) c += C[k][pm[k]]; if (c < bc) { bc = c; best = pm } }
+  const m = {}; D.forEach((d, k) => m[A[best[k]]] = d); return m;   /* attacker → defender */
 }
 
 /* one game's plays → the accumulators */
@@ -49,6 +79,14 @@ export function processGame(plays, P, T, opts = {}) {
   const seen = new Set();
   let hs = 0, as = 0, maxH = 0, minH = 0, half = null, leadCh = 0, lastLead = 0, runTeam = null, run = 0, bestRun = { h: 0, a: 0 }, lastWP = null, goAheadLast = null, lev = .01;   /* a point early in a game moves the chance about 1% */
   const unitsOn = { h: null, a: null };
+  /* matchups: the game's links first, then a matched defender for each attacker in every stretch */
+  const links = gameLinks(plays, id => side(id)), E = {}; for (const [d, a, w] of links) E[d + "|" + a] = (E[d + "|" + a] || 0) + w;
+  for (const [d, a, , k] of links) { const M = (pl(d).mu[a] = pl(d).mu[a] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]); M[8 + k]++ }
+  const amemo = {}, assign = (D, A) => { const k = D.join(",") + "/" + A.join(","); return amemo[k] || (amemo[k] = assignFor(D, A, E, opts.size)) };
+  /* zone or man, a clue: in man-to-man a defender's links keep landing on the same player; in a zone they spread over whoever comes to his area */
+  for (const s of ["h", "a"]) { const tid = s === "h" ? home : away, by = {}; for (const [d, a, , , ds] of links) if (ds === s) (by[d] = by[d] || []).push(a);
+    let n = 0, spread = 0; for (const arr of Object.values(by)) if (arr.length >= 2) { n += arr.length; spread += (new Set(arr).size - 1) / (arr.length - 1) * arr.length }
+    if (n >= 4) (tm(tid).zone = tm(tid).zone || []).push([n, Math.round(100 * spread / n) / 100]) }
   for (let i = 0; i < plays.length; i++) {
     const p = plays[i], nx = plays[i + 1];
     const floor = { h: [], a: [] };
@@ -66,6 +104,16 @@ export function processGame(plays, P, T, opts = {}) {
     /* time until the next play: credited to whoever is on the floor now */
     let dt = nx && nx.period === p.period ? Math.max(0, p.secondsRemaining - nx.secondsRemaining) : Math.max(0, p.secondsRemaining || 0);
     const pv = plays[i - 1]; if (!pv || pv.period !== p.period) dt += Math.max(0, PERIOD(p.period) - (p.secondsRemaining || 0));
+    if (floor.h.length === 5 && floor.a.length === 5) {
+      const am = { h: assign(floor.h, floor.a), a: assign(floor.a, floor.h) };   /* home defenders on away attackers, and the reverse */
+      const as_ = p.teamId != null ? side(p.teamId) : null, ds_ = as_ === "h" ? "a" : as_ === "a" ? "h" : null;
+      const ev = (a, f) => { const d = ds_ && am[ds_][a]; if (d == null) return; const M = (pl(d).mu[a] = pl(d).mu[a] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]); f(M) };
+      if (ds_) { const si = p.shotInfo;
+        if (si && si.shooter && si.shooter.id != null) { const ft = si.range === "free_throw" || /FreeThrow/.test(p.playType || ""), three = si.range === "three_pointer", made = si.made ? 1 : 0;
+          ev(si.shooter.id, M => { if (ft) { M[6]++; M[1] += made } else { M[2]++; M[3] += made; M[1] += made * (three ? 3 : 2); if (three) { M[4]++; M[5] += made } } }) }
+        else if (TOV.test(p.playType || "")) { const a = ((p.participants || [])[0] || {}).id; if (a != null) ev(a, M => M[7]++) } }
+      if (dt > 0) for (const s of ["h", "a"]) for (const [a, d] of Object.entries(am[s])) { const M = (pl(d).mu[a] = pl(d).mu[a] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]); M[0] += dt }
+    }
     if (dt > 0 && floor.h.length === 5 && floor.a.length === 5) {
       for (const s of ["h", "a"]) { const tid = s === "h" ? home : away, X = tm(tid); X._sec = (X._sec || 0) + dt; if (clutchNow) X.c.min += dt / 60;
         const opp = s === "h" ? away : home;
@@ -159,8 +207,15 @@ export function finishPbp(P, T, ctx = {}) {
     const def = TD && offMin >= 40 ? (() => { const off = sub(TD, x), pOn = poss(x), pOff = poss(off); if (pOn < 50 || pOff < 30) return null;
       const r = e => ({ pp100: r1(100 * e.pts / Math.max(1, poss(e))), efg: sh(e.fgm + .5 * e.tpm, e.fga), tov: sh(e.tov, poss(e)), ftr: sh(e.fta, e.fga), tp: sh(e.tpm, e.tpa), tpr: sh(e.tpa, e.fga), poss: Math.round(poss(e)) });
       return { on: r(x), off: r(off), pf40: r1(40 * o.pf / Math.max(1, Q.min)), stl40: r1(40 * o.stl / Math.max(1, Q.min)), blk40: r1(40 * o.blk / Math.max(1, Q.min)) } })() : null;
+    /* his matchups (inferred): what the players he was matched on did against him vs what they do against everyone */
+    const mu = (() => { let sec = 0, pts = 0, fga = 0, fgm = 0, tpa = 0, tpm = 0, fta = 0, tov = 0, eP = 0, eF = 0, e3 = 0, eT = 0, stl = 0, blk = 0, pf = 0; const list = [];
+      for (const [a, M] of Object.entries(Q.mu || {})) { const A = P[a]; stl += M[8]; blk += M[9]; pf += M[10]; if (!A || A.min < 60 || !M[0]) continue; const m = M[0] / 60;
+        sec += M[0]; pts += M[1]; fga += M[2]; fgm += M[3]; tpa += M[4]; tpm += M[5]; fta += M[6]; tov += M[7];
+        eP += m * A.own.pts / A.min; eF += m * A.own.fga / A.min; e3 += m * A.own.tpa / A.min; eT += m * A.own.tov / A.min; list.push([+a, r1(m), M[1], M[2], M[3], M[8], M[9], M[10], r1(m * A.own.pts / A.min)]) }
+      if (sec < 600) return null; const min = sec / 60;
+      return { min: r1(min), pts, fga, fgm, tpa, tpm, fta, tov, exp: r1(eP), expFga: r1(eF), expTpa: r1(e3), expTov: r1(eT), held40: r1((pts - eP) / min * 40), links: [stl, blk, pf], top: list.sort((x, y) => y[1] - x[1]).slice(0, 8) } })();
     const topMates = (mates[id] || []).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([m, mm]) => [+m, r1(mm)]);
-    players[id] = { nm: Q.nm || null, tm: Q._team ?? null, min: r1(Q.min), share, def, qoc, qot, mates: topMates, own: o, gp: Q.gp, pm: Q.pm, on40: r1(on40), off40: r1(off40), onoff: on40 != null && off40 != null ? r1(on40 - off40) : null, offMin: r1(offMin),
+    players[id] = { nm: Q.nm || null, tm: Q._team ?? null, min: r1(Q.min), share, def, mu, qoc, qot, mates: topMates, own: o, gp: Q.gp, pm: Q.pm, on40: r1(on40), off40: r1(off40), onoff: on40 != null && off40 != null ? r1(on40 - off40) : null, offMin: r1(offMin),
       c: { ...Q.c, min: r1(Q.c.min) }, late: Q.late, wpa: Math.round(Q.wpa * 1000) / 10, cwpa: Math.round(Q.cwpa * 1000) / 10, fwpa: Math.round(Q.fwpa * 100) / 100, cfwpa: Math.round(Q.cfwpa * 100) / 100, h1: Q.h1, h2: Q.h2, ast: topN(Q.ast, 6), fed: topN(Q.fed, 6) };
   }
   const teams = {};
@@ -171,7 +226,7 @@ export function finishPbp(P, T, ctx = {}) {
     const totMin = Object.values(X.mins).reduce((a, b) => a + b, 0) / 5;
     teams[id] = { n: G.length, close: rec(g => Math.abs(g[3]) <= 5 || g[10]), clutch: rec(g => g[11]), ot: rec(g => g[10]), comeback10: G.filter(g => g[3] > 0 && g[5] >= 10).length, blown10: G.filter(g => g[3] < 0 && g[4] >= 10).length,
       trailHalf: rec(g => g[6] != null && g[6] < 0), leadHalf: rec(g => g[6] != null && g[6] > 0), bigComeback: Math.max(0, ...G.filter(g => g[3] > 0).map(g => g[5])), bigBlown: Math.max(0, ...G.filter(g => g[3] < 0).map(g => g[4])),
-      cpm: X.c.pm, cmin: r1(X.c.min), units, minShare: Object.entries(X.mins).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([pid, m]) => [+pid, r1(m), totMin ? Math.round(1000 * m / totMin) / 1000 : null]), games: G };
+      cpm: X.c.pm, cmin: r1(X.c.min), zone: X.zone && X.zone.length ? { g: X.zone.length, spread: Math.round(100 * X.zone.reduce((a, z) => a + z[0] * z[1], 0) / Math.max(1, X.zone.reduce((a, z) => a + z[0], 0))) / 100, links: X.zone.reduce((a, z) => a + z[0], 0) } : null, units, minShare: Object.entries(X.mins).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([pid, m]) => [+pid, r1(m), totMin ? Math.round(1000 * m / totMin) / 1000 : null]), games: G };
   }
   return { players, teams };
 }
@@ -193,7 +248,7 @@ export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots,
     const byGame = {}; for (const p of plays) { if (p.season !== S || have.has(p.gameId)) continue; (byGame[p.gameId] = byGame[p.gameId] || []).push(p) }
     for (const [gid, ps] of Object.entries(byGame)) {
       if (have.has(+gid)) continue;
-      const r = processGame(ps, R.P, R.T, { gid: +gid }); if (!r) continue;
+      const r = processGame(ps, R.P, R.T, { gid: +gid, size: ctx && ctx.size }); if (!r) continue;
       have.add(+gid); added++;
       for (const p of ps) { if (!p.shootingPlay || !p.shotInfo) continue; const sh = p.shotInfo.shooter || {};
         if (sh.id) shots.addShot(R.sh.players[sh.id] = R.sh.players[sh.id] || shots.blankAgg(), p);

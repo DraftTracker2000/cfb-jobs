@@ -98,6 +98,8 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   }
   /* the pick the site uses: the same fit, now including the test seasons */
   const PK = fitPick([...trainRows, ...testYs.flatMap(y => rowsOf(y === S ? curRows : GH.seasons[y], null, y))].map(r => [r.x, r.y, r.m]));
+  /* this season's finished games are shown with a pick from a fit that never saw them (the live fit includes them) */
+  const PKx = testYs.includes(S) ? fitPick([...trainRows, ...testYs.filter(y => y !== S).flatMap(y => rowsOf(GH.seasons[y], null, y))].map(r => [r.x, r.y, r.m])) : PK;
   log(`pick test: ${test.seasons.map(t => `${t.season} ${Math.round(100 * t.pickRight)}% right (Vegas favourite ${t.lineFavRight != null ? Math.round(100 * t.lineFavRight) + "%" : "—"})`).join(" · ")}`);
   /* ---- series since 2008 ---- */
   const pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
@@ -123,7 +125,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     const he = g.homeTeamEloStart ?? null, ae = g.awayTeamEloStart ?? null, home = g.neutralSite ? 0 : 1;
     const x = xOf(he, ae, g.homeTeamId, g.awayTeamId, home, g.startDate.slice(0, 10), g.season);
     const known = (he != null && ae != null) || (priorNet(g.homeTeamId, g.season) != null && priorNet(g.awayTeamId, g.season) != null);
-    const p = known ? pickP(PK, x) : null, m = known ? pickM(PK, x) : null;
+    const PKg = g.season === S && g.status === "final" ? PKx : PK; const p = known ? pickP(PKg, x) : null, m = known ? pickM(PKg, x) : null;
     return { id: g.id, s: g.season, d: g.startDate, tbd: g.startTimeTbd ? 1 : 0, h: g.homeTeamId, a: g.awayTeamId, hs: g.homePoints ?? null, as: g.awayPoints ?? null, st: g.status, n: g.neutralSite ? 1 : 0, c: g.conferenceGame ? 1 : 0,
       t: g.tournament || null, note: g.gameNotes || null, post: g.seasonType === "postseason" ? 1 : 0, hSeed: g.homeSeed ?? null, aSeed: g.awaySeed ?? null, venue: g.venue || null, city: [g.city, g.state].filter(Boolean).join(", "),
       tv: TV[g.id] || null, ln: LINES[g.id] || null, p: r3(p), m: r1(m), elo: [he != null ? Math.round(he) : null, ae != null ? Math.round(ae) : null],
@@ -145,10 +147,10 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     const where = g.n ? "neut" : side === "h" ? "home" : "away", oppRk = side === "h" ? g.ar : g.hr, sp = g.ln && g.ln.sp != null ? (side === "h" ? g.ln.sp : -g.ln.sp) : null;
     for (const k of ["all", where, g.c ? "conf" : "nonconf", oppRk ? "rk" : "unrk", g.post ? "post" : null].filter(Boolean)) add(X.su, k, won);
     if (sp != null && sp !== 0) { const cov = homeCover(my, th, sp); const fd = sp < 0 ? "fav" : "dog"; add(X.su, fd, won); for (const k of ["all", where, fd, g.c ? "conf" : "nonconf", oppRk ? "rk" : "unrk"]) add(X.ats, k, cov);
-      if (g.ln.ou != null) { const t = my + th; X.ou[t > g.ln.ou ? 0 : t < g.ln.ou ? 1 : 2] += .5 } }
+      if (g.ln.ou != null) { const t = my + th; X.ou[t > g.ln.ou ? 0 : t < g.ln.ou ? 1 : 2]++ } }
     (X.l10 = X.l10 || []).push(won);
   }
-  for (const id in SPL) { const l = (SPL[id].l10 || []).slice(-10); SPL[id].su.l10 = [l.filter(x => x).length, l.filter(x => !x).length, 0]; delete SPL[id].l10; SPL[id].ou = SPL[id].ou.map(Math.round) }
+  for (const id in SPL) { const l = (SPL[id].l10 || []).slice(-10); SPL[id].su.l10 = [l.filter(x => x).length, l.filter(x => !x).length, 0]; delete SPL[id].l10; }
   for (const y of [S - 2, S - 1]) for (const r of GH.seasons[y] || []) { const L = (GH.lines[y] || {})[r[0]]; if (!L || L[0] == null || L[0] === 0) continue;
     for (const side of ["h", "a"]) { const me = side === "h" ? r[2] : r[3], my = side === "h" ? r[4] : r[5], th = side === "h" ? r[5] : r[4], sp = side === "h" ? L[0] : -L[0]; const c = homeCover(my, th, sp); const a = T(me).fd3[sp < 0 ? "fav" : "dog"]; a[c === 1 ? 0 : c === 0 ? 1 : 2]++ } }
   for (const g of done) for (const side of ["h", "a"]) { if (!g.ln || g.ln.sp == null || g.ln.sp === 0) continue; const me = g[side], my = side === "h" ? g.hs : g.as, th = side === "h" ? g.as : g.hs, sp = side === "h" ? g.ln.sp : -g.ln.sp; const c = homeCover(my, th, sp); const a = T(me).fd3[sp < 0 ? "fav" : "dog"]; a[c === 1 ? 0 : c === 0 ? 1 : 2]++ }

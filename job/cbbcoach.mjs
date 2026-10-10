@@ -19,7 +19,7 @@ export async function buildCoachIds({ getPack, putPack, log, teams, from = 2013,
   let C = full ? null : await getPack("p2000_cbb-coachids").catch(() => null);
   if (!C || !C.seasons) C = { seasons: {}, names: {}, at: 0 };
   const weekly = Date.now() - (C.at || 0) > 6 * 864e5;
-  const years = []; for (let y = from; y <= to; y++) if (!C.seasons[y] || (y >= to - 1 && weekly)) years.push(y);
+  const years = []; for (let y = from; y <= to; y++) if (!C.seasons[y] || (y === to && weekly)) years.push(y);   /* a finished season is never re-read: ESPN then lists the new coach for the old season too */
   if (!years.length) { log(`coaches: cached (${Object.keys(C.names).length} coaches)`); return C }
   let calls = 0;
   for (const y of years) {
@@ -40,8 +40,23 @@ export async function buildCoachIds({ getPack, putPack, log, teams, from = 2013,
 
 /* every head coach's record from our results. rows: past seasons' game rows from the ghist cache plus this season's, each
    [id, date, home, away, hs, as, neutral, conf, eloH, eloA, post, tournament]; lines: { year: { gid: [spread, total] } } */
+/* one team per coach per season. ESPN sometimes lists a coach at two teams in one season (his old team's page not yet updated). The
+   team he is at the season after is where he went, so the other one was that season's; in the latest season, the team that's new
+   to him is the real one. */
+export function dedupeCoachSeasons(seasons) {
+  const out = {}; const ys = Object.keys(seasons).map(Number).sort((a, b) => a - b);
+  const teamOf = (y, cid) => { const m = seasons[y]; if (!m) return []; return Object.keys(m).filter(t => m[t] === cid) };
+  for (const y of ys) { const m = seasons[y], by = {}; for (const [t, c] of Object.entries(m)) (by[c] = by[c] || []).push(t);
+    const keep = {};
+    for (const [c, ts] of Object.entries(by)) { if (ts.length === 1) { keep[ts[0]] = c; continue }
+      const nxt = teamOf(y + 1, c), prv = teamOf(y - 1, c);
+      const pick = seasons[y + 1] ? ts.find(t => !nxt.includes(t)) : ts.find(t => !prv.includes(t));
+      if (pick) keep[pick] = c }
+    out[y] = keep }
+  return out;
+}
 export function coachRecords({ C, seasons, lines, adj, S }) {
-  const out = {}, cur = {};
+  const out = {}, cur = {}; C = { ...C, seasons: dedupeCoachSeasons(C.seasons) };
   for (const [y, rows] of Object.entries(seasons)) {
     const map = C.seasons[y]; if (!map) continue;
     for (const r of rows) for (const side of ["h", "a"]) {

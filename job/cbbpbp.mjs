@@ -14,14 +14,14 @@
 
    Pack: p{S}_cbb-pbp (plus the season's p{S}_cbb-shots, written alongside). */
 
-export const PBP_V = 2;   /* 2: player names and teams kept (Oct 9) */
+export const PBP_V = 3;   /* 2: player names and teams kept · 3: win probability while on the floor (Oct 9) */
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const PERIOD = p => p <= 2 ? 1200 : 300;
 const elapsedAt = (period, secLeft) => { let t = 0; for (let p = 1; p < period; p++) t += PERIOD(p); return t + PERIOD(period) - secLeft };
 const TOV = /Turnover/i, REB = /Rebound/i, FOUL = /Foul/i;
 const blankP = () => ({ min: 0, gp: 0, pm: 0, onF: 0, onA: 0, teamMin: 0, teamF: 0, teamA: 0,
   c: { min: 0, pm: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, ast: 0, tov: 0, stl: 0, reb: 0, g: 0 },
-  late: { gam: 0, ga: 0, gw: 0 }, wpa: 0, cwpa: 0, h1: 0, h2: 0, ast: {}, fed: {} });
+  late: { gam: 0, ga: 0, gw: 0 }, wpa: 0, cwpa: 0, fwpa: 0, cfwpa: 0, h1: 0, h2: 0, ast: {}, fed: {} });
 const blankT = () => ({ games: [], c: { pm: 0, min: 0 }, units: {}, mins: {} });
 
 /* one game's plays → the accumulators */
@@ -81,6 +81,8 @@ export function processGame(plays, P, T, opts = {}) {
     const wp = p.homeWinProbability;
     if (wp != null && lastWP != null && aside) { const d = (wp - lastWP) * (aside === "h" ? 1 : -1); const who = si && si.shooter && si.shooter.id != null ? si.shooter.id : aid;
       if (who != null && !/Substitution|TimeOut|End|Jumpball/i.test(p.playType || "")) { const Q = pl(who); Q.wpa += d; if (clutchNow) Q.cwpa += d } }
+    /* …and the same change to everyone on the floor (zero-sum: one side's gain is the other's loss) */
+    if (wp != null && lastWP != null && wp !== lastWP) { const d = wp - lastWP; for (const id of floor.h) { const Q = pl(id); Q.fwpa += d; if (clutchNow) Q.cfwpa += d } for (const id of floor.a) { const Q = pl(id); Q.fwpa -= d; if (clutchNow) Q.cfwpa -= d } }
     if (wp != null) lastWP = wp;
     /* the game's arc */
     hs = nh; as = na; const m = hs - as; if (m > maxH) maxH = m; if (m < minH) minH = m;
@@ -113,7 +115,7 @@ export function finishPbp(P, T) {
     const on40 = Q.min ? (Q.onF - Q.onA) / Q.min * 40 : null, off40 = offMin >= 20 ? (offF - offA) / offMin * 40 : null;
     const topN = (o, n) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => [+k, v]);
     players[id] = { nm: Q.nm || null, tm: Q._team ?? null, min: r1(Q.min), gp: Q.gp, pm: Q.pm, on40: r1(on40), off40: r1(off40), onoff: on40 != null && off40 != null ? r1(on40 - off40) : null, offMin: r1(offMin),
-      c: { ...Q.c, min: r1(Q.c.min) }, late: Q.late, wpa: Math.round(Q.wpa * 1000) / 10, cwpa: Math.round(Q.cwpa * 1000) / 10, h1: Q.h1, h2: Q.h2, ast: topN(Q.ast, 6), fed: topN(Q.fed, 6) };
+      c: { ...Q.c, min: r1(Q.c.min) }, late: Q.late, wpa: Math.round(Q.wpa * 1000) / 10, cwpa: Math.round(Q.cwpa * 1000) / 10, fwpa: Math.round(Q.fwpa * 100) / 100, cfwpa: Math.round(Q.cfwpa * 100) / 100, h1: Q.h1, h2: Q.h2, ast: topN(Q.ast, 6), fed: topN(Q.fed, 6) };
   }
   const teams = {};
   for (const [id, X] of Object.entries(T)) {

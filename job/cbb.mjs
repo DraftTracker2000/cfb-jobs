@@ -80,6 +80,23 @@ async function pool(items, n, fn) { let i = 0; const out = []; await Promise.all
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 export const normName = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "");
+/* PG / SG / SF / PF / C (Oct 9 — Sam: "do we not have pg, sg, sf, pf, c?"). CBBD and ESPN mostly list only G / F / C, so the five come from
+   how he plays: assist rate splits guards, three-point share and passing split forwards, size with rebounding or shot-blocking makes a
+   centre. Without stats: a recruiting position (PG, SG, SF, PF, C; a combo guard counts as SG), else height within his listed group. */
+export function pos5({ pos, ht, d, listed }) {
+  const L = String(listed || "").toUpperCase();
+  if (d && d.pts40 != null) {
+    const h = ht || d.ht || 0;
+    if (pos === "C" || (h >= 82 && (d.reb40 >= 10.5 || d.blk40 >= 2)) || (h >= 83 && d.tpr < .15)) return "C";
+    if (pos === "G") return d.ast40 >= 4.6 || (d.ast40 >= 3.8 && h && h <= 75) ? "PG" : (h >= 79 && d.reb40 >= 7 ? "SF" : "SG");
+    if (d.ast40 >= 4.6 && h && h <= 78) return "PG";
+    return (d.tpr >= .32 && h <= 81) || (d.ast40 >= 3.4 && h <= 80) || (h && h <= 78) ? "SF" : "PF";
+  }
+  if (/^(PG|SG|SF|PF|C)$/.test(L)) return L;
+  if (L === "CG") return "SG"; if (L === "WF" || L === "W") return "SF";
+  const g = posGroup(listed || pos), h = ht || 0;
+  return g === "C" ? "C" : g === "G" ? (h && h <= 75 ? "PG" : "SG") : (h >= 81 ? "PF" : "SF");
+}
 /* G / F / C from any of CBBD's spellings ("G", "Guard", "PG", "CG" = combo guard, "SF", "Forward", "C", "Center"…) */
 export const posGroup = p => { p = String(p || "").toUpperCase().trim(); if (/^(PG|SG|CG|G\b|G$|GUARD|COMBO)/.test(p)) return "G"; if (/^(C|CENTER)$/.test(p)) return "C"; return "F" };
 
@@ -387,6 +404,7 @@ export async function main() {
       home: rc.hometown ? [rc.hometown.city, rc.hometown.state].filter(Boolean).join(", ") : "", hs: rc.school || "", rec: { r: r3(rc.rating), st: rc.stars, rk: rc.ranking },
       s: null, d: { ht: rc.heightInches || null }, g: { score: grade(m), pD: r3(pD), pR1: r3(pR1), pL: r3(pL), prof: profileOf({ pD, pR1, pL }), recOnly: 1 }, comps: [] });
   }
+  for (const p of board) p.p5 = pos5({ pos: p.pos, ht: p.ht, d: p.s ? p.d : null, listed: p.posFull });
   board.sort((a, b) => b.g.score - a.g.score || (b.g.pR1 - a.g.pR1) || (a.nodata ? 1 : 0) - (b.nodata ? 1 : 0));
   /* the tags are capped by rank, so a class can't have far more "lottery" or "first round" players than a draft takes from college
      (about 11 of the 14 lottery picks and 24 of 30 first-rounders have been college players since 2015) */

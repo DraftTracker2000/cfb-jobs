@@ -472,6 +472,8 @@ export async function main() {
      chart too; earlier seasons keep their shooting-only charts */
   /* context for the on-court numbers: each opponent's adjusted net (quality of competition) and each teammate's win shares per 40 */
   const pbpCtx = { adjNet: Object.fromEntries(Object.entries(H.adj[S] || {}).map(([k, v]) => [k, v[0]])), rating: Object.fromEntries(rowsS.filter(r => r.min >= 150 && r.ws40 != null).map(r => [r.id, r.ws40])) };
+  /* height and position (0 = PG … 4 = C) for matching defenders to attackers */
+  pbpCtx.size = {}; { const PI = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4 }; for (const h of hist) if (h.r.s <= S && (!pbpCtx.size[h.r.id] || h.r.s === S)) pbpCtx.size[h.r.id] = [(H.ht[h.r.id] || [])[0] || null, PI[h.d.p5] ?? 2] }
   const PB = await runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots: { addShot, blankAgg, ZONES }, pool, ctx: pbpCtx });
   const SHOT_FROM = 2021;
   const shotSeasons = (full ? Array.from({ length: S - SHOT_FROM + 1 }, (_, i) => SHOT_FROM + i) : [S - 1]).filter(y => y !== S);

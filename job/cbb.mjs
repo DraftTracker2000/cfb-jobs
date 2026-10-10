@@ -24,6 +24,7 @@ import { gzipSync } from "node:zlib";
 import { buildGames, ranges } from "./cbbgames.mjs";
 import { buildNcaaRuns } from "./cbbncaa.mjs";
 import { buildCombine } from "./cbbcombine.mjs";
+import { buildPast } from "./cbbpast.mjs";
 import { runPbp } from "./cbbpbp.mjs";
 import { buildNba, buildNbaGames } from "./cbbnba.mjs";
 import { fetchRosters, fetchSummary } from "./cbbespn.mjs";
@@ -473,9 +474,13 @@ export async function main() {
   /* ---------- games: lines, TV, our pick, series, splits, game logs (job/cbbgames.mjs) ---------- */
   const GM = await buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList: teamsRaw.filter(t => D1.has(t.id)), adj: H.adj });
   /* NCAA tournament runs since 2008, for the "Name the run" game (job/cbbncaa.mjs) */
-  try { await buildNcaaRuns({ cb, getPack, putPack, log, S, full }) } catch (e) { log("ncaa runs: " + e.message) }
+  let NCAA = null; try { NCAA = await buildNcaaRuns({ cb, getPack, putPack, log, S, full }) } catch (e) { log("ncaa runs: " + e.message) }
   /* NBA draft combine measurements since 2001 (job/cbbcombine.mjs) */
   try { await buildCombine({ getPack, putPack, log, S, full }) } catch (e) { log("combine: " + e.message) }
+
+  /* the last ten finished seasons, for the season picker (job/cbbpast.mjs) */
+  try { const curGames = G.filter(g => g.season === S && g.status === "final").map(g => [g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0]);
+    await buildPast({ cb, getPack, putPack, log, S, off, full, hist, grade, profileOf, H, NCAA, curGames }) } catch (e) { log("past seasons: " + e.message) }
 
   /* ---------- shot charts ---------- */
   /* this season: the full play-by-play engine (minutes, on/off, clutch, comebacks, lineups … — job/cbbpbp.mjs), which writes the shot

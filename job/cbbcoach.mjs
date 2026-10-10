@@ -122,25 +122,26 @@ export function parseCoachInfobox(w) {
   return { ov, ncaa, titles, ff, stops };
 }
 export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
-  let W = full ? null : await getPack("p2000_cbb-wiki").catch(() => null); if (!W || !W.c || W.v !== 2) W = { v: 2, c: {} };   /* v2: the first pass was rate-limited and cached its misses */
+  let W = full ? null : await getPack("p2000_cbb-wiki").catch(() => null); if (!W || !W.c || W.v !== 3) W = { v: 3, c: {} };   /* v3: batched */
   const todo = coaches.filter(c => !W.c[c.cid] || Date.now() - (W.c[c.cid].at || 0) > 7 * 864e5);
-  let n = 0, found = 0;
-  /* one request at a time with a short pause (Wikimedia's API etiquette); a 429 or 403 backs off and retries */
-  /* a refusal (403) or repeated rate limits stop the whole pass for this run, so a blocked job can't stall for hours; the time box is 8 minutes a run; the rest carry over to the next run */
-  let fails = 0, stop = false; const t0 = Date.now(), codes = {};
-  const get = async u => { if (stop) return null; for (let k = 0; k < 3; k++) { try { await new Promise(r => setTimeout(r, 150)); const r = await fetch(u, { headers: WUA }); codes[r.status] = (codes[r.status] || 0) + 1; if (r.ok) { fails = 0; return await r.json() } if (r.status === 404) return null; if (r.status === 403) { stop = true; return null } } catch (e) { codes.err = (codes.err || 0) + 1 } await new Promise(r => setTimeout(r, 2000 * (k + 1))) }
-    if (++fails >= 5 || Date.now() - t0 > 480e3) stop = true; return null };
-  let i = 0; await Promise.all(Array.from({ length: 1 }, async () => { while (i < todo.length) { const c = todo[i++];
-    const q = await get(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(c.nm + " basketball coach " + (c.school || ""))}&srlimit=3&format=json`); n++;
-    if (!q) continue;   /* the lookup failed: try again next run, don't remember a miss */
-    let rec = { at: Date.now() };
-    for (const hit of ((q || {}).query || {}).search || []) { const pg = await get(`https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(hit.title)}&prop=wikitext&section=0&format=json&redirects=1`); n++;
-      const w = pg && pg.parse && pg.parse.wikitext ? pg.parse.wikitext["*"] : ""; if (!/coach_team|overall_record/.test(w)) continue;
-      const last = String(c.nm).split(" ").pop(); if (!new RegExp(last, "i").test(hit.title) || (c.school && !w.includes(c.school.split(" ")[0]))) continue;
-      rec = { at: Date.now(), t: pg.parse.title, ...parseCoachInfobox(w) }; found++; break }
-    W.c[c.cid] = rec } }));
-  W.lastRun = { at: Date.now(), calls: n, found, codes, stopped: stop, secs: Math.round((Date.now() - t0) / 1000) };   /* visible in the pack, since the job's log isn't */
+  /* Wikipedia rate-limits the shared GitHub runners hard (109 of 199 calls refused on Oct 10), so pages are read 40 at a time:
+     one query returns every page's top section. Titles tried in turn: "Name", "Name (basketball)", "Name (basketball coach)". */
+  const t0 = Date.now(), codes = {}; let n = 0, found = 0;
+  const get = async u => { for (let k = 0; k < 4; k++) { try { const r = await fetch(u, { headers: WUA }); codes[r.status] = (codes[r.status] || 0) + 1; n++; if (r.ok) return await r.json(); if (r.status === 404 || r.status === 403) return null } catch { codes.err = (codes.err || 0) + 1 } await new Promise(r => setTimeout(r, 4000 * (k + 1))) } return null };
+  let left = todo.slice();
+  for (const suffix of ["", " (basketball)", " (basketball coach)"]) {
+    for (let b = 0; b < left.length && Date.now() - t0 < 480e3; b += 40) { const batch = left.slice(b, b + 40); const titles = batch.map(c => c.nm + suffix);
+      const j = await get(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&rvsection=0&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(titles.join("|"))}`);
+      if (!j || !j.query) continue; const map = {}; for (const x of j.query.normalized || []) map[x.from] = x.to; for (const x of j.query.redirects || []) map[x.from] = x.to;
+      const pages = Object.fromEntries((j.query.pages || []).map(p => [p.title, p]));
+      for (const c of batch) { let t = c.nm + suffix; t = map[t] || t; t = map[t] || t; const pg = pages[t]; const w = pg && pg.revisions && pg.revisions[0] ? (pg.revisions[0].slots ? pg.revisions[0].slots.main.content : pg.revisions[0].content) : "";
+        if (!w || !/coach_team|overall_record/.test(w) || (c.school && !w.includes(c.school.split(" ")[0]))) continue;
+        W.c[c.cid] = { at: Date.now(), t, ...parseCoachInfobox(w) }; found++ }
+      await new Promise(r => setTimeout(r, 1000)) }
+    left = left.filter(c => !(W.c[c.cid] && W.c[c.cid].t && Date.now() - W.c[c.cid].at < 60e3)) }
+  for (const c of left) if (!W.c[c.cid]) W.c[c.cid] = { at: Date.now() };   /* no page found: looked again in a week */
+  W.lastRun = { at: Date.now(), calls: n, found, codes, secs: Math.round((Date.now() - t0) / 1000) };
   await putPack("p2000_cbb-wiki", W);
-  log(`wikipedia coaches: ${todo.length} to look up (${n} calls), ${found} found · ${Object.values(W.c).filter(x => x.t).length} on file · ${JSON.stringify(codes)}${stop ? " · stopped early" : ""}`);
+  log(`wikipedia coaches: ${todo.length} to look up, ${found} found in ${n} calls · ${Object.values(W.c).filter(x => x.t).length} on file · ${JSON.stringify(codes)}`);
   return W;
 }

@@ -22,6 +22,7 @@
    outcome is known (three drafts later) and tested on later seasons it never saw; the test is published with the board. */
 import { gzipSync } from "node:zlib";
 import { buildGames, ranges } from "./cbbgames.mjs";
+import { buildNcaaRuns } from "./cbbncaa.mjs";
 import { runPbp } from "./cbbpbp.mjs";
 import { buildNba, buildNbaGames } from "./cbbnba.mjs";
 import { fetchRosters, fetchSummary } from "./cbbespn.mjs";
@@ -467,6 +468,8 @@ export async function main() {
 
   /* ---------- games: lines, TV, our pick, series, splits, game logs (job/cbbgames.mjs) ---------- */
   const GM = await buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList: teamsRaw.filter(t => D1.has(t.id)), adj: H.adj });
+  /* NCAA tournament runs since 2008, for the "Name the run" game (job/cbbncaa.mjs) */
+  try { await buildNcaaRuns({ cb, getPack, putPack, log, S, full }) } catch (e) { log("ncaa runs: " + e.message) }
 
   /* ---------- shot charts ---------- */
   /* this season: the full play-by-play engine (minutes, on/off, clutch, comebacks, lineups … — job/cbbpbp.mjs), which writes the shot

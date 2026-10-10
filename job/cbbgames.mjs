@@ -130,6 +130,11 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
       hr: g.season === S ? rankAt(g.homeTeamId, g.startDate.slice(0, 10)) : null, ar: g.season === S ? rankAt(g.awayTeamId, g.startDate.slice(0, 10)) : null,
       ser: seriesFor(g.homeTeamId, g.awayTeamId, g.startDate.slice(0, 10)), exc: r1(g.excitement), co: [coachOf(g.homeTeamId, g.season), coachOf(g.awayTeamId, g.season)] };
   });
+  /* ---- each team's record and ATS entering every game of season S (finals show where the teams stood that day) ---- */
+  { const rec = {}; for (const g of games.filter(g => g.s === S).sort((a, b) => a.d.localeCompare(b.d))) {
+      const R = id => rec[id] = rec[id] || [0, 0, 0, 0]; g.recIn = [R(g.h).slice(), R(g.a).slice()];
+      if (g.st === "final" && g.hs != null) { const hw = g.hs > g.as; R(g.h)[hw ? 0 : 1]++; R(g.a)[hw ? 1 : 0]++;
+        if (g.ln && g.ln.sp != null && g.ln.sp !== 0) { const c = homeCover(g.hs, g.as, g.ln.sp); if (c === 1) { R(g.h)[2]++; R(g.a)[3]++ } else if (c === 0) { R(g.h)[3]++; R(g.a)[2]++ } } } } }
   /* ---- each team's splits: season S straight up and against the spread, and favourite/underdog against the spread over three seasons ---- */
   const SPL = {};
   const T = id => SPL[id] = SPL[id] || { su: {}, ats: {}, ou: [0, 0, 0], fd3: { fav: [0, 0, 0], dog: [0, 0, 0] } };

@@ -7,7 +7,7 @@
    players; everyone else (went back to school, never stuck) is matched on the page by name and combine year.
 
    Pack p2000_cbb-combine: { v, cols, got: [years read], rows: [[year, nbaId, espnId, name, pos, ht, wt, wing, reach, handL, handW, fat, vStand, vMax, lane, sprint]] }.
-   Past years are cached; the newest is re-read in May–July (the combine is in May). */
+   Past years are cached; the newest is re-read in May–July (the combine is in May). The file for season Y holds the combine of May Y−1. */
 import { zstdDecompressSync } from "node:zlib";
 const REL = f => `https://github.com/sportsdataverse/sportsdataverse-data/releases/download/${f}`;
 export const COMBINE_COLS = ["year", "nbaId", "espnId", "name", "pos", "ht", "wt", "wing", "reach", "handL", "handW", "fat", "vStand", "vMax", "lane", "sprint"];
@@ -40,12 +40,14 @@ async function crosswalk(seasons) {
 
 export async function buildCombine({ getPack, putPack, log, S, full }) {
   let P = full ? null : await getPack("p2000_cbb-combine").catch(() => null);
-  if (!P || P.v !== 2) P = { v: 2, cols: COMBINE_COLS, got: [], rows: [] };
+  if (!P || P.v !== 3) P = { v: 3, cols: COMBINE_COLS, got: [], rows: [] };   /* v3: combine years fixed (file year − 1) */
   const mo = new Date().getUTCMonth(), fresh = mo >= 4 && mo <= 6, last = new Date().getUTCFullYear(), espnOf = await crosswalk([S, S + 1]);
   let read = 0;
-  for (let y = 2001; y <= last; y++) {
-    if (P.got.includes(y) && !(y === last && fresh)) continue;
-    const objs = await readParquet(REL(`nba_stats_draft_combine/draftcombinestats_${y}.parquet`)).catch(e => (log(`combine ${y}: ${e.message}`), null)); read++;
+  /* files are named by NBA season: draftcombinestats_2026 is the May 2025 combine (Cooper Flagg), so the combine year is the file year
+     minus one, and this May's combine is the file for next season */
+  for (let f = 2002; f <= last + 1; f++) {
+    const y = f - 1; if (P.got.includes(y) && !(y === last && fresh)) continue;
+    const objs = await readParquet(REL(`nba_stats_draft_combine/draftcombinestats_${f}.parquet`)).catch(e => (log(`combine ${f}: ${e.message}`), null)); read++;
     if (objs && objs.length) { P.rows = P.rows.filter(r => r[0] !== y).concat(combineRows(y, objs, espnOf)); if (!P.got.includes(y)) P.got.push(y) }
   }
   /* the crosswalk grows each season: re-apply it to every cached year */

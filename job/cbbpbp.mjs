@@ -14,7 +14,7 @@
 
    Pack: p{S}_cbb-pbp (plus the season's p{S}_cbb-shots, written alongside). */
 
-export const PBP_V = 4;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) */
+export const PBP_V = 5;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) */
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const PERIOD = p => p <= 2 ? 1200 : 300;
 const elapsedAt = (period, secLeft) => { let t = 0; for (let p = 1; p < period; p++) t += PERIOD(p); return t + PERIOD(period) - secLeft };
@@ -40,13 +40,14 @@ function countEvent(E, p, ownOnly) {
 export function processGame(plays, P, T, opts = {}) {
   plays = plays.slice().sort((a, b) => a.period - b.period || b.secondsRemaining - a.secondsRemaining || a.id - b.id);
   const first = plays.find(p => p.teamId != null && p.isHomeTeam != null); if (!first) return null;
+  { const last = plays[plays.length - 1]; if (!(last.homeScore || 0) && !(last.awayScore || 0)) return null }   /* an empty game: nothing counted, so nothing to undo */
   const home = first.isHomeTeam ? first.teamId : first.opponentId, away = first.isHomeTeam ? first.opponentId : first.teamId;
   const nameOf = {}; for (const p of plays) { if (p.teamId != null && p.team) nameOf[p.team] = p.teamId; if (p.opponentId != null && p.opponent) nameOf[p.opponent] = p.opponentId }
   const side = id => id === home ? "h" : id === away ? "a" : null;
   const tm = id => T[id] = T[id] || blankT();
   const pl = id => P[id] = P[id] || blankP();
   const seen = new Set();
-  let hs = 0, as = 0, maxH = 0, minH = 0, half = null, leadCh = 0, lastLead = 0, runTeam = null, run = 0, bestRun = { h: 0, a: 0 }, lastWP = null, goAheadLast = null;
+  let hs = 0, as = 0, maxH = 0, minH = 0, half = null, leadCh = 0, lastLead = 0, runTeam = null, run = 0, bestRun = { h: 0, a: 0 }, lastWP = null, goAheadLast = null, lastMiss = null;
   const unitsOn = { h: null, a: null };
   for (let i = 0; i < plays.length; i++) {
     const p = plays[i], nx = plays[i + 1];
@@ -62,7 +63,8 @@ export function processGame(plays, P, T, opts = {}) {
     const marginH = hs - as;                                                        /* before this play */
     const clutchNow = p.period >= 2 && p.secondsRemaining <= 300 && Math.abs(marginH) <= 5;
     /* time until the next play: credited to whoever is on the floor now */
-    let dt = 0; if (nx && nx.period === p.period) dt = Math.max(0, p.secondsRemaining - nx.secondsRemaining);
+    let dt = nx && nx.period === p.period ? Math.max(0, p.secondsRemaining - nx.secondsRemaining) : Math.max(0, p.secondsRemaining || 0);
+    const pv = plays[i - 1]; if (!pv || pv.period !== p.period) dt += Math.max(0, PERIOD(p.period) - (p.secondsRemaining || 0));
     if (dt > 0 && floor.h.length === 5 && floor.a.length === 5) {
       for (const s of ["h", "a"]) { const tid = s === "h" ? home : away, X = tm(tid); X._sec = (X._sec || 0) + dt; if (clutchNow) X.c.min += dt / 60;
         const opp = s === "h" ? away : home;
@@ -77,7 +79,7 @@ export function processGame(plays, P, T, opts = {}) {
         for (const id of floor[s]) { const Q = pl(id); Q.pm += mine; Q.onF += s === "h" ? dh : da; Q.onA += s === "h" ? da : dh; if (clutchNow) Q.c.pm += mine }
         if (clutchNow) X.c.pm += mine;
         if (floor[s].length === 5) { const key = floor[s].slice().sort((x, y) => x - y).join("-"); const U = X.units[key] = X.units[key] || [0, 0, 0]; U[1] += s === "h" ? dh : da; U[2] += s === "h" ? da : dh }
-        X._f = (X._f || 0) + (s === "h" ? dh : da); X._a = (X._a || 0) + (s === "h" ? da : dh) }
+        if (floor.h.length === 5 && floor.a.length === 5) { X._f = (X._f || 0) + (s === "h" ? dh : da); X._a = (X._a || 0) + (s === "h" ? da : dh) } }
       /* runs */
       const scorer = dh > 0 ? "h" : "a", pts = dh > 0 ? dh : da;
       if (runTeam === scorer) run += pts; else { runTeam = scorer; run = pts } if (run > bestRun[scorer]) bestRun[scorer] = run;
@@ -91,17 +93,21 @@ export function processGame(plays, P, T, opts = {}) {
       if (made) { if (p.period <= 1) Q.h1 += val; else Q.h2 += val }
       if (clutchNow) { if (ft) { Q.c.fta++; Q.c.ftm += made } else { Q.c.fga++; Q.c.fgm += made; if (three) { Q.c.tpa++; Q.c.tpm += made } } Q.c.pts += val }
       if (made && si.assisted && si.assistedBy && si.assistedBy.id != null) { const A = pl(si.assistedBy.id); A.ast[si.shooter.id] = (A.ast[si.shooter.id] || 0) + 1; Q.fed[si.assistedBy.id] = (Q.fed[si.assistedBy.id] || 0) + 1; if (clutchNow) A.c.ast++ }
-      /* late: last 2 minutes of the second half or overtime, shooting team down 0–3 before the shot */
+      /* late: last 2 minutes of the second half or overtime, a shot (or free throw) that would tie or take the lead if it went in */
       if (p.period >= 2 && p.secondsRemaining <= 120 && aside) { const myM = aside === "h" ? marginH : -marginH;
-        if (myM <= 0 && myM >= -3) { Q.late.ga++; const after = aside === "h" ? (nh - na) : (na - nh); if (made && after > 0) { Q.late.gam++; goAheadLast = { id: si.shooter.id, team: atid, period: p.period, sec: p.secondsRemaining } } } }
+        if (myM <= 0 && (ft ? 1 : three ? 3 : 2) >= -myM) { Q.late.ga++;   /* a try that could tie or take the lead */ const after = aside === "h" ? (nh - na) : (na - nh); if (made && after > 0) { Q.late.gam++; goAheadLast = { id: si.shooter.id, team: atid, period: p.period, sec: p.secondsRemaining } } } }
     } else if (aid != null && aside) {
       const Q = pl(aid), pt = p.playType || "";
       if (clutchNow) { if (TOV.test(pt)) Q.c.tov++; else if (pt === "Steal") Q.c.stl++; else if (REB.test(pt) && !/Dead Ball/.test(pt)) Q.c.reb++ }
     }
     /* win probability added: the change in the actor's team's chance, credited to the actor */
+    /* (a missed shot barely moves the chance; the swing shows up on the other team's defensive rebound. That swing is charged to the
+       shooter who missed, not credited to the rebounder, so a player's value counts his misses as well as his makes.) */
     const wp = p.homeWinProbability;
-    if (wp != null && lastWP != null && aside) { const d = (wp - lastWP) * (aside === "h" ? 1 : -1); const who = si && si.shooter && si.shooter.id != null ? si.shooter.id : aid;
-      if (who != null && !/Substitution|TimeOut|End|Jumpball/i.test(p.playType || "")) { const Q = pl(who); Q.wpa += d; if (clutchNow) Q.cwpa += d } }
+    if (wp != null && lastWP != null && aside) { const d = (wp - lastWP) * (aside === "h" ? 1 : -1); let who = si && si.shooter && si.shooter.id != null ? si.shooter.id : aid, sign = 1;
+      if (DREB.test(p.playType || "") && lastMiss && lastMiss.side !== aside) { who = lastMiss.id; sign = -1 }
+      if (who != null && !/Substitution|TimeOut|End|Jumpball/i.test(p.playType || "")) { const Q = pl(who); Q.wpa += sign * d; if (clutchNow) Q.cwpa += sign * d } }
+    if (si && si.shooter && si.shooter.id != null && aside) lastMiss = si.made ? null : { id: si.shooter.id, side: aside }; else if (!DREB.test(p.playType || "") && !/Substitution|TimeOut/i.test(p.playType || "")) lastMiss = null;
     /* …and the same change to everyone on the floor (zero-sum: one side's gain is the other's loss) */
     if (wp != null && lastWP != null && wp !== lastWP) { const d = wp - lastWP; for (const id of floor.h) { const Q = pl(id); Q.fwpa += d; if (clutchNow) Q.cfwpa += d } for (const id of floor.a) { const Q = pl(id); Q.fwpa -= d; if (clutchNow) Q.cfwpa -= d } }
     if (wp != null) lastWP = wp;

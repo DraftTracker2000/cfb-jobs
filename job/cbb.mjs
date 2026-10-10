@@ -242,6 +242,10 @@ export async function main() {
   for (const t of rosterS) for (const p of t.players || []) if (p.sourceId && !sidToCbbd[p.sourceId]) sidToCbbd[p.sourceId] = p.id;
   const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
   let NBA = {}; try { NBA = await buildNba({ getPack, putPack, log, full, curNba, live: nbaLive, sidToCbbd, draftById: DRAFTED }) } catch (e) { log("nba: " + e.message) }
+  /* an old NBA ESPN id can be a different person's college ESPN id (Tony Parker's 1015 matched a 2009 college player): the surnames must agree */
+  { const nmOf = {}; for (const rows of Object.values(ALL)) for (const r of rows) if (r.sid) nmOf[r.sid] = r.nm;
+    const sur = n => String(n || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\s+/).map(w => w.replace(/[^a-z]/g, "")).filter(w => w && !/^(jr|sr|ii|iii|iv|v)$/.test(w)).pop() || "";
+    let drop = 0; for (const eid of Object.keys(NBA)) { const c = nmOf[eid]; if (c && sur(c) !== sur(NBA[eid].nm)) { delete NBA[eid]; drop++ } } if (drop) log(`nba: ${drop} id matches dropped (names disagree)`) }
   const lastTeamOf = {}; for (const y of Object.keys(ALL).sort()) for (const r of ALL[y]) lastTeamOf[r.id] = [r.tm, +y];
   for (const X of Object.values(NBA)) { const lt = lastTeamOf[X.cid]; if (lt) { X.col = lt[0]; X.colY = lt[1] } }
   const NBA_BY_CID = {}; for (const [eid, X] of Object.entries(NBA)) NBA_BY_CID[X.cid] = { eid, tag: X.tag };
@@ -360,7 +364,7 @@ export async function main() {
   const CLS = ["FR", "SO", "JR", "SR", "GR"];
   /* career totals (every Division I season since 2008) — the tiles show last season and the career side by side */
   const CAR = {}; for (const [y, rows] of Object.entries(ALL)) for (const x of rows) { if (!x.g) continue; const c = CAR[x.id] = CAR[x.id] || { g: 0, gs: 0, n: 0, min: 0, pts: 0 }; c.g += x.g; c.gs += x.gs; c.n++; c.min += x.min; c.pts += x.pts }
-  const statEntry = (r, h, tm, extra = {}) => { const pt = PORT[r.id], ro = RO[r.id] || {}, hw = H.ht[r.id] || [], rc = REC[r.id], yrNext = off ? h.yr + 1 : h.yr;
+  const statEntry = (r, h, tm, extra = {}) => { const pt = PORT[r.id], ro = RO[r.id] || {}, hw = H.ht[r.id] || [], rc = REC[r.id], yrNext = Math.min(5, off ? h.yr + 1 : h.yr);
     return { id: r.id, nm: r.nm, pos: r.pos, posFull: ro.posFull || "", tm, from: tm !== r.tm ? r.tm : null, portal: pt ? { to: pt.destination ? pt.destination.id : null, toName: pt.destination ? pt.destination.name : null, el: pt.eligibility || null } : null,
       cls: CLS[Math.min(4, yrNext - 1)], yr: yrNext, ht: hw[0] || null, wt: hw[1] || null, home: ro.home || "", jersey: ro.jersey || "",
       rec: rc ? { r: r3(rc[2]), st: rc[3], rk: rc[4] } : null,
@@ -377,11 +381,14 @@ export async function main() {
   const rowByName = {}; for (const r of rowsS) (rowByName[normName(r.nm)] = rowByName[normName(r.nm)] || []).push(r);
   const recByName = {}; for (const rc of recFresh) recByName[normName(rc.name)] = rc;
   const usedRec = new Set();
-  if (useEspn) {
+  if (useEspn) { const USED = new Set();
     for (const [tidS, list] of Object.entries(ESPN.rosters)) { const tid = +tidS;
       for (const a of list) {
         let cid = sidToCbbd[a.eid] || null; let r = cid ? lastRow[cid] : null;
-        if (!r) { const c = (rowByName[normName(a.nm)] || []).filter(x => x.tm === tid || (x.id && !cid)); if (c.length === 1) { r = lastRow[c[0].id] || c[0]; cid = r.id } }
+        /* no id match: the same name on this team, or a portal move from elsewhere to this team (a bare name match across the country put
+           one Trent Perry's stats on another) */
+        if (!r) { const c = (rowByName[normName(a.nm)] || []).filter(x => x.tm === tid || (PORT[x.id] && PORT[x.id].destination && PORT[x.id].destination.id === tid)); if (c.length === 1) { r = lastRow[c[0].id] || c[0]; cid = r.id } }
+        if (r && USED.has(r.id)) r = null; if (r) USED.add(r.id);
         const h = r ? H_S[r.id + "|" + r.tm] : null;
         const espn = { cls: a.cls || undefined, jersey: a.jersey || undefined, inj: a.inj || undefined, eid: a.eid };
         if (r && h && r.min >= 20) { const e = statEntry(r, h, tid, {}); /* class: ours (seasons played) — ESPN's preseason lists still carry last season's class */ if (a.jersey) e.jersey = a.jersey; if (a.inj) e.inj = a.inj; if (a.ht && !e.ht) e.ht = a.ht; if (a.wt && !e.wt) e.wt = a.wt; e.eid = a.eid; board.push(e); continue }
@@ -441,8 +448,8 @@ export async function main() {
     const gs = G.filter(g => g.season === S && (g.homeTeamId === id || g.awayTeamId === id) && g.status === "final");
     let w = 0, l = 0, cw = 0, cl = 0; const res = [];
     for (const g of gs.sort((p, q) => new Date(p.startDate) - new Date(q.startDate))) { const home = g.homeTeamId === id; const won = home ? g.homeWinner : g.awayWinner; won ? w++ : l++; if (g.conferenceGame) won ? cw++ : cl++;
-      res.push([g.startDate.slice(0, 10), home ? g.awayTeamId : g.homeTeamId, home ? 1 : g.neutralSite ? 0 : -1, home ? g.homePoints : g.awayPoints, home ? g.awayPoints : g.homePoints, g.tournament || (g.seasonType === "postseason" ? "Post" : "")]) }
-    const next = G.filter(g => g.season === NEXT && NEXT !== S && (g.homeTeamId === id || g.awayTeamId === id)).sort((p, q) => new Date(p.startDate) - new Date(q.startDate)).map(g => { const home = g.homeTeamId === id; return [g.startDate.slice(0, 16), home ? g.awayTeamId : g.homeTeamId, home ? 1 : g.neutralSite ? 0 : -1, g.status, home ? g.homePoints : g.awayPoints, home ? g.awayPoints : g.homePoints] });
+      res.push([g.startDate.slice(0, 10), home ? g.awayTeamId : g.homeTeamId, g.neutralSite ? 0 : home ? 1 : -1, home ? g.homePoints : g.awayPoints, home ? g.awayPoints : g.homePoints, g.tournament || (g.seasonType === "postseason" ? "Post" : "")]) }
+    const next = G.filter(g => g.season === NEXT && NEXT !== S && (g.homeTeamId === id || g.awayTeamId === id)).sort((p, q) => new Date(p.startDate) - new Date(q.startDate)).map(g => { const home = g.homeTeamId === id; return [g.startDate.slice(0, 16), home ? g.awayTeamId : g.homeTeamId, g.neutralSite ? 0 : home ? 1 : -1, g.status, home ? g.homePoints : g.awayPoints, home ? g.awayPoints : g.homePoints] });
     const u = ts.teamStats || {}, o = ts.opponentStats || {};
     teams[id] = { id, nm: t.school, mascot: t.mascot, ab: t.abbreviation, c1: t.primaryColor, c2: t.secondaryColor, conf: t.conference || a.conference, venue: t.currentVenue, city: [t.currentCity, t.currentState].filter(Boolean).join(", "),
       adj: a.offensiveRating ? { o: r1(a.offensiveRating), d: r1(a.defensiveRating), n: r1(a.netRating), ro: (a.rankings || {}).offense, rd: (a.rankings || {}).defense, rn: (a.rankings || {}).net } : null, srs: r1(SRS[id]),

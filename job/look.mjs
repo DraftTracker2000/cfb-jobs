@@ -21,7 +21,10 @@ export async function lookCheck({ browser, site, token, page = "/", log = consol
     try {
       const t0 = Date.now();
       await p.goto(`${site}${page}?ro=1`, { waitUntil: "domcontentloaded", timeout: 60000 });
-      await p.waitForSelector(".tabs button", { timeout: 60000 });
+      /* Oct 11: every look since Oct 9 timed out here with nothing saying why — say what the page was showing */
+      try { await p.waitForSelector(".tabs button", { timeout: 60000 }) } catch (e) {
+        const seen = await p.evaluate(() => ({ url: location.href, title: document.title, tabs: document.querySelectorAll(".tabs button").length, body: (document.body ? document.body.innerText : "").replace(/\s+/g, " ").slice(0, 200) })).catch(() => null);
+        throw new Error(`no tabs after 60 s · ${seen ? `${seen.url} · "${seen.title}" · ${seen.tabs} tab buttons · page says: ${seen.body}` : "page unreadable"}${errs.length ? ` · script errors: ${errs.slice(0, 2).join(" | ")}` : ""}`) }
       /* a first visit on a phone (a fresh browser has nothing saved): how long until the board shows players, and until the
          history files (past rosters, recruiting classes) have also landed */
       if (W < 800) { try { await p.waitForFunction(() => typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100, null, { timeout: 90000 }); firstRows = +((Date.now() - t0) / 1000).toFixed(1);

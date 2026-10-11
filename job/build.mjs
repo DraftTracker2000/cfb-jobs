@@ -202,7 +202,7 @@ async function main() {
   /* the look check once a day, not after every game-day update (Oct 9: ~3 min of Actions time each, up to 26 runs on a Saturday; a layout
      break doesn't need catching every 30 minutes). Standalone "look" runs are unaffected. */
   let lookDue = MODE === "live";
-  if (lookDue) { try { const h = await api("GET", "/api/job/health"); lookDue = !(h.jobs || []).some(j => j.kind === "look" && j.ok && Date.now() - j.finished_at < 20 * 36e5) } catch (e) { } }
+  if (lookDue) { try { const h = await api("GET", "/api/job/health"); lookDue = !(h.jobs || []).some(j => j.kind === "look" && Date.now() - j.finished_at < 20 * 36e5)   /* Oct 11: a failing look re-ran after every game-day update (3 min of Actions each); now once a day either way */ } catch (e) { } }
   if (lookDue) { try { const browser2 = await chromium.launch(); const L = await lookCheck({ browser: browser2, site: SITE, token: sess.token, page: PAGE }); await browser2.close();
     await api("POST", "/api/job/report", { body: { kind: "look", ok: L.ok, message: lookMsg(L), detail: L } }) } catch (e) { console.log("look check: " + e.message) } }
 }

@@ -75,4 +75,5 @@ export const PROBES = [
   { name: "net-big12", url: "https://big12sports.com/sports/2025/8/14/FBreporting.aspx" },
   { name: "net-sec", url: "https://www.secsports.com/availability-report" },
   { name: "net-b1g", url: "https://bigten.org/sports/football/availability-report" },
+  { name: "wpfit", mod: "wpfit" },
 ];

@@ -76,4 +76,5 @@ export const PROBES = [
   { name: "net-sec", url: "https://www.secsports.com/availability-report" },
   { name: "net-b1g", url: "https://bigten.org/sports/football/availability-report" },
   { name: "wpfit", mod: "wpfit" },
+  { name: "cbbtest", mod: "cbbtest" },
 ];

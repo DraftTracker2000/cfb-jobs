@@ -64,7 +64,7 @@ export async function cb(path, params = {}) {
   }
 }
 let SESS = null;
-async function getPack(name) {
+export async function getPack(name) {
   if (!SESS) SESS = (await site("POST", "/api/job/session")).token;
   const r = await fetch(SITE + "/api/pack/" + name, { headers: { Authorization: "Bearer " + SESS } });
   return r.ok ? r.json() : null;

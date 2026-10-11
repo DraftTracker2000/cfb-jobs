@@ -12,6 +12,8 @@ export async function runProbes({ browser, site, token, only = "", log = console
       const ctx = await browser.newContext({ viewport: { width: W, height: W < 800 ? 844 : 900 }, isMobile: W < 800, hasTouch: W < 800 });
       const p = await ctx.newPage(); const errs = [];
       p.on("pageerror", e => errs.push(e.message));
+      /* the page cookie the sign-in page would trade the token for, so the first visit lands on the page asked for (Oct 11) */
+      await ctx.addCookies([{ name: "cfbs", value: token, url: site }]);
       await ctx.addInitScript(t => {
         try { localStorage.setItem("cfbTok", t) } catch (e) { }
         const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return /^cfbTour|^cfbPT_|^cfbH2hHint/.test(k) ? "1" : g.call(this, k) };

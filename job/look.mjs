@@ -14,6 +14,8 @@ export async function lookCheck({ browser, site, token, page = "/", log = consol
     /* the phone pass runs on a typical 4G connection (9 Mbit/s down, 150 ms round trip), so the first-visit times mean something */
     if (W < 800) { try { const cdp = await ctx.newCDPSession(p); await cdp.send("Network.enable"); await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 150, downloadThroughput: 9e6 / 8, uploadThroughput: 3e6 / 8 }) } catch (e) { } }
     p.on("pageerror", e => errs.push(e.message));
+    /* the page cookie the sign-in page would trade the token for, so the first visit lands on the page asked for (Oct 11) */
+    await ctx.addCookies([{ name: "cfbs", value: token, url: site }]);
     await ctx.addInitScript(t => {
       try { localStorage.setItem("cfbTok", t) } catch (e) { }
       const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return /^cfbTour|^cfbPT_|^cfbH2hHint/.test(k) ? "1" : g.call(this, k) };

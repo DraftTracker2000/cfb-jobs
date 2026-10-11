@@ -203,6 +203,9 @@ async function main() {
      break doesn't need catching every 30 minutes). Standalone "look" runs are unaffected. */
   let lookDue = MODE === "live";
   if (lookDue) { try { const h = await api("GET", "/api/job/health"); lookDue = !(h.jobs || []).some(j => j.kind === "look" && Date.now() - j.finished_at < 20 * 36e5)   /* Oct 11: a failing look re-ran after every game-day update (3 min of Actions each); now once a day either way */ } catch (e) { } }
+  /* Oct 11: every look run right after a game-day publish timed out waiting for the tabs, while a standalone look minutes later passed
+     (34 views, all clear) — give Cloudflare's store the minute or two it takes to spread a publish before looking */
+  if (lookDue) await new Promise(r => setTimeout(r, 120000));
   if (lookDue) { try { const browser2 = await chromium.launch(); const L = await lookCheck({ browser: browser2, site: SITE, token: sess.token, page: PAGE }); await browser2.close();
     await api("POST", "/api/job/report", { body: { kind: "look", ok: L.ok, message: lookMsg(L), detail: L } }) } catch (e) { console.log("look check: " + e.message) } }
 }

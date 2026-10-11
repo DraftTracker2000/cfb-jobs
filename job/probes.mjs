@@ -41,4 +41,6 @@ export const PROBES = [
   { name: "avail-find", node: `const UA={headers:{"user-agent":"Mozilla/5.0 (mycfbbigboard.com data job)"}};const o={ok:true};
     for(const u of ["https://www.secsports.com/","https://www.secsports.com/sport/football","https://theacc.com/sports/football","https://bigten.org/fb/","https://big12sports.com/sports/football","https://sunbeltsports.org/sports/football","https://themw.com/sports/football","https://www.secsports.com/availability-report","https://theacc.com/availability","https://bigten.org/availability/"]){
      try{const r=await fetch(u,UA);const t=await r.text();const L=[...new Set([...t.matchAll(/href="([^"]*availab[^"]*)"/gi)].map(m=>m[1]))].slice(0,8);o[u]=r.status+" "+t.length+"B "+JSON.stringify(L)}catch(e){o[u]="ERR "+e.message}}return o` },
+  { name: "serve", node: `const o={ok:true};for(const [k,h] of [["cookie",{cookie:"cfbs="+TOKEN}],["none",{}]])for(const path of ["/lab/?ro=1","/lab/","/"]){const r=await fetch(SITE+path,{headers:{...h,"user-agent":"Mozilla/5.0 probe"},redirect:"manual"});const t=await r.text();
+    o[k+" "+path]=r.status+" loc="+(r.headers.get("location")||"")+" len="+t.length+" title="+((t.match(/<title>([^<]*)/)||[])[1]||"")+" ppa="+t.includes("async function ppaYear(")+" robots="+t.includes("noindex")}return o` },
 ];

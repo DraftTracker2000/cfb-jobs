@@ -9,7 +9,7 @@ export async function runProbes({ browser, site, token, only = "", log = console
   const want = String(only || "").split(",").map(s => s.trim()).filter(Boolean);
   for (const P of PROBES.filter(p => !want.length || want.some(w => p.name.startsWith(w)))) {
     /* a probe with `node` runs in the job itself (no browser): plain fetches of public pages, e.g. to find where a source posts */
-    if (P.node) { let r; try { r = await (new Function("fetch", `return (async () => { ${P.node} })()`))(fetch) } catch (e) { r = { ok: false, error: String(e.message || e).slice(0, 300) } }
+    if (P.node) { let r; try { r = await (new Function("fetch", "SITE", "TOKEN", `return (async () => { ${P.node} })()`))(fetch, site, token) } catch (e) { r = { ok: false, error: String(e.message || e).slice(0, 300) } }
       out.push({ name: P.name, ...r }); log(`::${r && r.ok === false ? "warning" : "notice"} title=probe ${P.name}::${JSON.stringify(r).replace(/[\r\n]+/g, " ").slice(0, 3500)}`); continue }
     for (const W of P.widths || [390, 1280]) {
       const ctx = await browser.newContext({ viewport: { width: W, height: W < 800 ? 844 : 900 }, isMobile: W < 800, hasTouch: W < 800 });

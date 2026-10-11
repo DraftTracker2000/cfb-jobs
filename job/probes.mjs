@@ -79,4 +79,13 @@ export const PROBES = [
   { name: "cbbtest", mod: "cbbtest" },
   { name: "nbatest", mod: "nbatest" },
   { name: "cbbwpfit", mod: "cbbwpfit" },
+  /* can we get college basketball players' birth dates? (Oct 11 — the age test for BoardScore needs them for drafted and undrafted alike) */
+  { name: "cbbdob", node: `const o={ok:true,teams:{}};const H={headers:{"User-Agent":"mycbbbigboard data job"}};
+    for(const t of [150,2509,96,2305,2250,57,9,2181]){const j=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/"+t+"/roster",H).then(r=>r.json()).catch(()=>null);
+     const A=(j&&j.athletes)||[];o.teams[t]={n:A.length,dobRoster:A.filter(a=>a.dateOfBirth||a.age).length,keys:A[0]?Object.keys(A[0]).join(","):""};
+     let core=0,tried=0;for(const a of A.slice(0,6)){tried++;const c=await fetch("https://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/athletes/"+a.id,H).then(r=>r.json()).catch(()=>null);if(c&&c.dateOfBirth)core++}
+     o.teams[t].dobCore=core+"/"+tried}
+    /* players from years ago (ESPN ids of 2015–2018 college players, undrafted and drafted) */
+    const old=[];for(const id of [2580912,2581184,2991055,3133602,3133628,3064514,3135045,2990992,3134907,3133838]){const c=await fetch("https://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/athletes/"+id,H).then(r=>r.json()).catch(()=>null);old.push(id+":"+(c?(c.fullName||"?")+" "+(c.dateOfBirth||"no dob"):"none"))}
+    o.old=old;return o` },
 ];

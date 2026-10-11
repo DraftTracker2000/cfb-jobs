@@ -157,7 +157,10 @@ const snapKey = (n, p) => String(n || "").toLowerCase().replace(/\b(jr|sr|ii|iii
 async function sleeperSnaps(S, log) {
   if (S < 2020) return null;
   try {
-    if (!SLP_IDS) { const r = await fetch("https://api.sleeper.app/v1/players/nfl"); if (!r.ok) { log(`nfl: sleeper players ${r.status}`); return null } const P = await r.json(); SLP_IDS = {};
+    /* Sleeper's player list comes from the site's own copy (/api/slp-players, refreshed by the worker's one read a day), not from Sleeper
+       (Oct 11 audit: this run was a second daily read of the 5 MB list, against Sleeper's "once a day at most") */
+    if (!SLP_IDS) { const r = await fetch((process.env.SITE_URL || "https://mycfbbigboard.com") + "/api/slp-players"); if (!r.ok) { log(`nfl: site sleeper directory ${r.status}`); return null } const J = await r.json(), P = {};
+      for (const [k, x] of Object.entries((J && J.p) || {})) P[k] = { full_name: x[0], position: x[1], espn_id: x[4], gsis_id: x[5] || "" }; SLP_IDS = {};
       /* Sleeper's gsis id when it has one, else its ESPN id, else a unique name + position (newer players often lack the gsis id) */
       for (const k in P) { const p = P[k]; if (!p) continue; let g = p.gsis_id && SNAP_ALL.has(String(p.gsis_id).trim()) ? String(p.gsis_id).trim() : null;   // only a gsis id we know
         if (!g && p.espn_id) g = SNAP_ESPN[String(p.espn_id)] || null;

@@ -66,5 +66,5 @@ export const PROBES = [
       o[u]=R}catch(e){o[u]="ERR "+e.message}}return o` },
   { name: "nfllive", node: `const H={headers:{Authorization:"Bearer "+TOKEN}};const o={ok:true,now:new Date().toISOString()};
     for(const u of ["/api/nfllive","/api/nfllive?box=1"]){try{const r=await fetch(SITE+u,H);const t=await r.text();let j=null;try{j=JSON.parse(t)}catch(e){}
-     o[u]=r.status+" "+t.length+"B "+(j?(u.includes("box")?"players="+Object.keys(j.p||{}).length+" defs="+Object.keys(j.d||{}).length+" keys="+Object.keys(j).join(","):"games="+Object.keys(j.by||{}).length+" "+JSON.stringify(Object.entries(j.by||{}).slice(0,4).map(([k,x])=>k+" "+x.st+" "+(x.detail||"")+" "+x.as+"-"+x.hs))+" t="+(j.t?new Date(j.t).toISOString():"")):t.slice(0,200))}catch(e){o[u]="ERR "+e.message}}return o` },
+     o[u]=r.status+" "+t.length+"B "+(j?(u.includes("box")?"players="+Object.keys(j.p||{}).length+" defs="+Object.keys(j.d||{}).length+" games="+JSON.stringify(j.games)+" at="+(j.at?new Date(j.at).toISOString():""):"games="+(j.g||[]).length+" "+JSON.stringify((j.g||[]).filter(x=>x[5]!=="pre").slice(0,4).map(x=>x[1]+"@"+x[2]+" "+x[5]+" "+x[8]+" "+x[3]+"-"+x[4]))+" at="+(j.at?new Date(j.at).toISOString():"")):t.slice(0,200))}catch(e){o[u]="ERR "+e.message}}return o` },
 ];

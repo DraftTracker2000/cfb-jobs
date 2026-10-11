@@ -73,10 +73,10 @@ export function extrasFor(y, list, seasons, box, lg) {
   return out;
 }
 /* team box-score shooting by game (for the luck input), cached in p2000_cbb-shoot; the season in progress is re-read each run */
-async function shootingCache({ cb, getPack, putPack, log, S, full }) {
+async function shootingCache({ cb, getPack, putPack, log, S, full, off }) {
   let SH = full ? null : await getPack("p2000_cbb-shoot").catch(() => null); if (!SH || SH.v !== 1) SH = { v: 1, s: {}, lg: {} };
   let changed = false;
-  for (let y = 2016; y <= S; y++) { if (SH.s[y] && y < S) continue; const B = {};
+  for (let y = 2016; y <= S; y++) { if (SH.s[y] && (y < S || off)) continue; const B = {};   /* a finished season is read once */
     for (const [a, b] of ranges(y, 14)) for (const t of await cb("/games/teams", { season: y, startDateRange: a, endDateRange: b })) { const o = t.opponentStats || {}, u = t.teamStats || {}, f = (x, k) => (x[k] || {});
       (B[t.gameId] = B[t.gameId] || {})[t.teamId] = [f(o, "threePointFieldGoals").made, f(o, "threePointFieldGoals").attempted, f(o, "freeThrows").made, f(o, "freeThrows").attempted, f(u, "threePointFieldGoals").made, f(u, "threePointFieldGoals").attempted, f(u, "freeThrows").made, f(u, "freeThrows").attempted].map(v => v ?? 0) }
     let m3 = 0, a3 = 0, mf = 0, af = 0; for (const g of Object.values(B)) for (const q of Object.values(g)) { m3 += q[4]; a3 += q[5]; mf += q[6]; af += q[7] }
@@ -115,7 +115,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   /* last season's adjusted net for each team (the early-season prior) */
   const priorNet = (tid, season) => { const a = (adj[season - 1] || {})[tid]; return a ? a[0] : null };
   const xOf = (eh, ea, h, a, home, date, season) => { const ph = priorNet(h, season), pa = priorNet(a, season); return pickX(eh != null && ea != null ? eh - ea : 0, ph != null && pa != null ? ph - pa : 0, home, seasonFrac(date + "T00:00:00Z", season)) };
-  const SH = await shootingCache({ cb, getPack, putPack, log, S, full }).catch(e => { log("shooting cache: " + e.message); return null });
+  const SH = await shootingCache({ cb, getPack, putPack, log, S, full, off }).catch(e => { log("shooting cache: " + e.message); return null });
   const EXc = {}, SEAS = () => ({ ...GH.seasons, [S]: (curRowsAll || []).filter(r => r[4] != null) });
   const exFor = (season, list) => EXc[season] = EXc[season] || extrasFor(season, list, SEAS(), SH && SH.s[season], SH && SH.lg[Math.min(season, S)]);
   const rowsOf = (list, lines, season) => { const EX = exFor(season, list); return list.filter(r => r[4] != null && r[5] != null).map(r => ({ x: [...xOf(r[8], r[9], r[2], r[3], r[6] ? 0 : 1, r[1], season), ...(EX[r[0]] || [0, 0, 0, 0, 0])], y: r[4] > r[5] ? 1 : 0, m: r[4] - r[5], ln: lines && lines[r[0]] })) };

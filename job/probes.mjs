@@ -78,4 +78,5 @@ export const PROBES = [
   { name: "wpfit", mod: "wpfit" },
   { name: "cbbtest", mod: "cbbtest" },
   { name: "nbatest", mod: "nbatest" },
+  { name: "cbbwpfit", mod: "cbbwpfit" },
 ];

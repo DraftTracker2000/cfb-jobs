@@ -13,21 +13,23 @@ import { fitPick, pickP, pickM } from "./cbbgames.mjs";
 const gs = r => (+r.points || 0) + .4 * (+r.field_goals_made || 0) - .7 * (+r.field_goals_attempted || 0) - .4 * ((+r.free_throws_attempted || 0) - (+r.free_throws_made || 0)) + .7 * (+r.offensive_rebounds || 0) + .3 * (+r.defensive_rebounds || 0) + (+r.steals || 0) + .7 * (+r.assists || 0) + .7 * (+r.blocks || 0) - .4 * (+r.fouls || 0) - (+r.turnovers || 0);
 
 export async function run({ log = console.log }) {
-  const YS = [2021, 2022, 2023, 2024, 2025, 2026], PB = {}, TB = {};
+  const YS = [2021, 2022, 2023, 2024, 2025, 2026], PB = {}, TB = {}, RAW = {};
   for (const y of YS) { const p = await getCsv(REL("espn_nba_player_boxscores", `player_box_${y}.csv`)), t = await getCsv(REL("espn_nba_team_boxscores", `team_box_${y}.csv`));
     if (!p || !t) return { ok: false, error: `box scores ${y} missing` };
-    PB[y] = rowsOf(p).filter(r => +r.season_type === 2); TB[y] = rowsOf(t).filter(r => +r.season_type === 2); log(`nbatest: ${y} · ${PB[y].length} player rows, ${TB[y].length} team rows`) }
+    const P0 = rowsOf(p), T0 = rowsOf(t); if (y === YS[0]) { RAW.p = Object.keys(P0[0] || {}).slice(0, 60).join(","); RAW.t = Object.keys(T0[0] || {}).slice(0, 60).join(","); RAW.st = [...new Set(T0.slice(0, 3000).map(r => r.season_type))].join("|"); RAW.n = [P0.length, T0.length] }
+    PB[y] = P0.filter(r => +r.season_type === 2); TB[y] = T0.filter(r => +r.season_type === 2); log(`nbatest: ${y} · ${PB[y].length} player rows, ${TB[y].length} team rows`) }
   const poss = r => (+r.field_goals_attempted || 0) - (+r.offensive_rebounds || 0) + (+r.total_turnovers || +r.turnovers || 0) + .44 * (+r.free_throws_attempted || 0);
   const netOf = rows => { const T = {}; for (const r of rows) { const X = T[r.team_abbreviation] = T[r.team_abbreviation] || { g: 0, pf: 0, pa: 0, p: 0 }; X.g++; X.pf += +r.team_score || 0; X.pa += +r.opponent_team_score || 0; X.p += poss(r) }
     for (const X of Object.values(T)) X.net = X.p ? 100 * (X.pf - X.pa) / X.p : 0; return T };
-  const out = [];
+  const out = [], DIAG = {};
   for (const y of YS.slice(1)) {
     const prev = netOf(TB[y - 1]);
     /* season-long player values from last season, carried in */
     const val = {}; const addV = (id, r, team) => { const v = val[id] = val[id] || { min: 0, gs: 0, pm: 0, tmPm: 0 }; const m = +r.minutes || 0; v.min += m; v.gs += gs(r); v.pm += +r.plus_minus || 0; v.tmPm += m / 48 * ((+r.team_score || 0) - (+r.opponent_team_score || 0)) };
     for (const r of PB[y - 1]) if (+r.minutes > 0) addV(r.athlete_id, r);
     /* games of season y in date order */
-    const G = {}; for (const r of TB[y]) { const g = G[r.game_id] = G[r.game_id] || { id: r.game_id, d: r.game_date, t: {} }; g.t[r.home_away] = r }
+    const G = {}; for (const r of TB[y]) { const g = G[r.game_id] = G[r.game_id] || { id: r.game_id, d: r.game_date, t: {} }; g.t[String(r.team_home_away || r.home_away || "").toLowerCase()] = r }
+    if (y === YS[1]) { const r0 = TB[y][0] || {}, p0 = PB[y][0] || {}; DIAG.team = Object.keys(r0).join(","); DIAG.player = Object.keys(p0).join(","); DIAG.sample = [r0.home_away, r0.team_home_away, r0.team_score, r0.game_date, r0.season_type].join("|") }
     const PG = {}; for (const r of PB[y]) (PG[r.game_id] = PG[r.game_id] || []).push(r);
     const lastTeam = {}; for (const r of PB[y].slice().sort((a, b) => a.game_date.localeCompare(b.game_date))) if (+r.minutes > 0) (lastTeam[r.athlete_id] = lastTeam[r.athlete_id] || []).push([r.game_date, r.team_abbreviation]);
     const stillOn = (id, tm, d) => { const L = lastTeam[id] || []; const next = L.find(x => x[0] > d); return next ? next[1] === tm : (L.length ? L[L.length - 1][1] === tm : false) };
@@ -60,5 +62,6 @@ export async function run({ log = console.log }) {
   for (const [k, idx] of Object.entries(SETS)) { const X = r => [1, r.base / 10, ...idx.map(i => r.f[i])]; const P = fitPick(train.map(r => [X(r), r.won, r.m]));
     res[k] = { w: P.w.map(v => +v.toFixed(3)), mw: P.mw.map(v => +v.toFixed(2)), ...Object.fromEntries(TEST.map(y => [y, sc(r => [pickP(P, X(r)), pickM(P, X(r))], out.filter(r => r.y === y))])) } }
   const withMiss = out.filter(r => TEST.includes(r.y) && r.nMiss > 0).length;
+  if (!out.length) return { ok: false, error: "no games built", DIAG, RAW };
   return { ok: true, games: out.length, train: train.length, testGamesWithSomeoneOut: withMiss, res, betterEverySeason: Object.keys(SETS).filter(k => k !== "base" && TEST.every(y => res[k][y].ll < res.base[y].ll)) };
 }

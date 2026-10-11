@@ -18,6 +18,9 @@
               plus the coordinators from Wikipedia (job/staff.mjs); a few minutes; also runs with weekly
      nflhistory  the same for every season since 1999
      nfldraft    games started by every player, every season since 2001 (depth charts), and every team's draft classes graded (pack nfl-draft); ~10 min
+     extras   the small college files the game-day build also makes (value per play pYYYY_ppa, Trending's numbers pYYYY_ct) → packs only, a few minutes
+     probe    single-feature checks in a browser (job/probes.mjs; PROBE picks them) → notices on the GitHub run, nothing written
+     look     the look check only (job/look.mjs) on PAGE_PATH → notice on the run
      cdef     the college defense chart (every FBS team's defenders, from the charted plays) → packs only
      dgtest   defender draft-grade test (Lab): refits and blind-scores the grade → pYYYY_dgtest, packs only
      oltest   the OL draft chance: every FBS lineman, refit and graded → pYYYY_oltest + pYYYY_olgrade, packs only (weekly, Wednesday)
@@ -45,14 +48,14 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["look", "probe", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest"];
+const MODES = ["look", "probe", "extras", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
-const PACKS_ONLY = ["coaches", "cdef", "dgtest", "oltest"];   // these write packs only; the shared data version is unchanged
+const PACKS_ONLY = ["extras", "coaches", "cdef", "dgtest", "oltest"];   // these write packs only; the shared data version is unchanged
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { probe: 40, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, nfl: 30, nflhistory: 120, nfldraft: 60 }[MODE];
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { probe: 40, extras: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, nfl: 30, nflhistory: 120, nfldraft: 60 }[MODE];
 const PAGE = ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 const started = Date.now();
 

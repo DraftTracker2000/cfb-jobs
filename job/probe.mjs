@@ -24,6 +24,9 @@ export async function runProbes({ browser, site, token, only = "", log = console
         try { localStorage.setItem("cfbTok", t) } catch (e) { }
         const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return /^cfbTour|^cfbPT_|^cfbH2hHint/.test(k) ? "1" : g.call(this, k) };
       }, token);
+      /* who sends the page away: the stack at beforeunload names the script that asked (Oct 11 hunt) */
+      await ctx.addInitScript(() => { addEventListener("beforeunload", () => console.log("[nav] " + (new Error().stack || "").split("\n").slice(1, 8).join(" | "))) });
+      p.on("console", m => { const t = m.text(); if (t.startsWith("[nav]")) nav.push(t.slice(0, 600)) });
       let r;
       try {
         await p.goto(`${site}${P.page}${P.noro ? "" : "?ro=1"}`, { waitUntil: "domcontentloaded", timeout: 60000 });

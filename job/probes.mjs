@@ -24,4 +24,12 @@ export const PROBES = [
     const de=document.documentElement;return {ok:true,watch:wt,best,ml:ml?ml.innerText.replace(/\s+/g," "):null,pageOverflow:de.scrollWidth>de.clientWidth+1}` },
   { name: "nfl-ml", page: "/lab/", widths: [390], run: `tab="LEGACY";LEG_VIEW="h2h";render();for(let i=0;i<40&&!document.querySelector(".h2hg");i++)await w(500);await w(1500);
     const g=document.querySelector(".h2hg [data-hv],.h2hg [data-nhv],.h2hg button");if(g){g.click();await w(2000)}const ml=document.querySelector(".lnx .lnt:nth-child(3)");return {ok:true,ml:ml?ml.innerText.replace(/\s+/g," "):null}` },
+  { name: "diag", page: "/lab/", widths: [390], run: `const H={headers:{Authorization:"Bearer "+TOKEN}};const ix=(await (await fetch("/api/pack-index",H)).json()).packs;
+    const pick=k=>ix[k]?{sha:ix[k].sha,at:new Date(ix[k].at).toISOString(),kb:Math.round(ix[k].bytes/1024)}:null;
+    const ct=await (await fetch("/api/pack/p2026_ct",H)).json();const C=await h2hCal();const now=Date.now();
+    const done=(C.weeks||[]).filter(w=>(w.seasonType||"regular")==="regular"&&new Date(w.endDate||w.lastGameStart).getTime()-22*36e5<now);
+    let pp=null;try{pp=await ppaYear(2026)}catch(e){pp="ERR "+e.message}
+    const H2=await h2hLoad();const g=(H2&&H2.games)||[];
+    return {ok:true,HAS_CLOUD,BUILDER,ct:pick("p2026_ct"),ctW:ct&&ct.ct&&ct.ct.W,clientW:done.length?done[done.length-1].week:null,ppa:pick("p2026_ppa"),ppaN:pp&&pp.d?Object.keys(pp.d).length:pp,
+     has5079712:!!(pp&&pp.d&&pp.d["5079712"]),h2hWeek:H2&&H2.week,games:g.length,done:g.filter(x=>x.done).length,withML:g.filter(x=>x.hml!=null).length,withEx:g.filter(x=>x.ex!=null).length}` },
 ];

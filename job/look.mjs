@@ -21,6 +21,10 @@ export async function lookCheck({ browser, site, token, page = "/", log = consol
     try {
       const t0 = Date.now();
       await p.goto(`${site}${page}?ro=1`, { waitUntil: "domcontentloaded", timeout: 60000 });
+      /* Oct 11: a first visit lands on the sign-in page, which sets the cookie and goes to the front page — so a look at /lab/ was
+         really looking at the live page. Go again until we're on the page asked for. */
+      for (let k = 0; k < 3 && new URL(p.url()).pathname !== page; k++) { await p.waitForTimeout(2500); await p.goto(`${site}${page}?ro=1`, { waitUntil: "domcontentloaded", timeout: 60000 }) }
+      if (new URL(p.url()).pathname !== page) throw new Error(`asked for ${page}, landed on ${p.url()}`);
       /* Oct 11: every look since Oct 9 timed out here with nothing saying why — say what the page was showing */
       try { await p.waitForSelector(".tabs button", { timeout: 60000 }) } catch (e) {
         const seen = await p.evaluate(() => ({ url: location.href, title: document.title, tabs: document.querySelectorAll(".tabs button").length, body: (document.body ? document.body.innerText : "").replace(/\s+/g, " ").slice(0, 200) })).catch(() => null);

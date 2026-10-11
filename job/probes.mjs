@@ -37,4 +37,8 @@ export const PROBES = [
   { name: "wiki", page: "/", widths: [390], run: `const o={ok:true};for(const t of ["2024 Ohio State Buckeyes football team","2019 Boise State Broncos football team","2023 Kansas City Chiefs season","2012 Ohio State Buckeyes football team"]){
      try{const j=await (await fetch("https://en.wikipedia.org/w/api.php?action=parse&prop=wikitext&section=0&format=json&origin=*&page="+encodeURIComponent(t))).json();const x=(j.parse&&j.parse.wikitext&&j.parse.wikitext["*"])||"";
       o[t]=x.split("\\n").filter(l=>/^\\s*\\|\\s*(head_coach|hc|off_|def_|oc|dc|coach|coordinator|offensive|defensive|sp_)/i.test(l)).join(" ¦ ").slice(0,600)}catch(e){o[t]="ERR "+e.message}}return o` },
+  /* where each conference posts its availability reports: links on its football pages that mention availability */
+  { name: "avail-find", node: `const UA={headers:{"user-agent":"Mozilla/5.0 (mycfbbigboard.com data job)"}};const o={ok:true};
+    for(const u of ["https://www.secsports.com/","https://www.secsports.com/sport/football","https://theacc.com/sports/football","https://bigten.org/fb/","https://big12sports.com/sports/football","https://sunbeltsports.org/sports/football","https://themw.com/sports/football","https://www.secsports.com/availability-report","https://theacc.com/availability","https://bigten.org/availability/"]){
+     try{const r=await fetch(u,UA);const t=await r.text();const L=[...new Set([...t.matchAll(/href="([^"]*availab[^"]*)"/gi)].map(m=>m[1]))].slice(0,8);o[u]=r.status+" "+t.length+"B "+JSON.stringify(L)}catch(e){o[u]="ERR "+e.message}}return o` },
 ];

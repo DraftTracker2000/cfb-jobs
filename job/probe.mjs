@@ -8,10 +8,14 @@ export async function runProbes({ browser, site, token, only = "", log = console
   const out = [];
   const want = String(only || "").split(",").map(s => s.trim()).filter(Boolean);
   for (const P of PROBES.filter(p => !want.length || want.some(w => p.name.startsWith(w)))) {
+    /* a probe with `node` runs in the job itself (no browser): plain fetches of public pages, e.g. to find where a source posts */
+    if (P.node) { let r; try { r = await (new Function("fetch", `return (async () => { ${P.node} })()`))(fetch) } catch (e) { r = { ok: false, error: String(e.message || e).slice(0, 300) } }
+      out.push({ name: P.name, ...r }); log(`::${r && r.ok === false ? "warning" : "notice"} title=probe ${P.name}::${JSON.stringify(r).replace(/[\r\n]+/g, " ").slice(0, 3500)}`); continue }
     for (const W of P.widths || [390, 1280]) {
       const ctx = await browser.newContext({ viewport: { width: W, height: W < 800 ? 844 : 900 }, isMobile: W < 800, hasTouch: W < 800 });
       const p = await ctx.newPage(); const errs = [];
       p.on("pageerror", e => errs.push(e.message));
+      const nav = []; p.on("framenavigated", f => { if (f === p.mainFrame()) nav.push(f.url().replace(site, "")) }); p.on("response", r => { if (r.request().isNavigationRequest() && r.status() >= 300) nav.push(r.status() + " " + r.url().replace(site, "")) });
       /* the page cookie the sign-in page would trade the token for, so the first visit lands on the page asked for (Oct 11) */
       await ctx.addCookies([{ name: "cfbs", value: token, url: site }]);
       await ctx.addInitScript(t => {
@@ -32,6 +36,7 @@ export async function runProbes({ browser, site, token, only = "", log = console
         if (r == null || typeof r !== "object") r = { ok: true, v: r };
       } catch (e) { r = { ok: false, error: String(e.message || e).slice(0, 300) } }
       if (errs.length) { r.scriptErrors = [...new Set(errs)].slice(0, 3).map(s => s.slice(0, 160)); r.ok = false }
+      if (new URL(p.url()).pathname !== P.page || r.ok === false) r.nav = nav.slice(0, 8);
       out.push({ name: P.name, W, ...r });
       log(`::${r.ok === false ? "warning" : "notice"} title=probe ${P.name} ${W}px::${JSON.stringify(r).replace(/[\r\n]+/g, " ").slice(0, 3500)}`);
       await ctx.close();

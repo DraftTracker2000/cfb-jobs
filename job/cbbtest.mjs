@@ -63,7 +63,7 @@ export async function run({ site, token, log = console.log }) {
       const luck = t => { const o = lk[t]; return o && o.n >= 3 ? [o.d / o.n, o.o / o.n] : [0, 0] };
       const [dh, oh] = luck(h), [da, oa] = luck(a);
       rows.push({ y, gid, x, won: hs > as ? 1 : 0, m: hs - as, ln: (GH.lines[y] || {})[gid] || null,
-        f: { hca: [home * ((hh ?? hcaMean) - hcaMean) / 3], rest: [(rh - ra) / 3, (rh === 1 ? 1 : 0) - (ra === 1 ? 1 : 0)], alt: [home && altH && !altA ? 1 : 0], tz: [home && th != null && ta != null ? Math.abs(th - ta) / 2 : 0], luck: [(dh - da) / 5, (oh - oa) / 5] } });
+        f: { hca: [home * ((hh ?? hcaMean) - hcaMean) / 3], rest: [(rh - ra) / 3, (rh === 1 ? 1 : 0) - (ra === 1 ? 1 : 0)], b2b: [(rh === 1 ? 1 : 0) - (ra === 1 ? 1 : 0)], alt: [home && altH && !altA ? 1 : 0], tz: [home && th != null && ta != null ? Math.abs(th - ta) / 2 : 0], luck: [(dh - da) / 5, (oh - oa) / 5] } });
       last[h] = d; last[a] = d;
       const B = (BOX[y] || {})[gid]; if (B) for (const t of [h, a]) { const s = B[t]; if (!s || !s.o3a) continue; const [p3, pf] = LG[y]; const o = lk[t] = lk[t] || { n: 0, d: 0, o: 0 }; o.n++;
         o.d += 3 * (s.o3m - p3 * s.o3a) + ((s.oftm || 0) - pf * (s.ofta || 0)); o.o += 3 * (s.u3m - p3 * s.u3a) + ((s.uftm || 0) - pf * (s.ufta || 0)) }
@@ -74,7 +74,7 @@ export async function run({ site, token, log = console.log }) {
       ll -= r.won * Math.log(p) + (1 - r.won) * Math.log(1 - p); br += (p - r.won) ** 2; right += (p >= .5) === (r.won === 1) ? 1 : 0; mae += Math.abs(mg - r.m);
       if (r.ln && r.ln[0] != null && r.ln[0] !== 0) { const our = -mg; if (Math.abs(our - r.ln[0]) >= 3) { const c = homeCover(r.m, 0, r.ln[0]); if (c !== .5) { atsN++; ats += our < r.ln[0] ? c : 1 - c } } } }
     const n = R.length; return { ll: +(ll / n).toFixed(4), br: +(br / n).toFixed(4), right: +(right / n).toFixed(4), mae: +(mae / n).toFixed(2), ats: atsN ? `${(100 * ats / atsN).toFixed(1)}% of ${atsN}` : "—" } };
-  const SETS = { base: [], hca: ["hca"], rest: ["rest"], alt: ["alt"], tz: ["tz"], luck: ["luck"], all: ["hca", "rest", "alt", "tz", "luck"] };
+  const SETS = { base: [], hca: ["hca"], rest: ["rest"], alt: ["alt"], tz: ["tz"], luck: ["luck"], all: ["hca", "rest", "alt", "tz", "luck"], keep: ["hca", "rest", "luck"], keepNoRest: ["hca", "luck"], b2b: ["hca", "luck", "b2b"] };
   const out = {};
   for (const [name, keys] of Object.entries(SETS)) { const X = r => [...r.x, ...keys.flatMap(k => r.f[k])]; const P = fitPick(train.map(r => [X(r), r.won, r.m]));
     out[name] = { w: P.w.slice(5).map(v => +v.toFixed(3)), mw: P.mw.slice(5).map(v => +v.toFixed(2)), ...Object.fromEntries(TEST.map(y => [y, score(P, rows.filter(r => r.y === y), X)])) } }

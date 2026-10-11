@@ -50,4 +50,9 @@ export const PROBES = [
     for(const u of ["https://theacc.com/sports/2025/8/28/availability-reporting-football.aspx","https://big12sports.com/sports/2025/8/21/availability-reporting.aspx","https://theamerican.org/sports/2025/8/5/fbavail.aspx","https://conferenceusa.com/sports/2025/8/23/FB_0823254134.aspx","https://pac-12.com/news/2026/9/11/2026-football-reports.aspx"]){
      try{const r=await fetch(u,UA);const t=await r.text();const links=[...new Set([...t.matchAll(/href="([^"]+)"/gi)].map(m=>m[1]).filter(h=>/avail|report|\.pdf|injur/i.test(h)))].slice(0,12);
       const i=t.search(/Questionable|Doubtful|Out for/i);o[u]=r.status+" "+t.length+"B links="+JSON.stringify(links)+" sample="+(i>=0?JSON.stringify(t.slice(Math.max(0,i-300),i+200).replace(/\\s+/g," ")):"none")}catch(e){o[u]="ERR "+e.message}}return o` },
+  { name: "wiki-batch", page: "/", widths: [390], run: `const T=["2024 Ohio State Buckeyes football team","2023 Miami Hurricanes football team","2023 Miami RedHawks football team","2022 Texas A&M Aggies football team","2021 Washington Football Team season","2015 St. Louis Rams season","2099 Nowhere football team"];
+    const u="https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&rvsection=0&redirects=1&format=json&formatversion=2&origin=*&titles="+encodeURIComponent(T.join("|"));
+    const j=await (await fetch(u)).json();return {ok:true,err:j.error&&j.error.info,warn:JSON.stringify(j.warnings||"").slice(0,200),norm:j.query&&j.query.normalized,redir:j.query&&j.query.redirects,
+     pages:(j.query&&j.query.pages||[]).map(p=>p.title+": "+(p.missing?"MISSING":((p.revisions&&p.revisions[0].slots.main.content)||"").length+"ch "+(((p.revisions&&p.revisions[0].slots.main.content)||"").match(/\\|\\s*off_coach\\s*=([^\\n]*)/)||[])[1]))}` },
+  { name: "where-late", page: "/lab/", widths: [390], settle: 9000, run: `return {ok:location.pathname==="/lab/",url:location.href}` },
 ];

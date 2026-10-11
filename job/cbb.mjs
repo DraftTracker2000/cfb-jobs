@@ -559,6 +559,7 @@ export async function main() {
   const msg = `Basketball · ${board.length} players · ${Object.keys(teams).length} teams · test AUC ${test.aucDrafted}/${test.aucR1}/${test.aucLottery} · ${CALLS} CBBD calls${LEFT != null ? ` (${LEFT.toLocaleString()} left)` : ""} · ${mins} min`;
   log(msg);
   console.log(`::notice title=cbb run::${String(msg).replace(/[\r\n]+/g, " ").slice(0, 3000)}`);
+  if (GM && GM.test) console.log(`::notice title=cbb pick::${JSON.stringify(GM.test.seasons.map(t => ({ s: t.season, right: t.pickRight, brier: t.brier, miss: t.marginMiss, ats: t.atsWin, n: t.atsDisagree3 })))}`);
   await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, detail: { test, calls: CALLS }, started } }).catch(e => log("report failed: " + e.message));
 }
 

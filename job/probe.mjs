@@ -17,6 +17,7 @@ export async function runProbes({ browser, site, token, only = "", log = console
       p.on("pageerror", e => errs.push(e.message));
       const nav = []; p.on("framenavigated", f => { if (f === p.mainFrame()) nav.push(f.url().replace(site, "")) }); p.on("request", q => { if (q.isNavigationRequest() && q.frame() === p.mainFrame()) nav.push("req " + q.url().replace(site, "") + (q.redirectedFrom() ? " from " + q.redirectedFrom().url().replace(site, "") : "") + " ref=" + (q.headers().referer || "").replace(site, "")) });
       p.on("response", r => { if (r.request().isNavigationRequest() && r.frame() === p.mainFrame()) nav.push(r.status() + " " + r.url().replace(site, "") + (r.headers().location ? " → " + r.headers().location : "")) });
+      try { const cdp = await ctx.newCDPSession(p); await cdp.send("Page.enable"); cdp.on("Page.frameRequestedNavigation", e => nav.push(`asked: ${e.reason} ${e.disposition} ${String(e.url).replace(site, "")}`)); cdp.on("Page.frameScheduledNavigation", e => nav.push(`scheduled: ${e.reason} ${String(e.url).replace(site, "")}`)) } catch (e) { }
       /* the page cookie the sign-in page would trade the token for, so the first visit lands on the page asked for (Oct 11) */
       await ctx.addCookies([{ name: "cfbs", value: token, url: site }]);
       await ctx.addInitScript(t => {

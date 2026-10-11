@@ -64,4 +64,7 @@ export const PROBES = [
       for(const sc of S.filter(x=>/\\.js/.test(x)).slice(0,2)){try{const js=await (await fetch(new URL(sc,u).href,UA)).text();R[sc]=js.length+"B "+JSON.stringify([...new Set([...js.matchAll(/(https?:\\/\\/[^"'\\s\`]+)/g)].map(m=>m[1]))].slice(0,10))+" fetch="+JSON.stringify((js.match(/fetch\\([^)]{0,160}/g)||[]).slice(0,4))}catch(e){R[sc]="ERR "+e.message}}
       const k=t.search(/status-Out|class="status|data-status/);if(k>=0)R.sample=t.slice(Math.max(0,k-400),k+300).replace(/\\s+/g," ");
       o[u]=R}catch(e){o[u]="ERR "+e.message}}return o` },
+  { name: "nfllive", node: `const H={headers:{Authorization:"Bearer "+TOKEN}};const o={ok:true,now:new Date().toISOString()};
+    for(const u of ["/api/nfllive","/api/nfllive?box=1"]){try{const r=await fetch(SITE+u,H);const t=await r.text();let j=null;try{j=JSON.parse(t)}catch(e){}
+     o[u]=r.status+" "+t.length+"B "+(j?(u.includes("box")?"players="+Object.keys(j.p||{}).length+" defs="+Object.keys(j.d||{}).length+" keys="+Object.keys(j).join(","):"games="+Object.keys(j.by||{}).length+" "+JSON.stringify(Object.entries(j.by||{}).slice(0,4).map(([k,x])=>k+" "+x.st+" "+(x.detail||"")+" "+x.as+"-"+x.hs))+" t="+(j.t?new Date(j.t).toISOString():"")):t.slice(0,200))}catch(e){o[u]="ERR "+e.message}}return o` },
 ];

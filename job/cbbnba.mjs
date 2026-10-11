@@ -67,10 +67,10 @@ export async function buildNba({ getPack, putPack, log, full, curNba, live, sidT
    The same open sportsdataverse / hoopR release files: this season's schedule with scores (espn_nba_schedules), last season's team
    box scores (espn_nba_team_boxscores) for each team's ratings, and current rosters (espn_nba_rosters) — joined to the college players
    by ESPN id. Pack p{S}_cbb-nbagames: { season, teams: { ABBR: {...} }, games: [[id, date, home, away, hs, as, state, tv]], cols }. */
-const REL = (rel, f) => `https://github.com/sportsdataverse/sportsdataverse-data/releases/download/${rel}/${f}`;
-async function getCsv(url) { for (let k = 0; k < 3; k++) { try { const r = await fetch(url, { redirect: "follow" }); if (r.status === 404) return null; if (r.ok) return await r.text() } catch { } await sleep(2000) } return null }
+export const REL = (rel, f) => `https://github.com/sportsdataverse/sportsdataverse-data/releases/download/${rel}/${f}`;
+export async function getCsv(url) { for (let k = 0; k < 3; k++) { try { const r = await fetch(url, { redirect: "follow" }); if (r.status === 404) return null; if (r.ok) return await r.text() } catch { } await sleep(2000) } return null }
 /* a whole CSV file (quoted fields may hold commas and line breaks) → objects */
-function rowsOf(text) { const rows = []; let row = [], cur = "", q = false;
+export function rowsOf(text) { const rows = []; let row = [], cur = "", q = false;
   for (let i = 0; i < text.length; i++) { const c = text[i]; if (q) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++ } else q = false } else cur += c }
     else if (c === '"') q = true; else if (c === ",") { row.push(cur); cur = "" } else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cur); cur = ""; if (row.length > 1 || row[0]) rows.push(row); row = [] } else cur += c }
   if (cur || row.length) { row.push(cur); rows.push(row) }

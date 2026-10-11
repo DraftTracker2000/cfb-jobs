@@ -12,4 +12,16 @@ export const PROBES = [
     for(const [k,p] of [["ppa","/ppa/players/season?year=2026&team=Ohio%20State"],["portal","/player/portal?year=2026"],["srs","/ratings/srs?year=2026"],["spconf","/ratings/sp/conferences?year=2026"],["lines","/lines?year=2026&week=6&team=Georgia"],["games","/games?year=2026&week=6&team=Georgia"],["gadv","/stats/game/advanced?year=2026&week=6&team=Georgia"],["sadv","/stats/season/advanced?year=2026&team=Georgia"]])
      try{o[k]=sh(await api(p))}catch(e){o[k]="ERR "+e.message}
     return o` },
+  /* Value per Play on college profiles: a QB, a RB, a WR, a TE */
+  { name: "ppa-profiles", page: "/lab/", run: `const o={ok:true};for(const id of ["5079712","5164332","5079720","5138451"]){await profile(id);for(let i=0;i<30&&document.querySelector("#ppa.sub");i++)await w(400);
+     const el=document.getElementById("ppa");o[id]=el?[...el.querySelectorAll(".ptile")].map(t=>t.innerText.replace(/\s+/g," ")).join(" | "):"(no section)";
+     const md=document.getElementById("md");if(md&&md.scrollWidth>md.clientWidth+2)o[id]+=" OVERFLOW";}
+    o.ok=Object.values(o).filter(v=>typeof v==="string").some(v=>/pct|plays/.test(v));return o` },
+  /* Head to Head: worth watching, last week's best, moneyline tile in an open card */
+  { name: "h2h-new", page: "/lab/", run: `tab="COACH";CO_VIEW="h2h";render();for(let i=0;i<40&&!document.querySelector(".h2hg");i++)await w(500);await w(2500);
+    const wt=[...document.querySelectorAll(".h2hw")].map(b=>b.innerText.replace(/\s+/g," "));const best=[...document.querySelectorAll(".h2hbr")].map(b=>b.innerText.replace(/\s+/g," "));
+    const g=document.querySelector(".h2hg [data-hv]");if(g){g.click();await w(2500)}const ml=document.querySelector(".lnx .lnt:nth-child(3)");
+    const de=document.documentElement;return {ok:true,watch:wt,best,ml:ml?ml.innerText.replace(/\s+/g," "):null,pageOverflow:de.scrollWidth>de.clientWidth+1}` },
+  { name: "nfl-ml", page: "/lab/", widths: [390], run: `tab="LEGACY";LEG_VIEW="h2h";render();for(let i=0;i<40&&!document.querySelector(".h2hg");i++)await w(500);await w(1500);
+    const g=document.querySelector(".h2hg [data-hv],.h2hg [data-nhv],.h2hg button");if(g){g.click();await w(2000)}const ml=document.querySelector(".lnx .lnt:nth-child(3)");return {ok:true,ml:ml?ml.innerText.replace(/\s+/g," "):null}` },
 ];

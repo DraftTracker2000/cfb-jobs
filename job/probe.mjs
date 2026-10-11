@@ -9,6 +9,11 @@ export async function runProbes({ browser, site, token, only = "", log = console
   const want = String(only || "").split(",").map(s => s.trim()).filter(Boolean);
   for (const P of PROBES.filter(p => !want.length || want.some(w => p.name.startsWith(w)))) {
     /* a probe with `node` runs in the job itself (no browser): plain fetches of public pages, e.g. to find where a source posts */
+    /* a probe with `url` opens an outside page in the browser and lists the data it loads (to find where a page gets its numbers) */
+    if (P.url) { const ctx = await browser.newContext({ userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36 mycfbbigboard-data-job" }); const p = await ctx.newPage(); const got = [];
+      p.on("response", async r => { const u = r.url(), ct = r.headers()["content-type"] || ""; if (/json|javascript/.test(ct) && !/google|facebook|doubleclick|onetrust|cookielaw|rlcdn|adsrvr|chartbeat|newrelic|sentry|twitter|tiktok|adobe|demdex|scorecard|segment/i.test(u)) { let head = ""; try { if (/json/.test(ct)) head = (await r.text()).slice(0, 300) } catch (e) { } got.push(r.status() + " " + u.slice(0, 220) + (head ? " :: " + head.replace(/\s+/g, " ") : "")) } });
+      let r; try { await p.goto(P.url, { waitUntil: "domcontentloaded", timeout: 60000 }); await p.waitForTimeout(P.settle || 9000); r = { ok: true, title: await p.title(), data: got.slice(0, 25) } } catch (e) { r = { ok: false, error: String(e.message || e).slice(0, 300), data: got.slice(0, 10) } }
+      out.push({ name: P.name, ...r }); log(`::notice title=probe ${P.name}::${JSON.stringify(r).replace(/[\r\n]+/g, " ").slice(0, 6000)}`); await ctx.close(); continue }
     if (P.node) { let r; try { r = await (new Function("fetch", "SITE", "TOKEN", `return (async () => { ${P.node} })()`))(fetch, site, token) } catch (e) { r = { ok: false, error: String(e.message || e).slice(0, 300) } }
       out.push({ name: P.name, ...r }); log(`::${r && r.ok === false ? "warning" : "notice"} title=probe ${P.name}::${JSON.stringify(r).replace(/[\r\n]+/g, " ").slice(0, 3500)}`); continue }
     for (const W of P.widths || [390, 1280]) {

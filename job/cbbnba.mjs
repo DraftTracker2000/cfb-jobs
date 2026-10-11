@@ -85,8 +85,12 @@ export function nbaTeamRatings(box, minG = 20) {
   for (const X of Object.values(T)) { const p = X.poss || 1; X.l = X.g - X.w; X.ortg = r1(100 * X.pf / p); X.drtg = r1(100 * X.pa / p); X.net = r1(X.ortg - X.drtg); X.pace = r1(p / Math.max(1, X.g)); X.tpr = r1(100 * X.tpa / Math.max(1, X.fga)); X.paint = r1(X.paint / Math.max(1, X.g)); X.fb = r1(X.fb / Math.max(1, X.g)); X.tovp = r1(100 * X.tov / p); delete X.poss; delete X.fga; delete X.tpa; delete X.tov; X.pf = r1(X.pf / Math.max(1, X.g)); X.pa = r1(X.pa / Math.max(1, X.g)) }
   return T;
 }
-/* our pick: the gap in last season's net rating (points per 100) plus 2.5 for home court, as a margin; the chance from a normal curve with a 12-point spread */
-export function nbaPick(H, A, neutral) { const m = (H.net || 0) - (A.net || 0) + (neutral ? 0 : 2.5); const z = m / 12; const t = 1 / (1 + .2316419 * Math.abs(z)), d = .3989423 * Math.exp(-z * z / 2), p = d * t * (.3193815 + t * (-.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return { m: Math.round(10 * m) / 10, p: Math.round(1000 * (z > 0 ? 1 - p : p)) / 1000 } }
+/* our pick (Oct 11, refit — job/nbatest.mjs): the gap in net rating (points per 100; last season blended with this one) → a logistic
+   fit on 2022–23 games, scored blind on 2024–26; the page then takes off for rotation players listed out (see NBA_OUT on the page):
+   P(home) = σ(0.259 + 0.985 × gap/10 − 0.28 × (home minutes out − away minutes out) / 48), margin = 1.92 + 7.12 × gap/10 − 2.57 × (…)/48.
+   Neutral floors drop the home terms (0.259 and 1.92). */
+export function nbaPick(H, A, neutral) { const g = ((H.net || 0) - (A.net || 0)) / 10, z = (neutral ? 0 : 0.259) + 0.985 * g, m = (neutral ? 0 : 1.92) + 7.12 * g;
+  return { m: Math.round(10 * m) / 10, p: Math.round(1000 / (1 + Math.exp(-z))) / 1000 } }
 /* ---- NBA play-by-play: shot zones, close games and the season series (Oct 10 — Sam: "you have still given me no H2H NBA side") ----
    espn_nba_pbp/play_by_play_{y}.csv (~280 MB a season), read as a stream. coordinate_x_raw runs 0–50 across the court, the hoop at
    (25, 0); coordinate_y_raw is feet from the hoop toward half court (dunks sit at y≈1, corner threes at y −4…7). Checked against a
@@ -155,6 +159,11 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players 
   const byE = {}; for (const [eid, X] of Object.entries(players || {})) byE[eid] = X;
   /* last season's line for everyone (college or not) from the box-score cache */
   const NH = getPack ? await getPack("p2000_cbb-nbahist").catch(() => null) : null, lastS = (NH && NH.seasons && NH.seasons[curNba - 1]) || {};
+  /* each team's rotation for the "who's out" adjustment: players on the current roster with 12+ minutes a game (this season once he
+     has 3 games, otherwise last season's with 10+) — [espnId, name, minutes a game] */
+  const curS = (NH && NH.seasons && NH.seasons[curNba]) || {};
+  if (ros) for (const r of rowsOf(ros)) { const X = T[r.team_abbreviation]; if (!X) continue; const c = curS[r.athlete_id], l = lastS[r.athlete_id];
+    const mpg = c && c[2] >= 3 ? c[4] / c[2] : l && l[2] >= 10 ? l[4] / l[2] : 0; if (mpg >= 12) (X.rot = X.rot || []).push([String(r.athlete_id), r.display_name, Math.round(10 * mpg) / 10]) }
   if (ros) for (const r of rowsOf(ros)) { const X = T[r.team_abbreviation]; if (!X) continue; const P = byE[r.athlete_id], ls = lastS[r.athlete_id];
     (X.ros = X.ros || []).push([r.athlete_id, r.display_name, r.position_abbreviation, r.height, +r.experience_years || 0, P ? P.cid : null, ls && ls[2] ? Math.round(10 * ls[5] / ls[2]) / 10 : null, P ? P.tag.t : null, ls ? ls[2] : 0]) }
   const games = []; for (const g of rowsOf(sched)) { const st = +g.season_type; if (st !== 2 && st !== 3) continue; const h = g.home_abbreviation, a = g.away_abbreviation; if (!T[h] || !T[a]) continue;

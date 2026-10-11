@@ -71,4 +71,8 @@ export const PROBES = [
   { name: "avail-json", node: `const o={ok:true};const base="https://sbcautostorage.blob.core.windows.net/availability-reports/";
     for(const c of ["pac12","acc","big12","sec","bigten","b1g","american","aac","cusa","sunbelt","mw","mwc","mountainwest","mac"]){const u=base+c+"-football/prod/report.json";
      try{const r=await fetch(u+"?ts="+Date.now());const t=await r.text();o[c]=r.status+" "+t.length+"B "+(r.ok?t.slice(0,500):"")}catch(e){o[c]="ERR "+e.message}}return o` },
+  { name: "net-acc", url: "https://theacc.com/sports/2025/8/28/availability-reporting-football.aspx" },
+  { name: "net-big12", url: "https://big12sports.com/sports/2025/8/14/FBreporting.aspx" },
+  { name: "net-sec", url: "https://www.secsports.com/availability-report" },
+  { name: "net-b1g", url: "https://bigten.org/sports/football/availability-report" },
 ];

@@ -6,4 +6,5 @@ export const PROBES = [
     tab="CTREND";render();for(let i=0;i<40&&!CT_DATA;i++)await w(500);await w(1500);
     const L=R(),ct=L.filter(u=>/\\/api\\/pack\\/p\\d{4}_ct/.test(u)).length,live=L.filter(u=>/stats\\/player\\/season/.test(u)).length;
     return {ok:!!CT_DATA&&!CT_DATA.none&&ct>0&&live===0,week:CT_DATA&&CT_DATA.W,packReads:ct,liveCalls:live,cards:document.querySelectorAll("#empty .pcard").length}` },
+  { name: "calendar", page: "/lab/", widths: [390], run: `const C=await h2hCal();return {ok:true,now:new Date().toISOString(),cur:C.cur&&C.cur.week,weeks:H2H_CAL.slice(0,12).map(w=>[w.week,w.seasonType,w.startDate,w.endDate,w.lastGameStart].join(" "))}` },
 ];

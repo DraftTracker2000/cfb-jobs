@@ -20,7 +20,7 @@ const TZN = { ET: 0, CT: 1, MT: 2, PT: 3, AK: 4, HI: 5 };
 const tzOf = st => { for (const [k, v] of Object.entries(TZ)) if (v.split(" ").includes(st)) return TZN[k]; return null };
 
 export async function run({ site, token, log = console.log }) {
-  configure({ site, token, mode: "cbb" });
+  configure({ site, token: process.env.JOB_TOKEN || token, mode: "cbb" });   /* the job token (the page session token can't open a job session) */
   const GH = await getPack("p2000_cbb-ghist"), HI = await getPack("p2000_cbb-hist");
   if (!GH || !HI) return { ok: false, error: "history packs missing" };
   const adj = HI.adj; const S = 2026;

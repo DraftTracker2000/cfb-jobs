@@ -262,12 +262,19 @@ export async function main() {
   const firstSeason = {}; for (const [y, rows] of Object.entries(ALL)) for (const r of rows) firstSeason[r.id] = Math.min(firstSeason[r.id] || 9999, +y);
   const firstTeam = {}; for (const [y, rows] of Object.entries(ALL)) for (const r of rows) if (+y === firstSeason[r.id]) firstTeam[r.id] = r.tm;
   const recIx = {}; for (const [y, list] of Object.entries(H.rec)) for (const r of list) (recIx[r[0] + "|" + (+y + 1)] = recIx[r[0] + "|" + (+y + 1)] || []).push(r);
+  /* Oct 11: CBBD's recruit rows carry the athlete id — match on it first; the name-and-school match stays as the fallback */
+  const recById = {}; for (const list of Object.values(H.rec)) for (const r of list) if (r[6] != null) recById[String(r[6])] = r;
+  let byId = 0, changed = 0;
   for (const [y, rows] of Object.entries(ALL)) for (const r of rows) {
     if (REC[r.id] !== undefined) continue;
     const fs = Math.min(firstSeason[r.id], H.start[r.id] || 9999);
+    const idHit = recById[String(r.id)];
+    if (idHit && process.env.REC_BY_ID === "1") { const c0 = recIx[normName(r.nm) + "|" + fs] || recIx[normName(r.nm) + "|" + (fs + 1)] || recIx[normName(r.nm) + "|" + (fs - 1)];
+      const nameHit = c0 ? (c0.find(x => x[1] === firstTeam[r.id]) || (c0.length === 1 ? c0[0] : null)) : null; if (nameHit !== idHit) changed++; byId++; REC[r.id] = idHit; continue }
     const c = recIx[normName(r.nm) + "|" + fs] || recIx[normName(r.nm) + "|" + (fs + 1)] || recIx[normName(r.nm) + "|" + (fs - 1)];
     REC[r.id] = c ? (c.find(x => x[1] === firstTeam[r.id]) || (c.length === 1 ? c[0] : null)) : null;
   }
+  log(`recruits: ${byId} matched by athlete id (${changed} differ from the old name match), the rest by name and school`); console.log(`::notice title=cbb recruits::${byId} matched by athlete id, ${changed} differ from the old name match`);
 
   /* every player-season → features */
   const confNet = {}; for (const [y, m] of Object.entries(H.adj)) { const by = {}; for (const [, [n, c]] of Object.entries(m)) (by[c] = by[c] || []).push(n || 0); confNet[y] = Object.fromEntries(Object.entries(by).map(([c, a]) => [c, a.reduce((x, z) => x + z, 0) / a.length])) }
@@ -551,6 +558,7 @@ export async function main() {
   const mins = ((Date.now() - started) / 60e3).toFixed(1);
   const msg = `Basketball · ${board.length} players · ${Object.keys(teams).length} teams · test AUC ${test.aucDrafted}/${test.aucR1}/${test.aucLottery} · ${CALLS} CBBD calls${LEFT != null ? ` (${LEFT.toLocaleString()} left)` : ""} · ${mins} min`;
   log(msg);
+  console.log(`::notice title=cbb run::${String(msg).replace(/[\r\n]+/g, " ").slice(0, 3000)}`);
   await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, detail: { test, calls: CALLS }, started } }).catch(e => log("report failed: " + e.message));
 }
 

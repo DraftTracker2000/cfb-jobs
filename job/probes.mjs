@@ -32,4 +32,5 @@ export const PROBES = [
     const H2=await h2hLoad();const g=(H2&&H2.games)||[];
     return {ok:true,HAS_CLOUD,BUILDER,ct:pick("p2026_ct"),ctW:ct&&ct.ct&&ct.ct.W,clientW:done.length?done[done.length-1].week:null,ppa:pick("p2026_ppa"),ppaN:pp&&pp.d?Object.keys(pp.d).length:pp,
      has5079712:!!(pp&&pp.d&&pp.d["5079712"]),h2hWeek:H2&&H2.week,games:g.length,done:g.filter(x=>x.done).length,withML:g.filter(x=>x.hml!=null).length,withEx:g.filter(x=>x.ex!=null).length}` },
+  { name: "defs", page: "/lab/", widths: [390], run: `const html=document.documentElement.outerHTML;return {ok:true,url:location.href,len:html.length,hasPpaSrc:html.includes("async function ppaYear("),hasMl:html.includes("function mlTile("),types:["ppaYear","ppaHTML","ppaYearLive","mlTile","h2hWatchHTML","colTrendData","h2hCal","profile"].map(k=>k+":"+typeof window[k]).join(" "),ev:(()=>{try{return typeof eval("ppaYear")}catch(e){return "ERR "+e.message}})()}` },
 ];

@@ -10,7 +10,12 @@
      p2000_cbb-ghist  the job's cache of past seasons' results and lines (series and the pick's test)
 
    Our pick: Elo before the game (CBBD's own, game by game) and home court → a logistic fit for the win chance and a straight line for
-   the margin, trained on earlier seasons and tested on the latest complete ones; the test is published with the games. */
+   the margin, trained on earlier seasons and tested on the latest complete ones; the test is published with the games.
+   Oct 11 (Sam: "build out basketbal with everything that works"): three more inputs, each of which lowered the blind log loss in every
+   test season (2024, 2025, 2026 — job/cbbtest.mjs): each team's own home edge, rest (days since the last game, back-to-backs), and
+   shooting luck (season to date: points a game opponents made above the league's 3-point and free-throw percentages, and the same for
+   the team's own shooting). Together: log loss 0.548 → 0.545, 0.521 → 0.519, 0.536 → 0.533; right 72.4 → 73.0%, 73.9 → 74.4%, 73.0 → 73.0%.
+   Altitude and time zones crossed were tried too and didn't help. */
 
 import { buildCoachIds, coachRecords, dedupeCoachSeasons, buildTeamHist, wikiCoaches, trustWiki } from "./cbbcoach.mjs";
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
@@ -49,6 +54,37 @@ export function fitPick(rows) {
 export const pickP = (P, x) => { let z = 0; for (let i = 0; i < x.length; i++) z += P.w[i] * x[i]; return 1 / (1 + Math.exp(-z)) };
 export const pickM = (P, x) => { let z = 0; for (let i = 0; i < x.length; i++) z += P.mw[i] * x[i]; return z };
 
+/* the Oct 11 inputs for every game of a season, walking it in date order: [own home edge, rest gap, back-to-back gap, defense luck gap,
+   offense luck gap] (home − away). list: rows [id, date, home, away, hs, as, neutral, conf, …] (unplayed games have hs null);
+   seasons: every season's rows (for the home edge); box: { gid: { tid: [o3m, o3a, oftm, ofta, u3m, u3a, uftm, ufta] } }; lg: [3P%, FT%] */
+export function extrasFor(y, list, seasons, box, lg) {
+  const hcaC = {}, hcaOf = tid => { if (tid in hcaC) return hcaC[tid]; let hs = 0, hn = 0, as = 0, an = 0;
+    for (let z = y - 3; z < y; z++) for (const r of seasons[z] || []) { if (r[6] || !r[7] || r[4] == null) continue; if (r[2] === tid) { hs += r[4] - r[5]; hn++ } else if (r[3] === tid) { as += r[5] - r[4]; an++ } }
+    if (hn < 10 || an < 10) return hcaC[tid] = null; const n = Math.min(hn, an); return hcaC[tid] = (hs / hn - as / an) / 2 * n / (n + 40) };
+  const L = list.slice().sort((a, b) => String(a[1]).localeCompare(String(b[1]))); const all = []; for (const r of L) for (const t of [r[2], r[3]]) { const h = hcaOf(t); if (h != null) all.push(h) }
+  const hm = all.length ? all.reduce((a, b) => a + b, 0) / all.length : 0, last = {}, lk = {}, out = {}; const [p3, pf] = lg || [.34, .71];
+  for (const r of L) { const [gid, date, h, a, hs, as, neu] = r, d = Date.parse(String(date).slice(0, 10)), home = neu ? 0 : 1;
+    const rest = t => { const l = last[t]; return l == null ? 7 : Math.max(1, Math.min(7, Math.round((d - l) / 864e5))) }, rh = rest(h), ra = rest(a);
+    const luck = t => { const o = lk[t]; return o && o.n >= 3 ? [o.d / o.n, o.o / o.n] : [0, 0] }, [dh, oh] = luck(h), [da, oa] = luck(a), hh = hcaOf(h);
+    out[gid] = [home * ((hh ?? hm) - hm) / 3, (rh - ra) / 3, (rh === 1 ? 1 : 0) - (ra === 1 ? 1 : 0), (dh - da) / 5, (oh - oa) / 5];
+    if (hs == null || as == null) continue; last[h] = d; last[a] = d;
+    const B = box && box[gid]; if (B) for (const t of [h, a]) { const q = B[t]; if (!q || !q[1]) continue; const o = lk[t] = lk[t] || { n: 0, d: 0, o: 0 }; o.n++;
+      o.d += 3 * (q[0] - p3 * q[1]) + ((q[2] || 0) - pf * (q[3] || 0)); o.o += 3 * (q[4] - p3 * q[5]) + ((q[6] || 0) - pf * (q[7] || 0)) } }
+  return out;
+}
+/* team box-score shooting by game (for the luck input), cached in p2000_cbb-shoot; the season in progress is re-read each run */
+async function shootingCache({ cb, getPack, putPack, log, S, full }) {
+  let SH = full ? null : await getPack("p2000_cbb-shoot").catch(() => null); if (!SH || SH.v !== 1) SH = { v: 1, s: {}, lg: {} };
+  let changed = false;
+  for (let y = 2016; y <= S; y++) { if (SH.s[y] && y < S) continue; const B = {};
+    for (const [a, b] of ranges(y, 14)) for (const t of await cb("/games/teams", { season: y, startDateRange: a, endDateRange: b })) { const o = t.opponentStats || {}, u = t.teamStats || {}, f = (x, k) => (x[k] || {});
+      (B[t.gameId] = B[t.gameId] || {})[t.teamId] = [f(o, "threePointFieldGoals").made, f(o, "threePointFieldGoals").attempted, f(o, "freeThrows").made, f(o, "freeThrows").attempted, f(u, "threePointFieldGoals").made, f(u, "threePointFieldGoals").attempted, f(u, "freeThrows").made, f(u, "freeThrows").attempted].map(v => v ?? 0) }
+    let m3 = 0, a3 = 0, mf = 0, af = 0; for (const g of Object.values(B)) for (const q of Object.values(g)) { m3 += q[4]; a3 += q[5]; mf += q[6]; af += q[7] }
+    SH.s[y] = B; SH.lg[y] = a3 && af ? [m3 / a3, mf / af] : [.34, .71]; changed = true }
+  if (changed) await putPack("p2000_cbb-shoot", SH);
+  log(`shooting cache: ${Object.keys(SH.s).length} seasons`); return SH;
+}
+
 export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList, adj }) {
   /* ---- past seasons: results + lines (cached) ---- */
   let GH = full ? null : await getPack("p2000_cbb-ghist").catch(() => null);
@@ -79,12 +115,19 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   /* last season's adjusted net for each team (the early-season prior) */
   const priorNet = (tid, season) => { const a = (adj[season - 1] || {})[tid]; return a ? a[0] : null };
   const xOf = (eh, ea, h, a, home, date, season) => { const ph = priorNet(h, season), pa = priorNet(a, season); return pickX(eh != null && ea != null ? eh - ea : 0, ph != null && pa != null ? ph - pa : 0, home, seasonFrac(date + "T00:00:00Z", season)) };
-  const rowsOf = (list, lines, season) => list.filter(r => r[4] != null && r[5] != null).map(r => ({ x: xOf(r[8], r[9], r[2], r[3], r[6] ? 0 : 1, r[1], season), y: r[4] > r[5] ? 1 : 0, m: r[4] - r[5], ln: lines && lines[r[0]] }));
+  const SH = await shootingCache({ cb, getPack, putPack, log, S, full }).catch(e => { log("shooting cache: " + e.message); return null });
+  const EXc = {}, SEAS = () => ({ ...GH.seasons, [S]: (curRowsAll || []).filter(r => r[4] != null) });
+  const exFor = (season, list) => EXc[season] = EXc[season] || extrasFor(season, list, SEAS(), SH && SH.s[season], SH && SH.lg[Math.min(season, S)]);
+  const rowsOf = (list, lines, season) => { const EX = exFor(season, list); return list.filter(r => r[4] != null && r[5] != null).map(r => ({ x: [...xOf(r[8], r[9], r[2], r[3], r[6] ? 0 : 1, r[1], season), ...(EX[r[0]] || [0, 0, 0, 0, 0])], y: r[4] > r[5] ? 1 : 0, m: r[4] - r[5], ln: lines && lines[r[0]] })) };
   const sY = Object.keys(GH.seasons).map(Number).sort();
   const testYs = [S - 1, S].filter(y => off || y < S);
   const trainRows = sY.filter(y => y >= S - 8 && y < testYs[0]).flatMap(y => rowsOf(GH.seasons[y], null, y));
   const curRows = G.filter(g => g.season === S && g.status === "final").map(g => [g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, g.homeTeamEloStart ?? null, g.awayTeamEloStart ?? null, g.seasonType === "postseason" ? 1 : 0, g.tournament || null]);
+  /* every game of the season in progress (and next season's schedule), played or not, for the Oct 11 inputs */
+  const asRow = g => [g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.status === "final" ? g.homePoints ?? null : null, g.status === "final" ? g.awayPoints ?? null : null, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, g.homeTeamEloStart ?? null, g.awayTeamEloStart ?? null];
+  var curRowsAll = G.filter(g => g.season === S).map(asRow); const nextRowsAll = G.filter(g => g.season !== S).map(asRow);
   const curLines = Object.fromEntries(Object.entries(LINES).filter(([, L]) => L.sp != null).map(([k, L]) => [k, [L.sp, L.ou]]));
+  exFor(S, curRowsAll);   /* the season in progress walks every game, played or not (cached for the rows below) */
   const P0 = fitPick(trainRows.map(r => [r.x, r.y, r.m]));
   const test = { train: `${Math.max(2008, S - 8)}–${testYs[0] - 1}`, seasons: [] };
   for (const y of testYs) {
@@ -135,7 +178,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     REST[g.id] = [g.homeTeamId, g.awayTeamId].map(t => { const l = lastBy[t]; return l != null && d - l < 15 * 864e5 ? Math.round((d - l) / 864e5) : null }); lastBy[g.homeTeamId] = d; lastBy[g.awayTeamId] = d }
   const games = G.filter(g => D1.has(g.homeTeamId) || D1.has(g.awayTeamId)).map(g => {
     const he = g.homeTeamEloStart ?? null, ae = g.awayTeamEloStart ?? null, home = g.neutralSite ? 0 : 1;
-    const x = xOf(he, ae, g.homeTeamId, g.awayTeamId, home, g.startDate.slice(0, 10), g.season);
+    const x = [...xOf(he, ae, g.homeTeamId, g.awayTeamId, home, g.startDate.slice(0, 10), g.season), ...((g.season === S ? exFor(S, curRowsAll) : exFor(g.season, nextRowsAll))[g.id] || [0, 0, 0, 0, 0])];
     const known = (he != null && ae != null) || (priorNet(g.homeTeamId, g.season) != null && priorNet(g.awayTeamId, g.season) != null);
     const PKg = g.season === S && g.status === "final" ? PKx : PK; const p = known ? pickP(PKg, x) : null, m = known ? pickM(PKg, x) : null;
     return { id: g.id, s: g.season, d: g.startDate, tbd: g.startTimeTbd ? 1 : 0, h: g.homeTeamId, a: g.awayTeamId, hs: g.homePoints ?? null, as: g.awayPoints ?? null, st: g.status, n: g.neutralSite ? 1 : 0, c: g.conferenceGame ? 1 : 0,

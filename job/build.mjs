@@ -45,14 +45,14 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["look", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest"];
+const MODES = ["look", "probe", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const PACKS_ONLY = ["coaches", "cdef", "dgtest", "oltest"];   // these write packs only; the shared data version is unchanged
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, nfl: 30, nflhistory: 120, nfldraft: 60 }[MODE];
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { probe: 40, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, nfl: 30, nflhistory: 120, nfldraft: 60 }[MODE];
 const PAGE = ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 const started = Date.now();
 
@@ -113,6 +113,9 @@ async function main() {
   console.log(`[${MODE}] signed in to ${SITE}`);
   CFTOK = sess.token; CF0 = await cfbdLeft(); if (CF0 != null) console.log(`CFBD calls left at the start: ${CF0}`);
 
+  /* MODE=probe: single-feature checks in a browser (job/probe.mjs, job/probes.mjs), results as notices on the run; PROBE picks them */
+  if (MODE === "probe") { const { runProbes } = await import("./probe.mjs"); const browser = await chromium.launch();
+    try { await runProbes({ browser, site: SITE, token: sess.token, only: process.env.PROBE || "" }) } finally { await browser.close() } return }
   /* MODE=look: only the look check (job/look.mjs), on the page set by PAGE_PATH */
   if (MODE === "look") { const browser = await chromium.launch(); const L = await lookCheck({ browser, site: SITE, token: sess.token, page: PAGE }); await browser.close();
     await api("POST", "/api/job/report", { body: { kind: "look", ok: L.ok, message: lookMsg(L), detail: L } });

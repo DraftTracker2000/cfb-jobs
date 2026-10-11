@@ -10,12 +10,16 @@ on:
         description: "live · catchup · weekly · look · qb · views · avail · coaches · cdef · nfl · nflhistory · nfldraft · history · full"
         default: live
         type: choice
-        options: [live, look, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, nfl, nflhistory, nfldraft, history, full]
+        options: [live, look, probe, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, nfl, nflhistory, nfldraft, history, full]
       page:
         description: "Which version of the site runs the build: / (live) or /lab/"
         default: "/"
         type: choice
         options: ["/", "/lab/"]
+      probe:
+        description: "MODE=probe only: which probes (names from job/probes.mjs, comma-separated; empty = all)"
+        default: ""
+        type: string
 
 # read-only: the job only reads public data and talks to the site with its token
 permissions:
@@ -77,4 +81,5 @@ jobs:
           MODE: ${{ steps.mode.outputs.mode }}
           CATCHUP: ${{ steps.mode.outputs.catchup }}
           PAGE_PATH: ${{ github.event.inputs.page || '/' }}
+          PROBE: ${{ github.event.inputs.probe || '' }}
         run: node job/build.mjs

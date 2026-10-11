@@ -189,6 +189,7 @@ async function main() {
     await api("PUT", "/api/pack-index", { body: index });
     const mb = Object.values(index).reduce((a, x) => a + x.bytes, 0) / 1048576;
     console.log(`detail packs: ${B.packNames.length} uploaded (${mb.toFixed(1)} MB)`);
+    console.log(`::notice title=packs::${Object.entries(index).map(([n, x]) => `${n} ${Math.round(x.bytes / 1024)} KB`).join(", ").slice(0, 3000)}`);
   }
   await browser.close();
 

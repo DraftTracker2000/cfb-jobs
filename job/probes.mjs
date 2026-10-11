@@ -43,4 +43,6 @@ export const PROBES = [
      try{const r=await fetch(u,UA);const t=await r.text();const L=[...new Set([...t.matchAll(/href="([^"]*availab[^"]*)"/gi)].map(m=>m[1]))].slice(0,8);o[u]=r.status+" "+t.length+"B "+JSON.stringify(L)}catch(e){o[u]="ERR "+e.message}}return o` },
   { name: "serve", node: `const o={ok:true};for(const [k,h] of [["cookie",{cookie:"cfbs="+TOKEN}],["none",{}]])for(const path of ["/lab/?ro=1","/lab/","/"]){const r=await fetch(SITE+path,{headers:{...h,"user-agent":"Mozilla/5.0 probe"},redirect:"manual"});const t=await r.text();
     o[k+" "+path]=r.status+" loc="+(r.headers.get("location")||"")+" len="+t.length+" title="+((t.match(/<title>([^<]*)/)||[])[1]||"")+" ppa="+t.includes("async function ppaYear(")+" robots="+t.includes("noindex")}return o` },
+  { name: "where", page: "/lab/", widths: [390], noro: true, run: `return {ok:true,url:location.href,ppa:typeof ppaYear}` },
+  { name: "where-ro", page: "/lab/", widths: [390], settle: 500, run: `const t0=performance.now();return {ok:true,url:location.href,ppa:typeof ppaYear,nav:performance.getEntriesByType("navigation").map(e=>e.name+" "+e.type)}` },
 ];

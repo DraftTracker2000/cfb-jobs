@@ -45,4 +45,9 @@ export const PROBES = [
     o[k+" "+path]=r.status+" loc="+(r.headers.get("location")||"")+" len="+t.length+" title="+((t.match(/<title>([^<]*)/)||[])[1]||"")+" ppa="+t.includes("async function ppaYear(")+" robots="+t.includes("noindex")}return o` },
   { name: "where", page: "/lab/", widths: [390], noro: true, run: `return {ok:true,url:location.href,ppa:typeof ppaYear}` },
   { name: "where-ro", page: "/lab/", widths: [390], settle: 500, run: `const t0=performance.now();return {ok:true,url:location.href,ppa:typeof ppaYear,nav:performance.getEntriesByType("navigation").map(e=>e.name+" "+e.type)}` },
+  /* what a conference's availability page holds: links that look like reports, and whether player rows are in the HTML */
+  { name: "avail-pages", node: `const UA={headers:{"user-agent":"Mozilla/5.0 (mycfbbigboard.com data job)"}};const o={ok:true};
+    for(const u of ["https://theacc.com/sports/2025/8/28/availability-reporting-football.aspx","https://big12sports.com/sports/2025/8/21/availability-reporting.aspx","https://theamerican.org/sports/2025/8/5/fbavail.aspx","https://conferenceusa.com/sports/2025/8/23/FB_0823254134.aspx","https://pac-12.com/news/2026/9/11/2026-football-reports.aspx"]){
+     try{const r=await fetch(u,UA);const t=await r.text();const links=[...new Set([...t.matchAll(/href="([^"]+)"/gi)].map(m=>m[1]).filter(h=>/avail|report|\.pdf|injur/i.test(h)))].slice(0,12);
+      const i=t.search(/Questionable|Doubtful|Out for/i);o[u]=r.status+" "+t.length+"B links="+JSON.stringify(links)+" sample="+(i>=0?JSON.stringify(t.slice(Math.max(0,i-300),i+200).replace(/\\s+/g," ")):"none")}catch(e){o[u]="ERR "+e.message}}return o` },
 ];

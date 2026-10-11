@@ -55,4 +55,13 @@ export const PROBES = [
     const j=await (await fetch(u)).json();return {ok:true,err:j.error&&j.error.info,warn:JSON.stringify(j.warnings||"").slice(0,200),norm:j.query&&j.query.normalized,redir:j.query&&j.query.redirects,
      pages:(j.query&&j.query.pages||[]).map(p=>p.title+": "+(p.missing?"MISSING":((p.revisions&&p.revisions[0].slots.main.content)||"").length+"ch "+(((p.revisions&&p.revisions[0].slots.main.content)||"").match(/\\|\\s*off_coach\\s*=([^\\n]*)/)||[])[1]))}` },
   { name: "where-late", page: "/lab/", widths: [390], settle: 9000, run: `return {ok:location.pathname==="/lab/",url:location.href}` },
+  /* the ACC / Big 12 feature pages load their reports with a script: find the script and the data it reads */
+  { name: "avail-js", node: `const UA={headers:{"user-agent":"Mozilla/5.0 (mycfbbigboard.com data job)"}};const o={ok:true};
+    for(const u of ["https://theacc.com/sports/2025/8/28/availability-reporting-football.aspx","https://big12sports.com/sports/2025/8/14/FBreporting.aspx","https://pac-12.com/news/2026/9/11/2026-football-reports.aspx","https://theamerican.org/sports/2025/8/5/fbavail.aspx"]){
+     try{const t=await (await fetch(u,UA)).text();const S=[...new Set([...t.matchAll(/(?:src|href)="([^"]*feature-pages[^"]*|[^"]*avail[^"]*\\.js[^"]*)"/gi)].map(m=>m[1]))];
+      const inl=[...t.matchAll(/(https?:\\/\\/[^"'\\s)]*(?:json|api|sheet|docs\\.google|airtable|feed)[^"'\\s)]*)/gi)].map(m=>m[1]).filter(x=>!/googletagmanager|facebook|twitter|schema\\.org|onetrust|cdn\\.jsdelivr/i.test(x));
+      const R={scripts:S.slice(0,6),urls:[...new Set(inl)].slice(0,10)};
+      for(const sc of S.filter(x=>/\\.js/.test(x)).slice(0,2)){try{const js=await (await fetch(new URL(sc,u).href,UA)).text();R[sc]=js.length+"B "+JSON.stringify([...new Set([...js.matchAll(/(https?:\\/\\/[^"'\\s\`]+)/g)].map(m=>m[1]))].slice(0,10))+" fetch="+JSON.stringify((js.match(/fetch\\([^)]{0,160}/g)||[]).slice(0,4))}catch(e){R[sc]="ERR "+e.message}}
+      const k=t.search(/status-Out|class="status|data-status/);if(k>=0)R.sample=t.slice(Math.max(0,k-400),k+300).replace(/\\s+/g," ");
+      o[u]=R}catch(e){o[u]="ERR "+e.message}}return o` },
 ];

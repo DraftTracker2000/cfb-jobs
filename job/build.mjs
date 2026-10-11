@@ -115,7 +115,9 @@ async function main() {
 
   /* MODE=look: only the look check (job/look.mjs), on the page set by PAGE_PATH */
   if (MODE === "look") { const browser = await chromium.launch(); const L = await lookCheck({ browser, site: SITE, token: sess.token, page: PAGE }); await browser.close();
-    await api("POST", "/api/job/report", { body: { kind: "look", ok: L.ok, message: lookMsg(L), detail: L } }); return }
+    await api("POST", "/api/job/report", { body: { kind: "look", ok: L.ok, message: lookMsg(L), detail: L } });
+    /* Oct 11: also put the result on the run itself, so it can be read from GitHub without opening the site */
+    console.log(`::${L.ok ? "notice" : "warning"} title=look ${PAGE}::${lookMsg(L).replace(/[\r\n]+/g, " ")}`); return }
   /* the live version's files seed the build, so unchanged history isn't downloaded again */
   let seed = {};
   if (MODE !== "history") {

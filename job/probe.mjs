@@ -15,7 +15,8 @@ export async function runProbes({ browser, site, token, only = "", log = console
       const ctx = await browser.newContext({ viewport: { width: W, height: W < 800 ? 844 : 900 }, isMobile: W < 800, hasTouch: W < 800 });
       const p = await ctx.newPage(); const errs = [];
       p.on("pageerror", e => errs.push(e.message));
-      const nav = []; p.on("framenavigated", f => { if (f === p.mainFrame()) nav.push(f.url().replace(site, "")) }); p.on("response", r => { if (r.request().isNavigationRequest() && r.status() >= 300) nav.push(r.status() + " " + r.url().replace(site, "")) });
+      const nav = []; p.on("framenavigated", f => { if (f === p.mainFrame()) nav.push(f.url().replace(site, "")) }); p.on("request", q => { if (q.isNavigationRequest() && q.frame() === p.mainFrame()) nav.push("req " + q.url().replace(site, "") + (q.redirectedFrom() ? " from " + q.redirectedFrom().url().replace(site, "") : "") + " ref=" + (q.headers().referer || "").replace(site, "")) });
+      p.on("response", r => { if (r.request().isNavigationRequest() && r.frame() === p.mainFrame()) nav.push(r.status() + " " + r.url().replace(site, "") + (r.headers().location ? " → " + r.headers().location : "")) });
       /* the page cookie the sign-in page would trade the token for, so the first visit lands on the page asked for (Oct 11) */
       await ctx.addCookies([{ name: "cfbs", value: token, url: site }]);
       await ctx.addInitScript(t => {
@@ -36,7 +37,7 @@ export async function runProbes({ browser, site, token, only = "", log = console
         if (r == null || typeof r !== "object") r = { ok: true, v: r };
       } catch (e) { r = { ok: false, error: String(e.message || e).slice(0, 300) } }
       if (errs.length) { r.scriptErrors = [...new Set(errs)].slice(0, 3).map(s => s.slice(0, 160)); r.ok = false }
-      if (new URL(p.url()).pathname !== P.page || r.ok === false) r.nav = nav.slice(0, 8);
+      if (new URL(p.url()).pathname !== P.page || r.ok === false) r.nav = nav.slice(0, 14);
       out.push({ name: P.name, W, ...r });
       log(`::${r.ok === false ? "warning" : "notice"} title=probe ${P.name} ${W}px::${JSON.stringify(r).replace(/[\r\n]+/g, " ").slice(0, 3500)}`);
       await ctx.close();

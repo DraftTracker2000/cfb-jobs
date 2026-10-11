@@ -269,7 +269,7 @@ export async function main() {
     if (REC[r.id] !== undefined) continue;
     const fs = Math.min(firstSeason[r.id], H.start[r.id] || 9999);
     const idHit = recById[String(r.id)];
-    if (idHit && process.env.REC_BY_ID === "1") { const c0 = recIx[normName(r.nm) + "|" + fs] || recIx[normName(r.nm) + "|" + (fs + 1)] || recIx[normName(r.nm) + "|" + (fs - 1)];
+    if (idHit) { const c0 = recIx[normName(r.nm) + "|" + fs] || recIx[normName(r.nm) + "|" + (fs + 1)] || recIx[normName(r.nm) + "|" + (fs - 1)];
       const nameHit = c0 ? (c0.find(x => x[1] === firstTeam[r.id]) || (c0.length === 1 ? c0[0] : null)) : null; if (nameHit !== idHit) changed++; byId++; REC[r.id] = idHit; continue }
     const c = recIx[normName(r.nm) + "|" + fs] || recIx[normName(r.nm) + "|" + (fs + 1)] || recIx[normName(r.nm) + "|" + (fs - 1)];
     REC[r.id] = c ? (c.find(x => x[1] === firstTeam[r.id]) || (c.length === 1 ? c[0] : null)) : null;

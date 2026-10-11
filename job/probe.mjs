@@ -24,7 +24,7 @@ export async function runProbes({ browser, site, token, only = "", log = console
       }, token);
       let r;
       try {
-        await p.goto(`${site}${P.page}?ro=1`, { waitUntil: "domcontentloaded", timeout: 60000 });
+        await p.goto(`${site}${P.page}${P.noro ? "" : "?ro=1"}`, { waitUntil: "domcontentloaded", timeout: 60000 });
         /* a first visit has no sign-in cookie yet: the sign-in page sets it from the token and sends the browser to the front page, so
            go again when we didn't land on the page asked for (Oct 11: the lab probes were reading the live page) */
         for (let k = 0; k < 3 && new URL(p.url()).pathname !== P.page; k++) { await p.waitForTimeout(2500); await p.goto(`${site}${P.page}?ro=1`, { waitUntil: "domcontentloaded", timeout: 60000 }) }

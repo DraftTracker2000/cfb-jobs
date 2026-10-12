@@ -10,7 +10,7 @@
    draft pack, so a player drafted years later shows up without rewriting old seasons.
    Seasons: the last ten finished ones (max(2012, S − 9) … S − 1, plus S once it's over). Rewritten when the format changes or the pack is a
    week old, so BoardScores stay on the current model. */
-export const PAST_V = 4;   /* 3: conference records leave out conference tournaments (detected, see confTourneyIds); 4 (Oct 11): team nets on one scale (fixAdjScale) */
+export const PAST_V = 5;   /* 3: conference records leave out conference tournaments (detected, see confTourneyIds); 4–5 (Oct 11): team nets on one scale (fixAdjScale), outliers to SRS */
 export const PAST_COLS = ["id", "nm", "tm", "p5", "yr", "ht", "g", "gs", "min", "pts", "reb", "orb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "usg", "ortg", "drtg", "porp", "ws40", "score", "prof", "pD", "pR1", "pL"];
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;

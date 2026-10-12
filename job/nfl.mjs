@@ -333,7 +333,9 @@ async function pbp(S, log) {
     if (o.posteam && o.defteam && num(o.down) >= 1 && num(o.game_seconds_remaining) != null && num(o.score_differential) != null) {
       const home = o.posteam === o.home_team, sp0 = num(o.spread_line) || 0;
       (WPS[g] = WPS[g] || []).push({ off: o.posteam, m: num(o.score_differential), sec: num(o.game_seconds_remaining), sp: home ? sp0 : -sp0, ytg: num(o.yardline_100) ?? 75, dn: num(o.down), ds: num(o.ydstogo) || 10, home,
-        pt, ps: o.passer_player_id && o.passer_player_id !== "NA" ? o.passer_player_id : null, ru: o.rusher_player_id && o.rusher_player_id !== "NA" ? o.rusher_player_id : null, rc: o.receiver_player_id && o.receiver_player_id !== "NA" ? o.receiver_player_id : null }) }
+        pt, ps: o.passer_player_id && o.passer_player_id !== "NA" ? o.passer_player_id : null, ru: o.rusher_player_id && o.rusher_player_id !== "NA" ? o.rusher_player_id : null, rc: o.receiver_player_id && o.receiver_player_id !== "NA" ? o.receiver_player_id : null,
+        /* round 3 (Sam ticked "defensive win probability"): the defenders who made the play — sack (halves split), interception, forced fumble */
+        dfx: [...ids(o, ["sack_player_id"]).map(id => [id, 1]), ...ids(o, ["half_sack_1_player_id", "half_sack_2_player_id"]).map(id => [id, .5]), ...ids(o, ["interception_player_id"]).map(id => [id, 1]), ...ids(o, ["forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id"]).map(id => [id, 1])], dft: o.defteam }) }
     if (o.passer_player_id && o.complete_pass === "1" && o.receiver_player_id && o.receiver_player_id !== "NA" && num(o.yards_after_catch) != null && num(o.air_yards) != null)
       YACS.push([o.receiver_player_id, Math.max(-5, Math.min(40, Math.round(num(o.air_yards) / 5) * 5)) + "|" + (o.pass_location || "x"), num(o.yards_after_catch)]);
     { const po = num(o.pass_oe); if (po != null && o.defteam && (pt === "pass" || pt === "run") && o.two_point_attempt !== "1") { const td = T[o.defteam] = T[o.defteam] || { off: {}, def: {} }, xd = td.proeD = td.proeD || [0, 0]; xd[0] += po; xd[1]++ } }
@@ -409,7 +411,10 @@ async function pbp(S, log) {
     const add = (M, id, v) => { if (!id) return; const x = pl(M, id); const a = x.wpa = x.wpa || [0, 0]; a[0]++; a[1] += v };
     for (const [g, L] of Object.entries(WPS)) { const fin = FS[g]; for (let i = 0; i < L.length; i++) { const a = L[i], b = L[i + 1]; let after;
         if (b) { const w = wp(b); after = b.off === a.off ? w : 1 - w } else if (fin && fin[2] != null && fin[3] != null) { const hm = a.home ? fin[2] - fin[3] : fin[3] - fin[2]; after = hm > 0 ? 1 : hm < 0 ? 0 : .5 } else continue;
-        const d = after - wp(a); if (a.pt === "pass") { add(P, a.ps, d); add(R, a.rc, d) } else if (a.pt === "run") add(U, a.ru, d) } } }
+        const d = after - wp(a); if (a.pt === "pass") { add(P, a.ps, d); add(R, a.rc, d) } else if (a.pt === "run") add(U, a.ru, d);
+        /* the defense gains what the offense lost: a defender's share of the play (half a sack is half) → df[id].wpa = [plays, sum] */
+        for (const [id, sh] of a.dfx || []) { const x = df(id, a.dft), w = x.wpa = x.wpa || [0, 0]; w[0] += sh; w[1] += -d * sh } } } }
+  for (const id in DF) { const d = DF[id]; if (d.g instanceof Set) d.g = d.g.size; if (d.wpa) d.wpa = d.wpa.map(v => Math.round(v * 1000) / 1000) }
   /* our own expected yards after the catch: the league's average YAC this season for the same air-yards band (5-yard steps) and side;
      each receiver's YAC over that, per catch → rec[id].yacx = [catches, yac over expected sum] */
   { const avg = {}; for (const [, k, y] of YACS) { const a = avg[k] = avg[k] || [0, 0]; a[0]++; a[1] += y }

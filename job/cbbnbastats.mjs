@@ -6,7 +6,7 @@
      nba_stats_matchups/matchupsrollup_regular-season_totals_{season}.parquet — what the men a defender guarded scored on him
    NBA.com player ids map to ESPN's through nba_crosswalk (else the page matches on name).
 
-   Pack p2000_cbb-nbastats: { v, got: [seasons], ptCols, hCols, mCols, s: { season: { p: { espnId|"n"+nbaId: { nm, tm, o: { type: [poss, pts,
+   Pack p2000_cbb-nbastats (v2 adds ta/gb, toughest assignments): { v, got: [seasons], ptCols, hCols, mCols, s: { season: { p: { espnId|"n"+nbaId: { nm, tm, o: { type: [poss, pts,
    pctile, freq] }, d: { type: [poss, pts, pctile] }, h: [...hCols], m: [...mCols] } }, t: { ESPN abbr: { o: { type: [poss, pts, freq] },
    d: { type: [poss, pts] }, h: [...hCols] } } } }. Finished seasons are cached; the current one is re-read each run while it is being played. */
 import { REL, readParquet, crosswalk } from "./cbbcombine.mjs";
@@ -19,7 +19,7 @@ const ABBR = { GSW: "GS", NYK: "NY", SAS: "SA", NOP: "NO", UTA: "UTAH", WAS: "WS
 const n = v => v == null ? 0 : typeof v === "bigint" ? Number(v) : +v || 0, r3 = v => Math.round(v * 1000) / 1000;
 
 /* one season's files (objects already read) → the season block */
-export function seasonBlock({ off = {}, def = {}, hp = [], ht = [], mu = [] }, espnOf = {}) {
+export function seasonBlock({ off = {}, def = {}, hp = [], ht = [], mu = [], lsm = [] }, espnOf = {}) {
   const P = {}, T = {}, tmOfId = {}, key = id => espnOf[id] || "n" + id;
   const pl = (r) => { const k = key(n(r.player_id || r.def_player_id)); return P[k] = P[k] || { nm: String(r.player_name || r.def_player_name || ""), tm: r.team_abbreviation ? ab(r.team_abbreviation) : null } };
   for (const [side, files] of [["o", off], ["d", def]]) for (const [type, rows] of Object.entries(files)) for (const r of rows || []) {
@@ -36,12 +36,20 @@ export function seasonBlock({ off = {}, def = {}, hp = [], ht = [], mu = [] }, e
   for (const r of ht) { const t = tmOfId[n(r.team_id)]; if (t) (T[t] = T[t] || { o: {}, d: {} }).h = hRow({ ...r, g: 82 }) }
   for (const r of mu) { const p = pl(r), m = [n(r.partial_poss), n(r.player_pts), n(r.matchup_fgm), n(r.matchup_fga), n(r.matchup_fg3_m), n(r.matchup_fg3_a), n(r.matchup_ast), n(r.matchup_tov), n(r.matchup_blk), n(r.sfl)];
     p.m = p.m ? p.m.map((v, i) => Math.round((v + m[i]) * 10) / 10) : m.map(v => Math.round(v * 10) / 10) }
+  /* toughest assignments (round 3): from the season matchups — the six men each defender guarded longest, and the six who guarded each
+     scorer longest: [player key, name, seconds, points, fgm, fga, 3pm, 3pa] */
+  if (lsm.length) { const TA = {}, GB = {}, push = (M, k, row) => (M[k] = M[k] || []).push(row);
+    for (const r of lsm) { const d = key(n(r.def_player_id)), o = key(n(r.off_player_id)), sec = n(r.matchup_time_sec); if (sec < 120) continue;
+      const st = [n(r.player_pts), n(r.matchup_fgm), n(r.matchup_fga), n(r.matchup_fg3_m), n(r.matchup_fg3_a)];
+      push(TA, d, [o, String(r.off_player_name || ""), sec, ...st]); push(GB, o, [d, String(r.def_player_name || ""), sec, ...st]) }
+    for (const [k, L] of Object.entries(TA)) if (P[k]) P[k].ta = L.sort((a, b) => b[2] - a[2]).slice(0, 6);
+    for (const [k, L] of Object.entries(GB)) if (P[k]) P[k].gb = L.sort((a, b) => b[2] - a[2]).slice(0, 6) }
   return { p: P, t: T };
 }
 
 export async function buildNbaStats({ getPack, putPack, log, curNba, live, full }) {
   let K = full ? null : await getPack("p2000_cbb-nbastats").catch(() => null);
-  if (!K || K.v !== 1) K = { v: 1, got: [], ptO: PT_O, ptD: PT_D, hCols: H_COLS, mCols: M_COLS, s: {} };
+  if (!K || K.v !== 2) K = { v: 2, got: [], ptO: PT_O, ptD: PT_D, hCols: H_COLS, mCols: M_COLS, s: {} };
   const espnOf = await crosswalk([curNba - 1, curNba]); let files = 0;
   const want = [curNba - 1, curNba].filter(y => !K.got.includes(y) || (y === curNba && live) || (y === curNba - 1 && !K.s[curNba]));
   for (const y of want) {
@@ -51,8 +59,8 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
     for (const t of PT_D) def[t] = await get(`nba_stats_synergy/regular-season_${t}_defensive_totals_${y}.parquet`);
     if (!Object.values(off).some(v => v && v.length)) { log(`nbastats ${y}: no play-type files yet`); continue }
     const hp = await get(`nba_stats_hustle/leaguehustlestatsplayer_regular-season_totals_${y}.parquet`) || [], ht = await get(`nba_stats_hustle/leaguehustlestatsteam_regular-season_totals_${y}.parquet`) || [],
-      mu = await get(`nba_stats_matchups/matchupsrollup_regular-season_totals_${y}.parquet`) || [];
-    K.s[y] = seasonBlock({ off, def, hp, ht, mu }, espnOf); if (!K.got.includes(y)) K.got.push(y);
+      mu = await get(`nba_stats_matchups/matchupsrollup_regular-season_totals_${y}.parquet`) || [], lsm = await get(`nba_stats_matchups/leagueseasonmatchups_regular-season_totals_${y}.parquet`) || [];
+    K.s[y] = seasonBlock({ off, def, hp, ht, mu, lsm }, espnOf); if (!K.got.includes(y)) K.got.push(y);
     log(`nbastats ${y}: ${Object.keys(K.s[y].p).length} players (${Object.keys(K.s[y].p).filter(k => !k.startsWith("n")).length} on ESPN ids) · ${Object.keys(K.s[y].t).length} teams`) }
   for (const y of Object.keys(K.s)) if (+y < curNba - 2) delete K.s[y];
   if (files) await putPack("p2000_cbb-nbastats", K);

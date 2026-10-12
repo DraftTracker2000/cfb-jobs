@@ -227,7 +227,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
         (u.rebounds || {}).offensive, (u.rebounds || {}).total, u.assists, (u.turnovers || {}).total ?? u.turnovers, u.steals, u.blocks, ((u.points || {}).inPaint) ?? null, ((u.points || {}).fastBreak) ?? null, (o.rebounds || {}).total, (o.turnovers || {}).total ?? o.turnovers]);
     }
     for (const [a, b] of recent(ranges(S, 7))) for (const t of await cb("/games/players", { season: S, startDateRange: a, endDateRange: b }))
-      for (const p of t.players || []) { if (!p.minutes) continue;
+      for (const p of t.players || []) { if (!p.minutes) continue; if (p.name) (LG.names = LG.names || {})[p.athleteId] = p.name;
         (LG.players[p.athleteId] = LG.players[p.athleteId] || []).push([t.gameId, (t.startDate || "").slice(0, 10), t.teamId, t.opponentId, t.neutralSite ? 0 : t.isHome ? 1 : -1, p.starter ? 1 : 0, p.minutes, p.points, (p.rebounds || {}).total ?? null, (p.rebounds || {}).offensive ?? null, p.assists, p.steals, p.blocks, p.turnovers, p.fouls,
           (p.fieldGoals || {}).made, (p.fieldGoals || {}).attempted, (p.threePointFieldGoals || {}).made, (p.threePointFieldGoals || {}).attempted, (p.freeThrows || {}).made, (p.freeThrows || {}).attempted, r1(p.gameScore), r1(p.offensiveRating), r1(p.usage)]) }
     /* newest copy of each game wins (a re-read after a stat correction replaces the old row) */
@@ -240,6 +240,9 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     await putPack(`p${S}_cbb-logs`, LG);
     log(`logs: ${Object.keys(LG.teams).length} teams, ${Object.keys(LG.players).length} players`);
   }
+  /* every player's name with his logs (Oct 12 — Michigan's Ins & outs showed "?" for Howard Eisley Jr. and Charlie May: 12 and 19
+     minutes all season, so in no other file the page reads); a finished season's logs written before this get them once */
+  if (LG && !LG.names) { const st = await cb("/stats/player/season", { season: S }).catch(() => []); LG.names = Object.fromEntries(st.filter(r => r.name).map(r => [r.athleteId, r.name])); await putPack(`p${S}_cbb-logs`, LG); log(`logs: ${Object.keys(LG.names).length} names added`) }
   await putPack(`p${S}_cbb-games`, { season: S, next: NEXT, off, pick: { ...PK, test }, games, splits: SPL });
   log(`games: ${games.length} (${games.filter(g => g.ln).length} with a line, ${games.filter(g => g.tv).length} with TV)`);
   return { test, n: games.length };

@@ -6,5 +6,10 @@ export async function run({ log = console.log }) {
     const tags = []; for (let pg = 1; pg <= 4; pg++) { const r = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=100&page=${pg}`, { headers: { "User-Agent": "cfb-board-probe" } }); if (!r.ok) { tags.push("HTTP " + r.status); break } const j = await r.json(); if (!j.length) break;
       for (const x of j) { const nba = /nba/i.test(x.tag_name); tags.push(nba ? `${x.tag_name} [${(x.assets || []).length}: ${(x.assets || []).slice(0, 4).map(a => a.name).join(", ")}]` : x.tag_name) } }
     out[repo] = tags.filter(t => /nba/i.test(t)).slice(0, 80); log(`${repo}: ${tags.length} tags`) }
-  return { ok: true, out };
+  /* the files of a few NBA Stats releases for the last two seasons */
+  const files = {};
+  for (const tag of ["nba_stats_synergy", "nba_stats_hustle", "nba_stats_player_season_stats", "nba_stats_team_season_stats", "nba_stats_matchups", "nba_stats_shots"]) {
+    const r = await fetch(`https://api.github.com/repos/sportsdataverse/sportsdataverse-data/releases/tags/${tag}`, { headers: { "User-Agent": "cfb-board-probe" } }); if (!r.ok) { files[tag] = "HTTP " + r.status; continue }
+    const j = await r.json(); files[tag] = (j.assets || []).map(a => a.name + " " + Math.round(a.size / 1024) + "K").filter(n => /2026|2025/.test(n)).slice(0, 60) }
+  return { ok: true, files };
 }

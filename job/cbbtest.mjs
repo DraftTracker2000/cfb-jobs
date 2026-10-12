@@ -23,7 +23,12 @@ export async function run({ site, token, log = console.log }) {
   configure({ site, token: process.env.JOB_TOKEN || token, mode: "cbb" });   /* the job token (the page session token can't open a job session) */
   const GH = await getPack("p2000_cbb-ghist"), HI = await getPack("p2000_cbb-hist");
   if (!GH || !HI) return { ok: false, error: "history packs missing" };
-  const adj = HI.adj; const S = 2026;
+  const S = 2026;
+  /* Oct 11: CBBD's adjusted net rating isn't on one scale from season to season (its slope against SRS: 0.29 in 2014, 2018 and 2023,
+     1.1 in 2020, 1.75–1.9 from 2022) and in 2014 and 2023 it barely tracks results (r 0.53 with SRS; Duke 2023 ranked 322nd at 27–9).
+     PRIOR=srs swaps it for CBBD's SRS × 1.8, the same scale every season */
+  let adj = HI.adj;
+  if (process.env.PRIOR === "srs" || globalThis.__PRIOR === "srs") { adj = {}; for (let y = 2014; y <= S; y++) { const R = await cb("/ratings/srs", { season: y }).catch(() => []); adj[y] = Object.fromEntries(R.map(t => [t.teamId, [Math.round(t.rating * 18) / 10, t.conference]])) } }
   /* this season's games and lines (2026 = last winter) */
   if (!GH.seasons[S]) { const rows = []; for (const [a, b] of ranges(S, 31)) for (const g of await cb("/games", { season: S, startDateRange: a, endDateRange: b })) if (g.status === "final")
     rows.push([g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, g.homeTeamEloStart ?? null, g.awayTeamEloStart ?? null, g.seasonType === "postseason" ? 1 : 0, g.tournament || null]);

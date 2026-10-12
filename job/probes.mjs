@@ -102,6 +102,7 @@ export const PROBES = [
   { name: "cbbwpfit", mod: "cbbwpfit" },
   { name: "nflwpfit", mod: "nflwpfit" },
   { name: "nfladjtest", mod: "nfladjtest" },
+  { name: "cbblineups", mod: "cbblineups" },
   { name: "cbbtest-srs", mod: "cbbtest", env: { PRIOR: "srs" } },
   { name: "cbbtest-hybrid", mod: "cbbtest", env: { PRIOR: "hybrid" } },
   { name: "cbbtest-base", mod: "cbbtest", env: { PRIOR: "cbbd" } },

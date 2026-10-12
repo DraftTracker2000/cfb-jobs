@@ -63,6 +63,17 @@ export async function cb(path, params = {}) {
     } catch (e) { if (k >= 3) throw e; await sleep(3000 * (k + 1)) }
   }
 }
+/* CBBD's adjusted net rating isn't on one scale (Oct 11): against its own SRS the slope is 0.29 in 2014/2018/2023, 1.1 in 2020, 1.75–1.9
+   from 2022, and in 2014 and 2023 it barely tracks results. adj: { season: { teamId: [net, conf] } }, srs: { season: { teamId: rating } }.
+   Each season's net is divided by its slope against SRS and multiplied by 1.8 (the recent scale); a season where they correlate under 0.8
+   takes SRS × 1.8 instead. Changes adj in place; returns what it did per season. */
+export function fixAdjScale(adj, srs) { const note = {};
+  for (const [y, M] of Object.entries(adj)) { const S = srs[y]; if (!S) continue; const P = Object.entries(M).filter(([id, v]) => v[0] != null && S[id] != null).map(([id, v]) => [v[0], S[id]]); if (P.length < 100) continue;
+    const n = P.length, mx = P.reduce((a, p) => a + p[0], 0) / n, my = P.reduce((a, p) => a + p[1], 0) / n; let s = 0, sa = 0, sb = 0; for (const [a, b] of P) { s += (a - mx) * (b - my); sa += (a - mx) ** 2; sb += (b - my) ** 2 }
+    const r = s / Math.sqrt(sa * sb), k = s / sb;
+    if (r < 0.8) { for (const [id, v] of Object.entries(M)) v[0] = S[id] != null ? Math.round(S[id] * 18) / 10 : null; note[y] = `srs (r ${r.toFixed(2)})` }
+    else if (Math.abs(k - 1.8) > 0.15) { for (const v of Object.values(M)) if (v[0] != null) v[0] = Math.round(v[0] / k * 18) / 10; note[y] = `rescaled ÷${k.toFixed(2)}` } }
+  return note }
 let SESS = null;
 export async function getPack(name) {
   /* its own service user (Oct 11): the basketball job runs beside the data job, and one sign-in revoked the other's session — a
@@ -249,7 +260,13 @@ export async function main() {
   const sidToCbbd = {}; for (const rows of Object.values(ALL)) for (const r of rows) if (r.sid) sidToCbbd[r.sid] = r.id;
   for (const t of rosterS) for (const p of t.players || []) if (p.sourceId && !sidToCbbd[p.sourceId]) sidToCbbd[p.sourceId] = p.id;
   const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
-  let NBA = {}; try { NBA = await buildNba({ getPack, putPack, log, full, curNba, live: nbaLive, sidToCbbd, draftById: DRAFTED }) } catch (e) { log("nba: " + e.message) }
+  /* Oct 11 (Sam: "shouldn't CBBD have most of the college data for the players currently in the nba"): ESPN ids only join to CBBD for
+     seasons where CBBD carries ESPN's id, so plenty of NBA players who played college since 2008 had no college page. Fallback: the same
+     name, with a unique college player whose last season ended 1–4 years before his first NBA season */
+  const lastSeasonOf = {}; for (const rows of Object.values(ALL)) for (const r of rows) lastSeasonOf[r.id] = Math.max(lastSeasonOf[r.id] || 0, r.s);
+  const nameMatch = (nm, fy) => { const c = [...(byName[normName(nm)] || [])].filter(id => { const l = lastSeasonOf[id]; return l && l <= fy - 1 && l >= fy - 4 }); return c.length === 1 ? c[0] : null };
+  let NBA = {}; try { NBA = await buildNba({ getPack, putPack, log, full, curNba, live: nbaLive, sidToCbbd, draftById: DRAFTED, nameMatch }) } catch (e) { log("nba: " + e.message) }
+  for (const [eid, X] of Object.entries(NBA)) if (X.cid && !sidToCbbd[eid]) sidToCbbd[eid] = X.cid;   /* the name matches reach the rosters' colleges too */
   try { await buildNbaGames({ getPack, putPack, log, S, curNba: M >= 7 ? Yr + 1 : Yr, players: NBA }) } catch (e) { log("nba games: " + e.message) }
   /* an old NBA ESPN id can be a different person's college ESPN id (Tony Parker's 1015 matched a 2009 college player): the surnames must agree */
   { const nmOf = {}; for (const rows of Object.values(ALL)) for (const r of rows) if (r.sid) nmOf[r.sid] = r.nm;

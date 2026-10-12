@@ -103,6 +103,8 @@ export const PROBES = [
   { name: "nflwpfit", mod: "nflwpfit" },
   { name: "nfladjtest", mod: "nfladjtest" },
   { name: "cbbtest-srs", mod: "cbbtest", env: { PRIOR: "srs" } },
+  { name: "cbbtest-hybrid", mod: "cbbtest", env: { PRIOR: "hybrid" } },
+  { name: "cbbtest-base", mod: "cbbtest", env: { PRIOR: "cbbd" } },
   /* can we get college basketball players' birth dates? (Oct 11 — the age test for BoardScore needs them for drafted and undrafted alike) */
   { name: "cbbdob", node: `const o={ok:true,teams:{}};const H={headers:{"User-Agent":"mycbbbigboard data job"}};
     for(const t of [150,2509,96,2305,2250,57,9,2181]){const j=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/"+t+"/roster",H).then(r=>r.json()).catch(()=>null);

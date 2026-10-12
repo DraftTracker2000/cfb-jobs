@@ -65,7 +65,9 @@ export async function cb(path, params = {}) {
 }
 let SESS = null;
 export async function getPack(name) {
-  if (!SESS) SESS = (await site("POST", "/api/job/session")).token;
+  /* its own service user (Oct 11): the basketball job runs beside the data job, and one sign-in revoked the other's session — a
+     defense-chart build died at its first call (401 → signed out) while a basketball run was going */
+  if (!SESS) SESS = (await site("POST", "/api/job/session", { body: { who: "cbb" } })).token;
   const r = await fetch(SITE + "/api/pack/" + name, { headers: { Authorization: "Bearer " + SESS } });
   return r.ok ? r.json() : null;
 }

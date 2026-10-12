@@ -93,7 +93,10 @@ export async function buildNba({ getPack, putPack, log, full, curNba, live, sidT
    box scores (espn_nba_team_boxscores) for each team's ratings, and current rosters (espn_nba_rosters) — joined to the college players
    by ESPN id. Pack p{S}_cbb-nbagames: { season, teams: { ABBR: {...} }, games: [[id, date, home, away, hs, as, state, tv]], cols }. */
 export const REL = (rel, f) => `https://github.com/sportsdataverse/sportsdataverse-data/releases/download/${rel}/${f}`;
-export async function getCsv(url) { for (let k = 0; k < 3; k++) { try { const r = await fetch(url, { redirect: "follow" }); if (r.status === 404) return null; if (r.ok) return await r.text() } catch { } await sleep(2000) } return null }
+/* one download per file per run (Oct 12: the finished season's team box scores were fetched twice) */
+const CSV_MEMO = {};
+export function getCsv(url) { return CSV_MEMO[url] = CSV_MEMO[url] || getCsv0(url).then(t => { if (t == null) delete CSV_MEMO[url]; return t }) }
+async function getCsv0(url) { for (let k = 0; k < 3; k++) { try { const r = await fetch(url, { redirect: "follow" }); if (r.status === 404) return null; if (r.ok) return await r.text() } catch { } await sleep(2000) } return null }
 /* a whole CSV file (quoted fields may hold commas and line breaks) → objects */
 export function rowsOf(text) { const rows = []; let row = [], cur = "", q = false;
   for (let i = 0; i < text.length; i++) { const c = text[i]; if (q) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++ } else q = false } else cur += c }

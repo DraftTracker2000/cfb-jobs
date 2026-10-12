@@ -39,9 +39,10 @@ export function classify(status, code) {
   return 4;
 }
 
-export async function buildAvailability({ from = 2016, to, log = console.log } = {}) {
+export async function buildAvailability({ from = 2016, to, log = console.log, prev = null } = {}) {
   const out = {};
   for (let y = from; y <= to; y++) {
+    if (prev && y < to && prev[y] && Object.keys(prev[y]).length > 500) { out[y] = prev[y]; continue }   /* a finished season, kept (Oct 12) */
     const r = await fetch(NFLV + y + ".csv", { redirect: "follow" });
     if (!r.ok) { log(`availability ${y}: ${r.status}`); continue }
     const rows = csvRows(await r.text());

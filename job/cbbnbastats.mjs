@@ -72,7 +72,7 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
   let K = full ? null : await getPack("p2000_cbb-nbastats").catch(() => null);
   if (!K || K.v !== 2) K = { v: 2, got: [], ptO: PT_O, ptD: PT_D, hCols: H_COLS, mCols: M_COLS, s: {} };
   const espnOf = await crosswalk([curNba - 1, curNba]); let files = 0;
-  const want = [curNba - 1, curNba].filter(y => !K.got.includes(y) || (y === curNba && live) || (y === curNba - 1 && !K.s[curNba]));
+  K.fin = K.fin || {}; const want = [curNba - 1, curNba].filter(y => !K.got.includes(y) || (y === curNba && live) || !K.fin[y]);   /* a finished season once more after it ends, then never (Oct 12) */
   for (const y of want) {
     const get = async f => { files++; return readParquet(REL(f)).catch(e => (log(`nbastats ${f}: ${e.message}`), null)) };
     const off = {}, def = {};
@@ -81,10 +81,10 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
     if (!Object.values(off).some(v => v && v.length)) { log(`nbastats ${y}: no play-type files yet`); continue }
     const hp = await get(`nba_stats_hustle/leaguehustlestatsplayer_regular-season_totals_${y}.parquet`) || [], ht = await get(`nba_stats_hustle/leaguehustlestatsteam_regular-season_totals_${y}.parquet`) || [],
       mu = await get(`nba_stats_matchups/matchupsrollup_regular-season_totals_${y}.parquet`) || [], lsm = await get(`nba_stats_matchups/leagueseasonmatchups_regular-season_totals_${y}.parquet`) || [];
-    K.s[y] = seasonBlock({ off, def, hp, ht, mu, lsm }, espnOf); if (!K.got.includes(y)) K.got.push(y);
+    K.s[y] = seasonBlock({ off, def, hp, ht, mu, lsm }, espnOf); if (!K.got.includes(y)) K.got.push(y); if (!(y === curNba && live)) K.fin[y] = 1;
     log(`nbastats ${y}: ${Object.keys(K.s[y].p).length} players (${Object.keys(K.s[y].p).filter(k => !k.startsWith("n")).length} on ESPN ids) · ${Object.keys(K.s[y].t).length} teams`) }
   /* lineups for the seasons on hand; head coaches since 2010 (finished seasons kept); this season's injury reports */
-  for (const y of Object.keys(K.s)) if (!K.s[y].lu || !K.luV || +y === curNba) { const rows = await readParquet(REL(`nba_stats_leaguedash/lineups_advanced_${y}.parquet`)).catch(e => (log(`nbastats lineups ${y}: ${e.message}`), null)); files++; if (rows) K.s[y].lu = lineupRows(rows, espnOf) }
+  for (const y of Object.keys(K.s)) if (!K.s[y].lu || !K.luV || (+y === curNba && live)) { const rows = await readParquet(REL(`nba_stats_leaguedash/lineups_advanced_${y}.parquet`)).catch(e => (log(`nbastats lineups ${y}: ${e.message}`), null)); files++; if (rows) K.s[y].lu = lineupRows(rows, espnOf) }
   K.luV = 1; K.coach = K.coach || {}; K.coachGot = K.coachGot || [];
   for (let y = 2010; y <= curNba + 1; y++) { if (K.coachGot.includes(y) && y < curNba) continue; const rows = await readParquet(REL(`nba_stats_coaches/coaches_${y}.parquet`)).catch(() => null); files++; if (!rows || !rows.length) continue;
     for (const r of rows) { if (r.coach_type !== "Head Coach") continue; const t = NBA_TID[n(r.team_id)]; if (!t) continue; const L = K.coach[t] = (K.coach[t] || []).filter(x => x[0] !== y); L.push([y, String(r.coach_name || "")]); L.sort((a, b) => a[0] - b[0]) }

@@ -66,7 +66,7 @@ export async function buildDraft({ getPack, putPack, curYear, log = console.log 
   let AG = null; try { AG = getPack ? await getPack(`p${curYear}_nfl-actg`) : null } catch { }
   const act = { ...((AG && AG.s) || {}) }; let actNew = 0;
   { const FRR = { STL: "LA", SD: "LAC", OAK: "LV", SL: "LA", ARZ: "ARI", BLT: "BAL", CLV: "CLE", HST: "HOU", LAR: "LA" }, fr = t => FRR[t] || t; let tw = null;
-    for (let y = 2002; y <= last; y++) { if (act[y] && y < last - 1) continue;
+    for (let y = 2002; y <= last; y++) { if (act[y] && y < last) continue;   /* a finished season once (Oct 12) */
       if (!tw) { tw = new Set(); for (const o of table(await text(NF + "schedules/games.csv.gz").catch(() => text(NF + "schedules/games.csv")))) if (o.game_type === "REG") for (const t of [o.home_team, o.away_team]) tw.add(o.season + "|" + fr(t) + "|" + o.week) }
       let t; try { t = await text(NF + `weekly_rosters/roster_weekly_${y}.csv`) } catch (e) { log("draft: rosters " + y + ": " + e.message); continue }
       const seen = new Set(), n = {}; for (const o of table(t)) { if (o.status !== "ACT" || !o.gsis_id) continue; const k = o.gsis_id + "|" + o.week; if (seen.has(k)) continue; seen.add(k);
@@ -75,11 +75,17 @@ export async function buildDraft({ getPack, putPack, curYear, log = console.log 
     if (actNew && putPack) await putPack(`p${curYear}_nfl-actg`, { s: act, at: Date.now(), note: "regular-season weeks on the active roster in a week his team played" }) }
   /* career from the season stats (1999 on) */
   const C = {};
-  for (let y = 1999; y <= last; y++) { let t = null; try { t = await text(NF + `stats_player/stats_player_reg_${y}.csv`) } catch (e) { log("draft: stats " + y + ": " + e.message); continue }
-    for (const o of table(t)) { const id = o.player_id; if (!id) continue; const c = C[id] = C[id] || { to: 0, g: 0, py: 0, ptd: 0, pi: 0, ry: 0, rtd: 0, rec: 0, recy: 0, rectd: 0 };
-      const g = +o.games || 0; if (g > 0) c.to = Math.max(c.to, y); if (y < 2002) c.g += g;
-      c.py += +o.passing_yards || 0; c.ptd += +o.passing_tds || 0; c.pi += +o.passing_interceptions || 0; c.ry += +o.rushing_yards || 0; c.rtd += +o.rushing_tds || 0;
-      c.rec += +o.receptions || 0; c.recy += +o.receiving_yards || 0; c.rectd += +o.receiving_tds || 0 } }
+  /* each finished season's lines are read once and kept (Oct 12): p<Y>_nfl-statsreg { s: { season: { id: [games, py, ptd, pi, ry, rtd, rec, recy, rectd] } } } */
+  let SR = null; try { SR = getPack ? await getPack(`p${curYear}_nfl-statsreg`) : null } catch { } SR = SR && SR.s ? SR : { s: {} }; let srNew = 0;
+  for (let y = 1999; y <= last; y++) { let Y1 = y < last ? SR.s[y] : null;
+    if (!Y1) { let t = null; try { t = await text(NF + `stats_player/stats_player_reg_${y}.csv`) } catch (e) { log("draft: stats " + y + ": " + e.message); continue }
+      Y1 = {}; for (const o of table(t)) { const id = o.player_id; if (!id) continue; const a = Y1[id] = Y1[id] || [0, 0, 0, 0, 0, 0, 0, 0, 0];
+        [+o.games, +o.passing_yards, +o.passing_tds, +o.passing_interceptions, +o.rushing_yards, +o.rushing_tds, +o.receptions, +o.receiving_yards, +o.receiving_tds].forEach((v, i) => a[i] += v || 0) }
+      if (y < last && Object.keys(Y1).length > 500) { SR.s[y] = Y1; srNew++ } }
+    for (const [id, a] of Object.entries(Y1)) { const c = C[id] = C[id] || { to: 0, g: 0, py: 0, ptd: 0, pi: 0, ry: 0, rtd: 0, rec: 0, recy: 0, rectd: 0 };
+      const g = a[0]; if (g > 0) c.to = Math.max(c.to, y); if (y < 2002) c.g += g;
+      c.py += a[1]; c.ptd += a[2]; c.pi += a[3]; c.ry += a[4]; c.rtd += a[5]; c.rec += a[6]; c.recy += a[7]; c.rectd += a[8] } }
+  if (srNew && putPack) await putPack(`p${curYear}_nfl-statsreg`, SR);
   /* starts (our own pack): a season he started half his team's games counts as a starting season; games = the larger of stats and starts */
   let ST = null; try { ST = getPack ? await getPack(`p${curYear}_nfl-starts`) : null } catch { }
   for (const y in act) for (const id in act[y]) { const c = C[id] = C[id] || { to: 0, g: 0, py: 0, ptd: 0, pi: 0, ry: 0, rtd: 0, rec: 0, recy: 0, rectd: 0 }; c.g += act[y][id]; if (act[y][id] >= 6) c.to = Math.max(c.to, +y) }

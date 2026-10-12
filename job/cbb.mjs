@@ -72,7 +72,10 @@ export function fixAdjScale(adj, srs) { const note = {};
     const n = P.length, mx = P.reduce((a, p) => a + p[0], 0) / n, my = P.reduce((a, p) => a + p[1], 0) / n; let s = 0, sa = 0, sb = 0; for (const [a, b] of P) { s += (a - mx) * (b - my); sa += (a - mx) ** 2; sb += (b - my) ** 2 }
     const r = s / Math.sqrt(sa * sb), k = s / sb;
     if (r < 0.8) { for (const [id, v] of Object.entries(M)) v[0] = S[id] != null ? Math.round(S[id] * 18) / 10 : null; note[y] = `srs (r ${r.toFixed(2)})` }
-    else if (Math.abs(k - 1.8) > 0.15) { for (const v of Object.values(M)) if (v[0] != null) v[0] = Math.round(v[0] / k * 18) / 10; note[y] = `rescaled ÷${k.toFixed(2)}` } }
+    else if (Math.abs(k - 1.8) > 0.15) { for (const v of Object.values(M)) if (v[0] != null) v[0] = Math.round(v[0] / k * 18) / 10; note[y] = `rescaled ÷${k.toFixed(2)}` }
+    /* a single team far off its own SRS (after rescaling, Old Dominion 2018 came out +67.7) takes SRS × 1.8 */
+    let fixed = 0; for (const [id, v] of Object.entries(M)) if (v[0] != null && S[id] != null && Math.abs(v[0] - 1.8 * S[id]) > 15) { v[0] = Math.round(S[id] * 18) / 10; fixed++ }
+    if (fixed) note[y] = (note[y] ? note[y] + ", " : "") + `${fixed} team${fixed === 1 ? "" : "s"} off SRS` }
   return note }
 let SESS = null;
 export async function getPack(name) {

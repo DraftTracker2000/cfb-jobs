@@ -59,6 +59,13 @@ export async function buildNba({ getPack, putPack, log, full, curNba, live, sidT
   }
   for (const X of Object.values(players)) { X.seasons.sort((a, b) => a[0] - b[0]); X.tag = nbaTag(X.seasons, curNba); const d = draftById[X.cid]; if (d) X.draft = [d.year, d.overall, d.draftTeam];
     const t = X.seasons.reduce((a, s) => { for (let i = 2; i <= 16; i++) a[i - 2] += s[i] || 0; return a }, new Array(15).fill(0)); X.tot = t }
+  /* this year's and last year's draft picks who haven't played an NBA game yet (Oct 11 — Sam: "their nba pages should have their college
+     data, which would then populate the players like them tab"): an NBA page with no NBA seasons, so the college season, BoardScore and
+     college comparisons attach to him like everyone else */
+  { const sidOf = {}; for (const [sid, cid] of Object.entries(sidToCbbd)) if (!sidOf[cid]) sidOf[cid] = sid; let n = 0;
+    for (const [cid, d] of Object.entries(draftById || {})) { if (!(d.year >= curNba - 2)) continue; const sid = sidOf[cid]; if (!sid || players[sid]) continue;
+      players[sid] = { nm: d.name || d.athleteName || "", cid: d._id || cid, seasons: [], tag: { t: "Rookie", c: "" }, draft: [d.year, d.overall, d.draftTeam], tot: new Array(15).fill(0) }; n++ }
+    log(`nba: ${n} draft picks with no NBA games yet`) }
   log(`nba: ${Object.keys(players).length} former Division I players`);
   return players;
 }

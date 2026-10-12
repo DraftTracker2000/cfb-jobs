@@ -24,6 +24,7 @@ import { gzipSync } from "node:zlib";
 import { buildGames, ranges } from "./cbbgames.mjs";
 import { buildNcaaRuns } from "./cbbncaa.mjs";
 import { buildCombine } from "./cbbcombine.mjs";
+import { buildNbaStats } from "./cbbnbastats.mjs";
 import { buildPast, confTourneyIds } from "./cbbpast.mjs";
 import { runPbp } from "./cbbpbp.mjs";
 import { buildNba, buildNbaGames } from "./cbbnba.mjs";
@@ -517,6 +518,8 @@ export async function main() {
   let NCAA = null; try { NCAA = await buildNcaaRuns({ cb, getPack, putPack, log, S, full }) } catch (e) { log("ncaa runs: " + e.message) }
   /* NBA draft combine measurements since 2001 (job/cbbcombine.mjs) */
   try { await buildCombine({ getPack, putPack, log, S, full }) } catch (e) { log("combine: " + e.message) }
+  /* NBA play types, hustle and matchup defense (job/cbbnbastats.mjs) */
+  try { await buildNbaStats({ getPack, putPack, log, curNba, live: nbaLive, full }) } catch (e) { log("nbastats: " + e.message) }
 
   /* the last ten finished seasons, for the season picker (job/cbbpast.mjs) */
   try { const curGames = G.filter(g => g.season === S && g.status === "final").map(g => [g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, null, null, g.seasonType === "postseason" ? 1 : 0, g.tournament || null]);

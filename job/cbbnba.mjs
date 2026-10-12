@@ -193,7 +193,13 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players 
       for (const k in P) P[k].sort((a, b) => a[0].localeCompare(b[0]));
       await putPack(`p${S}_cbb-nbalogs`, { season: y, cols: ["date", "team", "opp", "home", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "pm", "start"], p: P });
       log(`nba logs ${y}: ${Object.keys(P).length} players`); break } } catch (e) { log("nba logs: " + e.message) }
-  await putPack(`p${S}_cbb-nbagames`, { season: curNba, zSeason: Z ? zSeason : null, zAvg: Z ? Z.avg : null, pz, series, seriesCols: ["season", "date", "home", "away", "hs", "as"], teams: T, games, cols: ["id", "date", "home", "away", "hs", "as", "state", "tv", "pHome", "ourMargin", "playoffs"], rosCols: ["espnId", "name", "pos", "ht", "exp", "collegeCbbdId", "ppgLast", "outcome", "gamesLast"] });
+  /* every NBA player on a current roster or who played the last two seasons gets a profile (Oct 11 — Sam: "multiple players are unclickable
+     for the NBA"): his NBA seasons since 2009 — [season, team, gp, gs, min, pts, reb, ast, stl, blk, tov, fgm, fga, tpm, tpa, ftm, fta] */
+  const allp = {}; { const want = new Set([...Object.keys(lastS), ...Object.keys(curS)]); if (ros) for (const r of rowsOf(ros)) want.add(String(r.athlete_id));
+    const nmR = {}; if (ros) for (const r of rowsOf(ros)) nmR[String(r.athlete_id)] = [r.display_name, r.team_abbreviation, r.position_abbreviation, r.height, +r.experience_years || 0];
+    for (const id of want) { const S0 = []; for (const [y, P] of Object.entries((NH && NH.seasons) || {})) { const r = P[id]; if (r) S0.push([+y, r[1], ...r.slice(2, 17)]) }
+      S0.sort((a, b) => a[0] - b[0]); const rr = nmR[id]; if (!S0.length && !rr) continue; allp[id] = { nm: rr ? rr[0] : (S0.length ? (NH.seasons[S0[S0.length - 1][0]][id] || [])[0] : ""), tm: rr ? rr[1] : (S0.length ? S0[S0.length - 1][1] : null), pos: rr ? rr[2] : null, ht: rr ? rr[3] : null, exp: rr ? rr[4] : null, s: S0 } } }
+  await putPack(`p${S}_cbb-nbagames`, { season: curNba, zSeason: Z ? zSeason : null, zAvg: Z ? Z.avg : null, pz, allp, series, seriesCols: ["season", "date", "home", "away", "hs", "as"], teams: T, games, cols: ["id", "date", "home", "away", "hs", "as", "state", "tv", "pHome", "ourMargin", "playoffs"], rosCols: ["espnId", "name", "pos", "ht", "exp", "collegeCbbdId", "ppgLast", "outcome", "gamesLast"] });
   log(`nba games: ${games.length} games, ${Object.keys(T).length} teams`);
   return true;
 }

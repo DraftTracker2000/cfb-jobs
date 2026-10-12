@@ -7,7 +7,7 @@
    NBA.com player ids map to ESPN's through nba_crosswalk (else the page matches on name).
 
    Pack p2000_cbb-nbastats (v2 adds ta/gb, toughest assignments): { v, got: [seasons], ptCols, hCols, mCols, s: { season: { p: { espnId|"n"+nbaId: { nm, tm, o: { type: [poss, pts,
-   pctile, freq] }, d: { type: [poss, pts, pctile] }, h: [...hCols], m: [...mCols] } }, t: { ESPN abbr: { o: { type: [poss, pts, freq] },
+   pctile, freq, ft trips] }, d: { type: [poss, pts, pctile] }, h: [...hCols], m: [...mCols] } }, t: { ESPN abbr: { o: { type: [poss, pts, freq, ft trips] },
    d: { type: [poss, pts] }, h: [...hCols] } } } }. Finished seasons are cached; the current one is re-read each run while it is being played. */
 import { REL, readParquet, crosswalk } from "./cbbcombine.mjs";
 
@@ -27,8 +27,10 @@ export function seasonBlock({ off = {}, def = {}, hp = [], ht = [], mu = [], lsm
     const p = pl(r), x = (p[side] = p[side] || {}), poss = n(r.poss), pts = n(r.pts), prev = x[type];
     if (r.team_id != null && r.team_abbreviation) tmOfId[n(r.team_id)] = ab(r.team_abbreviation);
     /* a traded player has a row per team: possessions and points add up; the percentile is the bigger stint's */
-    x[type] = prev ? [prev[0] + poss, prev[1] + pts, poss > prev[0] ? r3(n(r.percentile)) : prev[2], ...(side === "o" ? [0] : [])] : [poss, pts, r3(n(r.percentile)), ...(side === "o" ? [0] : [])];
-    const t = r.team_abbreviation ? ab(r.team_abbreviation) : null; if (t) { const tt = (T[t] = T[t] || { o: {}, d: {} })[side], y = tt[type] = tt[type] || [0, 0]; y[0] += poss; y[1] += pts } }
+    /* [4] (offense): trips to the line — possessions on that play that ended in free throws (Oct 12, Sam: "we've left free throws out") */
+    const ft = side === "o" ? Math.round(n(r.ft_poss_pct) * poss) : 0;
+    x[type] = prev ? [prev[0] + poss, prev[1] + pts, poss > prev[0] ? r3(n(r.percentile)) : prev[2], ...(side === "o" ? [0, (prev[4] || 0) + ft] : [])] : [poss, pts, r3(n(r.percentile)), ...(side === "o" ? [0, ft] : [])];
+    const t = r.team_abbreviation ? ab(r.team_abbreviation) : null; if (t) { const tt = (T[t] = T[t] || { o: {}, d: {} })[side], y = tt[type] = tt[type] || [0, 0]; y[0] += poss; y[1] += pts; if (side === "o") y[3] = (y[3] || 0) + ft } }
   /* frequency: share of his (the team's) play-type possessions */
   for (const p of Object.values(P)) if (p.o) { const tot = Object.values(p.o).reduce((a, v) => a + v[0], 0); for (const v of Object.values(p.o)) v[3] = tot ? r3(v[0] / tot) : 0 }
   for (const t of Object.values(T)) { const tot = Object.values(t.o).reduce((a, v) => a + v[0], 0); for (const v of Object.values(t.o)) v[2] = tot ? r3(v[0] / tot) : 0 }
@@ -72,7 +74,8 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
   let K = full ? null : await getPack("p2000_cbb-nbastats").catch(() => null);
   if (!K || K.v !== 2) K = { v: 2, got: [], ptO: PT_O, ptD: PT_D, hCols: H_COLS, mCols: M_COLS, s: {} };
   const espnOf = await crosswalk([curNba - 1, curNba]); let files = 0;
-  K.fin = K.fin || {}; const want = [curNba - 1, curNba].filter(y => !K.got.includes(y) || (y === curNba && live) || !K.fin[y]);   /* a finished season once more after it ends, then never (Oct 12) */
+  K.fin = K.fin || {};
+  if (!K.ftv) { delete K.fin[curNba - 1]; K.ftv = 1 }   /* free-throw trips by play type (Oct 12): last season's play-type files read once more, then kept */ const want = [curNba - 1, curNba].filter(y => !K.got.includes(y) || (y === curNba && live) || !K.fin[y]);   /* a finished season once more after it ends, then never (Oct 12) */
   for (const y of want) {
     const get = async f => { files++; return readParquet(REL(f)).catch(e => (log(`nbastats ${f}: ${e.message}`), null)) };
     const off = {}, def = {};

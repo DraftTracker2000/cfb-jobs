@@ -10,7 +10,7 @@ export async function runProbes({ browser, site, token, only = "", log = console
   for (const P of PROBES.filter(p => !want.length || want.some(w => p.name.startsWith(w)))) {
     /* a probe with `node` runs in the job itself (no browser): plain fetches of public pages, e.g. to find where a source posts */
     /* a probe with `mod` runs that job module's run() (no browser), e.g. the win-probability fit */
-    if (P.mod) { let r; try { const m = await import(`./${P.mod}.mjs`); r = await m.run({ site, token, log }) } catch (e) { r = { ok: false, error: String(e.message || e).slice(0, 300) } }
+    if (P.mod) { let r; try { if (P.env) Object.assign(process.env, P.env); const m = await import(`./${P.mod}.mjs`); r = await m.run({ site, token, log }) } catch (e) { r = { ok: false, error: String(e.message || e).slice(0, 300) } }
       out.push({ name: P.name, ...r }); log(`::${r && r.ok === false ? "warning" : "notice"} title=probe ${P.name}::${JSON.stringify(r).replace(/[\r\n]+/g, " ").slice(0, 6000)}`); continue }
     /* a probe with `url` opens an outside page in the browser and lists the data it loads (to find where a page gets its numbers) */
     if (P.url) { const ctx = await browser.newContext({ userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36 mycfbbigboard-data-job" }); const p = await ctx.newPage(); const got = [];

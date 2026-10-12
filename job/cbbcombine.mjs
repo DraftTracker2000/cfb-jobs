@@ -9,7 +9,7 @@
    Pack p2000_cbb-combine: { v, cols, got: [years read], rows: [[year, nbaId, espnId, name, pos, ht, wt, wing, reach, handL, handW, fat, vStand, vMax, lane, sprint]] }.
    Past years are cached; the newest is re-read in May–July (the combine is in May). The file for season Y holds the combine of May Y−1. */
 import { zstdDecompressSync } from "node:zlib";
-const REL = f => `https://github.com/sportsdataverse/sportsdataverse-data/releases/download/${f}`;
+export const REL = f => `https://github.com/sportsdataverse/sportsdataverse-data/releases/download/${f}`;
 export const COMBINE_COLS = ["year", "nbaId", "espnId", "name", "pos", "ht", "wt", "wing", "reach", "handL", "handW", "fat", "vStand", "vMax", "lane", "sprint"];
 const num = v => { if (v == null || v === "") return null; const n = typeof v === "bigint" ? Number(v) : +v; return isFinite(n) && n > 0 ? Math.round(100 * n) / 100 : null };
 
@@ -25,12 +25,12 @@ export function combineRows(year, objs, espnOf = {}) {
   return out;
 }
 
-async function readParquet(url) {
+export async function readParquet(url) {
   const r = await fetch(url, { redirect: "follow" }); if (r.status === 404) return null; if (!r.ok) throw new Error(`${r.status} ${url}`);
   const file = await r.arrayBuffer(), { parquetReadObjects } = await import("hyparquet");
   return parquetReadObjects({ file, compressors: { ZSTD: input => new Uint8Array(zstdDecompressSync(input)) } });
 }
-async function crosswalk(seasons) {
+export async function crosswalk(seasons) {
   const map = {};
   for (const y of seasons) { const r = await fetch(REL(`nba_crosswalk/nba_player_crosswalk_${y}.csv`), { redirect: "follow" }).catch(() => null); if (!r || !r.ok) continue;
     const lines = (await r.text()).split(/\r?\n/), H = lines[0].split(","), ni = H.indexOf("nba_player_id"), ei = H.indexOf("espn_athlete_id");

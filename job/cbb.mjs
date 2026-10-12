@@ -575,9 +575,17 @@ export async function main() {
   const hBy = {}; for (const h of hist) (hBy[h.r.id] = hBy[h.r.id] || []).push(h);
   /* every NBA player's college seasons (Oct 10 — Sam: "do pro players not have profiles?" … "like college"): the College tab of his NBA page */
   { const want = new Set(Object.values(NBA).map(X => X.cid).filter(Boolean)), car = {};
-    for (const [y, rows] of Object.entries(ALL)) for (const r of rows) if (want.has(r.id) && r.min > 0) (car[r.id] = car[r.id] || []).push([+y, r.tm, r.g, r.gs, r.min, r.pts, r.reb, r.ast, r.stl, r.blk, r.tov, r.fgm, r.fga, r.tpm, r.tpa, r.ftm, r.fta, r3(r.ws40)]);
-    /* a stray one-game row under another team in a season where he played 5+ games for his own team is dropped (see lastTeamOf) */
-    for (const X of Object.values(NBA)) if (car[X.cid]) X.car = car[X.cid].filter((c, _, A) => !(c[2] <= 1 && A.some(d => d[0] === c[0] && d[1] !== c[1] && d[2] >= 5))).sort((a, b) => a[0] - b[0]) }
+    for (const [y, rows] of Object.entries(ALL)) for (const r of rows) if (want.has(r.id) && r.min > 0) { const c = [+y, r.tm, r.g, r.gs, r.min, r.pts, r.reb, r.ast, r.stl, r.blk, r.tov, r.fgm, r.fga, r.tpm, r.tpa, r.ftm, r.fta, r3(r.ws40)]; c.sid = r.sid ? String(r.sid) : null; (car[r.id] = car[r.id] || []).push(c) }
+    for (const [eid, X] of Object.entries(NBA)) if (car[X.cid]) {
+      let A = car[X.cid];
+      /* one CBBD id can hold two players (A.J. Lawson: North Texas–McNeese and South Carolina): when some rows carry his own ESPN id, rows
+         carrying a different ESPN id are someone else's */
+      if (A.some(c => c.sid === String(eid))) A = A.filter(c => !c.sid || c.sid === String(eid));
+      /* a stray one-game row under another team in a season where he played 5+ games for his own team is dropped (see lastTeamOf) */
+      A = A.filter((c, _, B) => !(c[2] <= 1 && B.some(d => d[0] === c[0] && d[1] !== c[1] && d[2] >= 5))).sort((a, b) => a[0] - b[0]);
+      X.car = A.map(c => c.slice());
+      /* his college: the team of his last season there, where he played the most games */
+      const ly = A[A.length - 1][0], lt = A.filter(c => c[0] === ly).sort((a, b) => b[2] - a[2])[0]; X.col = lt[1]; X.colY = ly } }
   /* each NBA player's final college season, for the Blind résumé game and his NBA profile */
   for (const X of Object.values(NBA)) { const a = (hBy[X.cid] || []).filter(h => h.r.min >= 200).sort((x, y) => y.r.s - x.r.s)[0];
     if (a) X.cl = { s: a.r.s, tm: a.r.tm, yr: a.yr, pos: a.r.pos, p5: a.d.p5, g: a.r.g, mpg: r1(a.d.mpg), grade: grade(a.m), prof: profileOf(a), pD: r3(a.pD), pR1: r3(a.pR1), pL: r3(a.pL), ...Object.fromEntries(["pts40", "reb40", "ast40", "stl40", "blk40", "tov40", "ts", "tpp", "tpr", "ftp", "usg", "ws40", "ht", "net"].map(k => [k, r3(a.d[k])])) } }

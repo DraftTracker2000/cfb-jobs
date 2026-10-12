@@ -39,7 +39,7 @@ export function nbaTag(seasons, curY) {
   return { t: "Brief", c: "bad" };
 }
 
-export async function buildNba({ getPack, putPack, log, full, curNba, live, sidToCbbd, draftById }) {
+export async function buildNba({ getPack, putPack, log, full, curNba, live, sidToCbbd, draftById, nameMatch }) {
   let NH = full ? null : await getPack("p2000_cbb-nbahist").catch(() => null);
   if (!NH || !NH.seasons) NH = { seasons: {} };
   const want = []; for (let y = 2009; y <= curNba; y++) if (!NH.seasons[y] || (live && y === curNba)) want.push(y);
@@ -52,8 +52,12 @@ export async function buildNba({ getPack, putPack, log, full, curNba, live, sidT
   await putPack("p2000_cbb-nbahist", NH);
   /* NBA careers of players who played Division I (by ESPN id) */
   const players = {};
+  /* ESPN id → college id; failing that, a name match against his first NBA season (see nameMatch in job/cbb.mjs) */
+  const firstY = {}, nmOf = {}; for (const [y, P] of Object.entries(NH.seasons)) for (const [eid, row] of Object.entries(P)) { if (!firstY[eid] || +y < firstY[eid]) firstY[eid] = +y; nmOf[eid] = row[0] }
+  let byNm = 0; const cidOf = {}; for (const eid of Object.keys(firstY)) { let c = sidToCbbd[eid]; if (!c && nameMatch && firstY[eid] >= 2010) { c = nameMatch(nmOf[eid], firstY[eid]); if (c) byNm++ } if (c) cidOf[eid] = c }
+  log(`nba: ${byNm} players joined to college by name`);
   for (const [y, P] of Object.entries(NH.seasons)) for (const [eid, row] of Object.entries(P)) {
-    const cid = sidToCbbd[eid]; if (!cid) continue;
+    const cid = cidOf[eid]; if (!cid) continue;
     const X = players[eid] = players[eid] || { nm: row[0], cid, seasons: [] };
     X.seasons.push([+y, row[1], ...row.slice(2, 17), row[17] ? row[17].slice(0, 3).concat([row[17][3]]) : null]);
   }

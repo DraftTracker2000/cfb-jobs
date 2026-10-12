@@ -28,7 +28,11 @@ export async function run({ site, token, log = console.log }) {
      1.1 in 2020, 1.75–1.9 from 2022) and in 2014 and 2023 it barely tracks results (r 0.53 with SRS; Duke 2023 ranked 322nd at 27–9).
      PRIOR=srs swaps it for CBBD's SRS × 1.8, the same scale every season */
   let adj = HI.adj;
-  if (process.env.PRIOR === "srs" || globalThis.__PRIOR === "srs") { adj = {}; for (let y = 2014; y <= S; y++) { const R = await cb("/ratings/srs", { season: y }).catch(() => []); adj[y] = Object.fromEntries(R.map(t => [t.teamId, [Math.round(t.rating * 18) / 10, t.conference]])) } }
+  if (process.env.PRIOR === "srs") { adj = {}; for (let y = 2014; y <= S; y++) { const R = await cb("/ratings/srs", { season: y }).catch(() => []); adj[y] = Object.fromEntries(R.map(t => [t.teamId, [Math.round(t.rating * 18) / 10, t.conference]])) } }
+  /* PRIOR=hybrid: CBBD's net put on one scale (divided by that season's slope against SRS, × 1.8), and SRS × 1.8 in a season where the
+     two disagree (correlation under 0.8) */
+  if (process.env.PRIOR === "hybrid") { const { fixAdjScale } = await import("./cbb.mjs"); const SR = {}; for (let y = 2014; y <= S; y++) { const R = await cb("/ratings/srs", { season: y }).catch(() => []); SR[y] = Object.fromEntries(R.map(t => [t.teamId, t.rating])) }
+    adj = JSON.parse(JSON.stringify(HI.adj)); const note = fixAdjScale(adj, SR); log("hybrid: " + JSON.stringify(note)) }
   /* this season's games and lines (2026 = last winter) */
   if (!GH.seasons[S]) { const rows = []; for (const [a, b] of ranges(S, 31)) for (const g of await cb("/games", { season: S, startDateRange: a, endDateRange: b })) if (g.status === "final")
     rows.push([g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, g.homeTeamEloStart ?? null, g.awayTeamEloStart ?? null, g.seasonType === "postseason" ? 1 : 0, g.tournament || null]);

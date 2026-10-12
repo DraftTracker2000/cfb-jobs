@@ -306,6 +306,16 @@ async function pbp(S, log) {
     if (o.qb_dropback === "1" && o.two_point_attempt !== "1") { const qid = o.qb_scramble === "1" ? o.rusher_player_id : o.passer_player_id;
       if (qid && qid !== "NA") { const a = pl(P, qid).adv = pl(P, qid).adv || [0, 0, 0, 0, 0, 0, 0]; a[6]++; if (o.qb_scramble === "1") a[5]++;
         const c = num(o.cpoe); if (c != null) { a[0] += c; a[1]++ } const ae = num(o.comp_air_epa), ye = num(o.comp_yac_epa);   /* completions only (nflverse: 0 on an incompletion); air_epa/yac_epa would charge every incompletion to YAC */ if (ae != null && ye != null && o.sack !== "1") { a[2] += ae; a[3] += ye; a[4]++ } } }
+    /* Oct 12 (Sam: NFL team situational lines "yes, obviously" — approved in the first audit): each team's offense and defense on third
+       down (conversions), late and close (4th/OT within 8), the two-minute drill (EPA per play) and red-zone trips (drives that reached
+       the 20, and how many ended in a touchdown) → team.sit = { o, d } with third [att, conv], late [plays, epa], two [plays, epa], rz [trips, td] */
+    if ((pt === "pass" || pt === "run") && o.posteam && o.defteam && o.two_point_attempt !== "1") {
+      const S2 = t => { const x = T[t] = T[t] || { off: {}, def: {} }; return x.sit = x.sit || { o: { third: [0, 0], late: [0, 0], two: [0, 0], rzd: {} }, d: { third: [0, 0], late: [0, 0], two: [0, 0], rzd: {} } } };
+      const ep = num(o.epa) || 0, k = g + "|" + o.fixed_drive, otd = o.pass_touchdown === "1" || o.rush_touchdown === "1";
+      for (const z of [S2(o.posteam).o, S2(o.defteam).d]) {
+        if (third) { z.third[0]++; if (o.third_down_converted === "1") z.third[1]++ }
+        if (late) { z.late[0]++; z.late[1] += ep } if (two) { z.two[0]++; z.two[1] += ep }
+        if ((num(o.yardline_100) ?? 99) <= 20 || (otd && k in z.rzd)) { if (!(k in z.rzd)) z.rzd[k] = 0; if (otd) z.rzd[k] = 1 } } }
     { const po = num(o.pass_oe); if (po != null && o.posteam && (pt === "pass" || pt === "run") && o.two_point_attempt !== "1") { const tt = T[o.posteam] = T[o.posteam] || { off: {}, def: {} }, x = tt.proe = tt.proe || [0, 0]; x[0] += po; x[1]++ } }
     if (pt === "pass" && o.passer_player_id) {
       const ev = { sack: o.sack === "1", cmp: o.complete_pass === "1", int: o.interception === "1", td: td && o.interception !== "1", fl, yds, epa, fd: o.first_down === "1" };
@@ -371,6 +381,7 @@ async function pbp(S, log) {
           const oc = all[0] - c, oy = all[1] - y, x = tD.gapAdj[k] = tD.gapAdj[k] || [0, 0, 0]; x[0] += c; x[1] += y; x[2] += c * (oy + 20 * lg) / (oc + 20) } } }
     for (const t in T) for (const k in T[t].gapAdj || {}) T[t].gapAdj[k] = T[t].gapAdj[k].map(v => Math.round(v)) }
   for (const id in DF) { DF[id].g = DF[id].g.size; for (const k in DF[id].P) if (!DF[id].P[k].some(Boolean)) delete DF[id].P[k] }
+  for (const t in T) if (T[t].sit) for (const side of ["o", "d"]) { const z = T[t].sit[side], v = Object.values(z.rzd); z.rz = [v.length, v.filter(Boolean).length]; delete z.rzd }
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
     gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], pass: P, rec: R, rush: U, team: T, game: G, wx: WX, opq: OPQ, inj: INJ, bon: BON,

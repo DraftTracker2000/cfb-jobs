@@ -185,7 +185,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
        last season's adjusted net, home court, the team's own home edge, rest, and shooting luck; they add up to our margin */
     const pm = known && g.season === S ? (c => [c(1), c(2) + c(3), c(0) + c(4), c(5), c(6) + c(7), c(8) + c(9)].map(r1))(i => (PKg.mw[i] || 0) * (x[i] || 0)) : undefined;
     return { id: g.id, sid: g.sourceId ? String(g.sourceId) : undefined, s: g.season, d: g.startDate, tbd: g.startTimeTbd ? 1 : 0, h: g.homeTeamId, a: g.awayTeamId, hs: g.homePoints ?? null, as: g.awayPoints ?? null, st: g.status, n: g.neutralSite ? 1 : 0, c: g.conferenceGame ? 1 : 0,
-      t: g.tournament || null, note: g.gameNotes || null, post: g.seasonType === "postseason" ? 1 : 0, hSeed: g.homeSeed ?? null, aSeed: g.awaySeed ?? null, venue: g.venue || null, city: [g.city, g.state].filter(Boolean).join(", "),
+      t: g.tournament || null, note: g.gameNotes || null, hh: Array.isArray(g.homePeriodPoints) && Array.isArray(g.awayPeriodPoints) && g.homePeriodPoints.length >= 2 ? [g.homePeriodPoints[0], g.homePeriodPoints[1], g.awayPeriodPoints[0], g.awayPeriodPoints[1]] : undefined, post: g.seasonType === "postseason" ? 1 : 0, hSeed: g.homeSeed ?? null, aSeed: g.awaySeed ?? null, venue: g.venue || null, city: [g.city, g.state].filter(Boolean).join(", "),
       tv: TV[g.id] || null, rest: REST[g.id] || null, ln: LINES[g.id] || null, p: r3(p), m: r1(m), elo: [he != null ? Math.round(he) : null, ae != null ? Math.round(ae) : null],
       hr: g.season === S ? rankAt(g.homeTeamId, g.startDate.slice(0, 10)) : null, ar: g.season === S ? rankAt(g.awayTeamId, g.startDate.slice(0, 10)) : null,
       ser: seriesFor(g.homeTeamId, g.awayTeamId, g.startDate.slice(0, 10)), exc: r1(g.excitement), pm, co: [coachOf(g.homeTeamId, g.season), coachOf(g.awayTeamId, g.season)] };
@@ -215,6 +215,9 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
 
   /* ---- game logs: every team's and player's box score, season S ---- */
   let LG = full ? null : await getPack(`p${S}_cbb-logs`).catch(() => null);
+  /* Oct 12 (Sam: per-game defensive rating "seems important for defensive rating"): logs written before the player rows carried CBBD's
+     defensive and net rating are read again once */
+  if (LG && LG.cols && LG.cols.player && !LG.cols.player.includes("drtg")) LG = null;
   if (!LG || !LG.done) {
     /* in season, only the last ten days are read again (stat corrections), the rest is kept from the last run */
     const keep = LG && LG.teams && Object.keys(LG.teams).length ? LG : null, since = Date.now() - 10 * 864e5;
@@ -229,14 +232,14 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     for (const [a, b] of recent(ranges(S, 7))) for (const t of await cb("/games/players", { season: S, startDateRange: a, endDateRange: b }))
       for (const p of t.players || []) { if (!p.minutes) continue; if (p.name) (LG.names = LG.names || {})[p.athleteId] = p.name;
         (LG.players[p.athleteId] = LG.players[p.athleteId] || []).push([t.gameId, (t.startDate || "").slice(0, 10), t.teamId, t.opponentId, t.neutralSite ? 0 : t.isHome ? 1 : -1, p.starter ? 1 : 0, p.minutes, p.points, (p.rebounds || {}).total ?? null, (p.rebounds || {}).offensive ?? null, p.assists, p.steals, p.blocks, p.turnovers, p.fouls,
-          (p.fieldGoals || {}).made, (p.fieldGoals || {}).attempted, (p.threePointFieldGoals || {}).made, (p.threePointFieldGoals || {}).attempted, (p.freeThrows || {}).made, (p.freeThrows || {}).attempted, r1(p.gameScore), r1(p.offensiveRating), r1(p.usage)]) }
+          (p.fieldGoals || {}).made, (p.fieldGoals || {}).attempted, (p.threePointFieldGoals || {}).made, (p.threePointFieldGoals || {}).attempted, (p.freeThrows || {}).made, (p.freeThrows || {}).attempted, r1(p.gameScore), r1(p.offensiveRating), r1(p.usage), r1(p.defensiveRating), r1(p.netRating)]) }
     /* newest copy of each game wins (a re-read after a stat correction replaces the old row) */
     const dedupe = rows => { const m = new Map(); for (const r of rows) m.set(r[0], r); return [...m.values()].sort((x, y) => x[1].localeCompare(y[1])) };
     for (const k in LG.teams) LG.teams[k] = dedupe(LG.teams[k]);
     for (const k in LG.players) LG.players[k] = dedupe(LG.players[k]);
     LG.done = Date.now() > Date.UTC(S, 3, 20);
     LG.cols = { team: ["gid", "date", "opp", "ha", "pts", "oppPts", "pace", "ortg", "drtg", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "orb", "reb", "ast", "tov", "stl", "blk", "paint", "fastbreak", "oppReb", "oppTov"],
-      player: ["gid", "date", "team", "opp", "ha", "start", "min", "pts", "reb", "orb", "ast", "stl", "blk", "tov", "pf", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "gameScore", "ortg", "usg"] };
+      player: ["gid", "date", "team", "opp", "ha", "start", "min", "pts", "reb", "orb", "ast", "stl", "blk", "tov", "pf", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "gameScore", "ortg", "usg", "drtg", "net"] };
     await putPack(`p${S}_cbb-logs`, LG);
     log(`logs: ${Object.keys(LG.teams).length} teams, ${Object.keys(LG.players).length} players`);
   }

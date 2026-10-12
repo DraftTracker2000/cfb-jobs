@@ -234,7 +234,7 @@ async function pbp(S, log) {
     "solo_tackle_1_player_id", "solo_tackle_2_player_id", "assist_tackle_1_player_id", "assist_tackle_2_player_id", "tackle_with_assist_1_player_id", "tackle_with_assist_2_player_id",
     "pass_defense_1_player_id", "pass_defense_2_player_id", "interception_player_id", "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id",
     "qb_hit_1_player_id", "qb_hit_2_player_id", "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id", "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id", "desc", "wp", "pass_touchdown", "rush_touchdown", "return_touchdown", "td_player_id", "receiving_yards", "rushing_yards",
-    "lateral_receiver_player_id", "lateral_receiving_yards", "lateral_rusher_player_id", "lateral_rushing_yards"], o => {
+    "lateral_receiver_player_id", "lateral_receiving_yards", "lateral_rusher_player_id", "lateral_rushing_yards", "cpoe", "air_epa", "yac_epa", "qb_scramble", "pass_oe", "qb_dropback"], o => {
     const g = o.game_id; if (!g) return;
     /* fantasy bonuses by player and game: [pass TD 40+, 50+, rush TD 40+, 50+, catch TD 40+, 50+, pick-six thrown, completion 40+, run 40+, catch 40+] */
     if (o.two_point_attempt !== "1") { const yg = num(o.yards_gained), id = x => x && x !== "NA" ? x : null;
@@ -300,6 +300,13 @@ async function pbp(S, log) {
     const pt = o.play_type, epa = num(o.epa) || 0, yds = num(o.yards_gained) || 0, late = q >= 4 && Math.abs(num(o.score_differential) || 0) <= 8,
       third = num(o.down) === 3, rz = (num(o.yardline_100) || 99) <= 20, td = o.touchdown === "1", fl = o.fumble_lost === "1",
       two = (num(o.half_seconds_remaining) ?? 999) <= 120 && q !== 5;   // the two-minute drill: last 2:00 of either half
+    /* Oct 11 (#334 — Sam on nflverse's unused columns: "i don't get why all this stuff is available and we arent using it"): per QB
+       adv = [CPOE sum, plays with CPOE, air EPA, YAC EPA, attempts with them, scrambles, dropbacks]; per team proe = [pass rate over
+       expected sum (points), plays with it] — nflverse's own models (completion probability, expected pass rate), not ours */
+    if (o.qb_dropback === "1" && o.two_point_attempt !== "1") { const qid = o.qb_scramble === "1" ? o.rusher_player_id : o.passer_player_id;
+      if (qid && qid !== "NA") { const a = pl(P, qid).adv = pl(P, qid).adv || [0, 0, 0, 0, 0, 0, 0]; a[6]++; if (o.qb_scramble === "1") a[5]++;
+        const c = num(o.cpoe); if (c != null) { a[0] += c; a[1]++ } const ae = num(o.air_epa), ye = num(o.yac_epa); if (ae != null && ye != null && o.sack !== "1") { a[2] += ae; a[3] += ye; a[4]++ } } }
+    { const po = num(o.pass_oe); if (po != null && o.posteam && (pt === "pass" || pt === "run") && o.two_point_attempt !== "1") { const tt = T[o.posteam] = T[o.posteam] || { off: {}, def: {} }, x = tt.proe = tt.proe || [0, 0]; x[0] += po; x[1]++ } }
     if (pt === "pass" && o.passer_player_id) {
       const ev = { sack: o.sack === "1", cmp: o.complete_pass === "1", int: o.interception === "1", td: td && o.interception !== "1", fl, yds, epa, fd: o.first_down === "1" };
       const p = pl(P, o.passer_player_id); addPass(p.all, ev); if (late) addPass(p.late, ev); if (rz) addPass(p.rz, ev); if (two) addPass(p.two, ev);
@@ -366,7 +373,7 @@ async function pbp(S, log) {
   for (const id in DF) { DF[id].g = DF[id].g.size; for (const k in DF[id].P) if (!DF[id].P[k].some(Boolean)) delete DF[id].P[k] }
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
-    gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], pass: P, rec: R, rush: U, team: T, game: G, wx: WX, opq: OPQ, inj: INJ, bon: BON,
+    gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], pass: P, rec: R, rush: U, team: T, game: G, wx: WX, opq: OPQ, inj: INJ, bon: BON,
     dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF };
 }
 /* rain or snow at kickoff, from the play-by-play's weather line ("Light Rain Temp: 45° F, …"): 0 clear or dry, 1 rain, 2 snow,

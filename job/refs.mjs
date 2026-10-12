@@ -48,7 +48,8 @@ export async function refreshRefs({ site, jobToken, mode, log = console.log }) {
     if (mode === "history") return true;
     if (!have[n]) return true;                                                  // anything missing
     if (!process.env.DRAFT_TEST && /^(nfl_draft(all|old)?|combine|nfl_combineoff)$/.test(n) && age(n) > Date.now() - Date.parse("2026-10-07T03:40:00Z")) return true;   // once: replace the PFR-sourced copies (Oct 6)
-    if (mode === "weekly") return BASE.includes(n) || n === "nfl_stats_" + nflSeason || n === "nfl_stats_" + (nflSeason - 1);
+    /* last season once more only if it was last built before the season was over (March 1) — then never again (Oct 12) */
+    if (mode === "weekly") return BASE.includes(n) || n === "nfl_stats_" + nflSeason || (n === "nfl_stats_" + (nflSeason - 1) && !(have[n].at >= Date.parse(`${nflSeason}-03-01T00:00:00Z`)));
     return n === "nfl_stats_" + nflSeason && age(n) > 20 * 36e5;               // live: today's NFL stats at most daily
   });
   let done = 0, skipped = 0;

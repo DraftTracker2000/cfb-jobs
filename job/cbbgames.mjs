@@ -89,14 +89,16 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   /* ---- past seasons: results + lines (cached) ---- */
   let GH = full ? null : await getPack("p2000_cbb-ghist").catch(() => null);
   if (!GH || GH.through < S - 1 || GH.v !== 2) {
-    GH = { v: 2, through: S - 1, seasons: {}, lines: {} };
-    for (let y = 2008; y < S; y++) {
+    /* Oct 12: behind by the newly finished season(s) → add just those; a full rebuild only with no cache or a new format */
+    const add = GH && GH.v === 2 && GH.seasons && GH.through < S - 1 ? GH.through + 1 : null;
+    if (!add) GH = { v: 2, through: S - 1, seasons: {}, lines: {} }; else GH.through = S - 1;
+    for (let y = add || 2008; y < S; y++) {
       const rows = [];
       for (const [a, b] of ranges(y, 31)) for (const g of await cb("/games", { season: y, startDateRange: a, endDateRange: b })) if (g.status === "final")
         rows.push([g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, g.homeTeamEloStart ?? null, g.awayTeamEloStart ?? null, g.seasonType === "postseason" ? 1 : 0, g.tournament || null]);
       const seen = new Set(); GH.seasons[y] = rows.filter(r => !seen.has(r[0]) && seen.add(r[0]));
     }
-    for (let y = Math.max(2014, S - 4); y < S; y++) { GH.lines[y] = {}; for (const [a, b] of ranges(y, 31)) for (const l of await cb("/lines", { season: y, startDateRange: a, endDateRange: b })) { const L = pickLine(l.lines); if (L && L.sp != null) GH.lines[y][l.gameId] = [L.sp, L.ou] } }
+    for (let y = Math.max(2014, S - 4, add || 0); y < S; y++) { GH.lines[y] = {}; for (const [a, b] of ranges(y, 31)) for (const l of await cb("/lines", { season: y, startDateRange: a, endDateRange: b })) { const L = pickLine(l.lines); if (L && L.sp != null) GH.lines[y][l.gameId] = [L.sp, L.ou] } }
     await putPack("p2000_cbb-ghist", GH);
   }
   /* ---- this season (and next season's schedule) ---- */

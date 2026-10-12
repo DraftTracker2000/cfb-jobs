@@ -101,7 +101,9 @@ async function main() {
   /* NFL availability (weekly roster status) — its own quick run, and part of weekly / history runs */
   if (MODE === "avail" || MODE === "weekly" || MODE === "history" || MODE === "coaches") {
     const now = new Date(), season = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
-    const data = await buildAvailability({ to: season });
+    /* finished seasons are read once and kept (Oct 12): last run's pack supplies every season before this one */
+    let prev = null; try { const ss = await api("POST", "/api/job/session"); const r = await fetch(SITE + `/api/pack/p${season}_availability`, { headers: { Authorization: "Bearer " + (ss && ss.token) } }); if (r.ok) { const j = await r.json(); prev = j && j.avail && j.avail.v === 2 ? j.avail.d : null } } catch { }
+    const data = await buildAvailability({ to: season, prev });
     const up = await uploadAvailability({ api, season, data });
     console.log(`availability: ${up.name} uploaded (${(up.bytes / 1024).toFixed(0)} KB)`);
     if (MODE === "avail") { await report(true, `availability · ${Object.keys(data).length} seasons · ${(up.bytes / 1024).toFixed(0)} KB`); return }
@@ -165,6 +167,9 @@ async function main() {
   tick("(done)");
   if (B.error) throw new Error("Board reported: " + B.error);
   B = await page.evaluate(() => { const b = window.__BUILDER; return { fileNames: b.fileNames || [], packNames: b.packNames || [], coverage: b.coverage, finishedThrough: b.finishedThrough, note: b.note } });
+  /* Oct 12: finished-season answers the page saved this run (BC_NEW, see apiFin) go up in every mode, so the next run reads them instead of CFBD */
+  { const extra = await page.evaluate(() => { try { const P = window.__PACKS = window.__PACKS || {}; const L = []; for (const [k, v] of Object.entries(typeof BC_NEW === "object" ? BC_NEW : {})) if (!P[k]) { P[k] = v; L.push(k) } return L } catch (e) { return [] } });
+    if (extra.length) { B.packNames = [...B.packNames, ...extra]; console.log(`saved for next runs: ${extra.length} finished-season answers`) } }
 
   /* files come out of the page one at a time (a whole build at once can be too big to hand over) */
   const version = new Date().toISOString().replace(/[-:]/g, "").slice(0, 13) + "-" + MODE;   // e.g. 20260926T1430-live

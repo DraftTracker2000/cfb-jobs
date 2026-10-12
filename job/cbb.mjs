@@ -51,7 +51,21 @@ async function site(method, path, { body, raw, token = JOB, headers = {} } = {})
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 /* one CBBD call (counted). Big answers (a day of plays is up to ~30 MB) come straight through. */
+/* finished seasons are fetched once (Oct 12 — Sam: "we should never be refreshing and running stats for things that never change again"):
+   a call for a single season that's over (after its title game, Apr 10) — recent seasons only, drafts and recruiting excepted — is kept
+   in p2000_cbb-fin after the first run and read from there after. Bump FIN_V to refetch. */
+const FIN_V = 1; let FIN = null, FIN_NEW = 0;
+const finKey = (path, params) => { const s = +(params.season ?? params.year), yr = new Date().getUTCFullYear();
+  if (!s || /^\/(draft|recruiting|plays)/.test(path) || !(Date.now() > Date.UTC(s, 3, 10)) || s < yr - 2) return null;
+  return path + "?" + Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => k + "=" + v).sort().join("&") };
+export async function finSave() { if (FIN && FIN_NEW) await putPack("p2000_cbb-fin", FIN) }
 export async function cb(path, params = {}) {
+  const fk = SITE && JOB ? finKey(path, params) : null;
+  if (fk) { if (!FIN) { try { FIN = await getPack("p2000_cbb-fin") } catch { FIN = null } if (!FIN || FIN.v !== FIN_V) FIN = { v: FIN_V, c: {} } }
+    if (FIN.c[fk]) return FIN.c[fk];
+    const j = await cbLive(path, params); if (Array.isArray(j) ? j.length : j) { FIN.c[fk] = j; FIN_NEW++ } return j }
+  return cbLive(path, params) }
+async function cbLive(path, params = {}) {
   const q = new URLSearchParams({ path, ...Object.fromEntries(Object.entries(params).filter(([, v]) => v != null)) });
   for (let k = 0; ; k++) {
     try {
@@ -216,16 +230,19 @@ export async function main() {
   let H = full ? null : await getPack("p2000_cbb-hist").catch(() => null);
   const HFROM = 2008;
   if (!H || !H.stats || H.through < S - 1 || H.v !== 2) {
-    log("building the history cache…");
-    H = { v: 2, stats: {}, ht: {}, start: {}, adj: {}, rec: {}, through: S - 1 };
-    const seasons = []; for (let y = HFROM; y < S; y++) seasons.push(y);
+    /* Oct 12 (Sam: never re-fetch what can't change): when the cache is only behind by the newly finished season(s), add just those —
+       the full rebuild (every season since 2008) only when there's no cache or its format changed */
+    const add = H && H.stats && H.v === 2 && H.through < S - 1 ? H.through + 1 : null;
+    log(add ? `history cache: adding ${add}–${S - 1}` : "building the history cache…");
+    if (!add) H = { v: 2, stats: {}, ht: {}, start: {}, adj: {}, rec: {}, through: S - 1 }; else H.through = S - 1;
+    const seasons = []; for (let y = add || HFROM; y < S; y++) seasons.push(y);
     await pool(seasons, 3, async y => {
       const st = await cb("/stats/player/season", { season: y }); H.stats[y] = st.filter(r => r.minutes > 0).map(trimRow);
       const ro = await cb("/teams/roster", { season: y }); for (const t of ro) for (const p of t.players || []) { if (p.height) H.ht[p.id] = [p.height, p.weight || null]; if (p.startSeason) H.start[p.id] = Math.min(H.start[p.id] || 9999, p.startSeason) }
       let adj = await cb("/ratings/adjusted", { season: y }); if (!adj.length) adj = (await cb("/ratings/srs", { season: y })).map(t => ({ teamId: t.teamId, conference: t.conference, netRating: t.rating * 1.0 }));
       H.adj[y] = Object.fromEntries(adj.map(t => [t.teamId, [r1(t.netRating), t.conference]]));
     });
-    for (let y = HFROM - 1; y < S; y++) { const rc = await cb("/recruiting/players", { year: y }); H.rec[y] = rc.map(r => [normName(r.name), (r.committedTo || {}).id || null, r.rating, r.stars, r.ranking, r.heightInches, r.athleteId || null]) }
+    for (let y = add ? add - 1 : HFROM - 1; y < S; y++) { const rc = await cb("/recruiting/players", { year: y }); H.rec[y] = rc.map(r => [normName(r.name), (r.committedTo || {}).id || null, r.rating, r.stars, r.ranking, r.heightInches, r.athleteId || null]) }
     await putPack("p2000_cbb-hist", H);
   }
   /* this season */
@@ -603,6 +620,7 @@ export async function main() {
   await putPack(`p${S}_cbb-teams`, { season: S, next: NEXT, teams });
   await putPack(`p${S}_cbb-draft`, { picks: draftOut.map(d => ({ ...d, tag: d.id && NBA_BY_CID[d.id] ? NBA_BY_CID[d.id].tag.t : null })), test });
   await putPack(`p${S}_cbb-nba`, { curNba, players: NBA, cols: ["season", "team", "gp", "gs", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "playoffs[gp,gs,min,pts]"], carCols: ["season", "team", "g", "gs", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "ws40"] });
+  try { await finSave() } catch (e) { log("finished-season cache: " + e.message) }
   await site("PUT", "/api/pack-index", { body: INDEX });
   const mins = ((Date.now() - started) / 60e3).toFixed(1);
   const msg = `Basketball · ${board.length} players · ${Object.keys(teams).length} teams · test AUC ${test.aucDrafted}/${test.aucR1}/${test.aucLottery} · ${CALLS} CBBD calls${LEFT != null ? ` (${LEFT.toLocaleString()} left)` : ""} · ${mins} min`;

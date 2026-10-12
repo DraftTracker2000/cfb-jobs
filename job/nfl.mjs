@@ -813,6 +813,11 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   /* first run under a new year prefix (the calendar rolls over in March): write every season again so the page's p<Y> set is complete */
   if (!all && getPack) { let have = null; try { have = await getPack(P("logs-" + FIRST)) } catch { } if (!have) { all = true; log(`nfl: no ${P("logs-" + FIRST)} yet: writing every season`) } }
   const seasons = []; for (let s = all ? FIRST : Math.max(FIRST, lastPlayed - 1); s <= lastPlayed; s++) seasons.push(s);
+  /* Oct 12 (Sam: "we should never be refreshing and running stats for things that never change again"): a finished season (before the one
+     being played) is built once at this version and skipped after — its packs stay as they are. Bump NFL_DONE_V when what a season's
+     packs hold changes, and every finished season is rebuilt once. */
+  const NFL_DONE_V = 3; let DONE = { s: {} }; try { DONE = (getPack && (await getPack(P("done")))) || DONE } catch { } DONE.s = DONE.s || {};
+  if (!all) for (let i = seasons.length - 1; i >= 0; i--) if (seasons[i] < lastPlayed && DONE.s[seasons[i]] === NFL_DONE_V) { log(`nfl: ${seasons[i]} finished, kept`); seasons.splice(i, 1) }
   const LOGS = {}, WXP = {}, STN = {};
   /* starts for every season (mode nfldraft: just the starts and the draft grades, every season — the first fill, or a rebuild) */
   const KICK = {};
@@ -839,6 +844,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
           for (const g in IJ) for (const [nm, q] of IJ[g]) { const k = dkey(nm), hit = (byGame[g] || []).filter(id => abbr(id) === k); if (hit.length === 1) (inj[hit[0]] = inj[hit[0]] || {})[g] = q || 0 } }
         await put(P("opp-" + s), { s, cols: OPQ_COLS, p: O, inj, injNote: "inj[gsis][game] = quarter he was hurt (play-by-play 'was injured during the play')" }) } await put(P("pbp-" + s), B) }
   }
+  for (const s of seasons) if (s < lastPlayed && LOGS[s]) DONE.s[s] = NFL_DONE_V; await put(P("done"), DONE);
   /* kickers and punters by season (this run's seasons over the last run's) */
   if (Object.keys(KICK).length) { let KX = null; try { KX = getPack ? (await getPack(P("kick"))) || (await getPack(`p${Y - 1}_nfl-kick`)) : null } catch { }
     if (!KX || !KX.s) KX = { s: {} }; for (const s in KICK) KX.s[s] = KICK[s]; KX.kCols = K_COLS; KX.pCols = P_COLS; KX.dstCols = DST_COLS; KX.kgCols = KG_COLS; KX.who = KP; KX.whoCols = ["name", "pos", "born", "college", "last", "team"]; await put(P("kick"), KX) }
@@ -863,7 +869,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   try { await put(P("depth"), await depth(Y, log)) } catch (e) { log("nfl: depth charts: " + e.message) }
   try { const FA = await freeAgents(Y, DRAFTED, log, ESPN); if (FA && FA.p.length >= 200) await put(P("fa"), FA) } catch (e) { log("nfl: free agents: " + e.message) }
   /* who owns each of the next three drafts' picks, from the trades in ESPN's transaction feed (Sam, Oct 1) */
-  try { const PP = await pickPack(Y, log); if (PP) await put(P("picks"), PP) } catch (e) { log("nfl: picks: " + e.message) }
+  try { const PP = await pickPack(Y, log, getPack ? { get: () => getPack(P("txcache")), put: v => put(P("txcache"), v) } : null); if (PP) await put(P("picks"), PP) } catch (e) { log("nfl: picks: " + e.message) }
   try { let ex = null, base = null; try { const r = await api("GET", "/api/job/condeals?base=1"); ex = r && r.deals || null; base = r && r.base || null } catch (e) { log("nfl: contracts: site deals not read (" + e.message + ")") }
     const CP = await contractPack(Y, log, ex, base); if (CP) await put(P("contracts"), CP) } catch (e) { log("nfl: contracts: " + e.message) }
   await api("PUT", "/api/pack-index", { body: index });

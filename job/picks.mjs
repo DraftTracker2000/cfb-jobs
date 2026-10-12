@@ -89,13 +89,18 @@ export function pkTrades(tx) {
   return L.map(r => r.slice(0, 5)).sort((a, b) => a[0] < b[0] ? 1 : -1);
 }
 /* the data job's pack: ESPN's transactions for the seasons that could have moved these picks (picks trade up to three years out); every trade since 2016 for the GM history */
-export async function pickPack(Y, log) {
+export async function pickPack(Y, log, cache = null) {
   const lo = Y + 1, hi = Y + 3, tx = [];
   const j = async u => { for (let t = 0; t < 3; t++) { try { const r = await fetch(u); if (r.ok) return await r.json() } catch { } await new Promise(r => setTimeout(r, 800 * (t + 1))) } return null };
-  for (let s = 2016; s <= Y; s++) for (let p = 1; p <= 10; p++) {
-    const J = await j(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/transactions?season=${s}&limit=1000&page=${p}`); if (!J) break;
-    for (const t of J.transactions || []) tx.push({ d: t.date, x: t.description, tm: t.team && t.team.abbreviation });
-    if (p >= (J.pageCount || 1)) break }
+  /* Oct 12: a finished season's transactions are read once and kept (cache: { get, put } of { s: { season: [...] } }) */
+  let C = { s: {} }; try { C = (cache && (await cache.get())) || C } catch { } C.s = C.s || {}; let fresh = 0;
+  for (let s = 2016; s <= Y; s++) { if (s < Y && C.s[s] && C.s[s].length) { tx.push(...C.s[s]); continue } const got = [];
+    for (let p = 1; p <= 10; p++) {
+      const J = await j(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/transactions?season=${s}&limit=1000&page=${p}`); if (!J) break;
+      for (const t of J.transactions || []) got.push({ d: t.date, x: t.description, tm: t.team && t.team.abbreviation });
+      if (p >= (J.pageCount || 1)) break }
+    tx.push(...got); if (s < Y && got.length > 200) { C.s[s] = got; fresh++ } }
+  if (fresh && cache) try { await cache.put(C) } catch { }
   if (tx.length < 500) { log(`nfl picks: only ${tx.length} transactions from ESPN — skipped`); return null }
   const { own, log: moved } = pkOwners(tx.filter(t => +String(t.d).slice(0, 4) >= Y - 3), lo, hi);
   const trades = pkTrades(tx);

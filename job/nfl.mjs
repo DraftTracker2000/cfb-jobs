@@ -225,6 +225,7 @@ async function pbp(S, log) {
   const df = (id, t) => { const d = DF[id] = DF[id] || { t, P: {}, R: { L: [0, 0], M: [0, 0], R: [0, 0] }, Q: [0, 0, 0, 0, 0, 0], sk: 0, qbh: 0, ff: 0, tfl: 0, g: new Set() }; d.t = t; return d };
   const ids = (o, ks) => { const out = []; for (const k of ks) if (o[k] && o[k] !== "NA" && !out.includes(o[k])) out.push(o[k]); return out };
   const hsF = o => num(o.total_home_score) != null && num(o.total_away_score) != null;
+  const WPS = {}, YACS = [];
   const pl = (M, id) => M[id] = M[id] || { Z: {}, all: line(), late: line(), third: [0, 0], rz: line(), two: line() };
   const zc = (Z, k) => Z[k] = Z[k] || [0, 0, 0, 0, 0, 0];   // att, cmp, yds, td, int, epa
   rows(t, ["game_id", "season_type", "home_team", "away_team", "posteam", "defteam", "qtr", "down", "ydstogo", "yardline_100", "play_type", "yards_gained", "pass_location",
@@ -234,7 +235,7 @@ async function pbp(S, log) {
     "solo_tackle_1_player_id", "solo_tackle_2_player_id", "assist_tackle_1_player_id", "assist_tackle_2_player_id", "tackle_with_assist_1_player_id", "tackle_with_assist_2_player_id",
     "pass_defense_1_player_id", "pass_defense_2_player_id", "interception_player_id", "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id",
     "qb_hit_1_player_id", "qb_hit_2_player_id", "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id", "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id", "desc", "wp", "pass_touchdown", "rush_touchdown", "return_touchdown", "td_player_id", "receiving_yards", "rushing_yards",
-    "lateral_receiver_player_id", "lateral_receiving_yards", "lateral_rusher_player_id", "lateral_rushing_yards", "cpoe", "comp_air_epa", "comp_yac_epa", "qb_scramble", "pass_oe", "qb_dropback"], o => {
+    "lateral_receiver_player_id", "lateral_receiving_yards", "lateral_rusher_player_id", "lateral_rushing_yards", "cpoe", "comp_air_epa", "comp_yac_epa", "qb_scramble", "pass_oe", "qb_dropback", "game_seconds_remaining", "spread_line", "yards_after_catch"], o => {
     const g = o.game_id; if (!g) return;
     /* fantasy bonuses by player and game: [pass TD 40+, 50+, rush TD 40+, 50+, catch TD 40+, 50+, pick-six thrown, completion 40+, run 40+, catch 40+] */
     if (o.two_point_attempt !== "1") { const yg = num(o.yards_gained), id = x => x && x !== "NA" ? x : null;
@@ -324,6 +325,16 @@ async function pbp(S, log) {
       if (o.play_type === "punt") { const a = ST(o.posteam).pu, b = ST(o.defteam).pr; a[0]++; a[1] += ep; b[0]++; b[1] -= ep }
       else if (o.play_type === "kickoff") { const a = ST(o.defteam).ko, b = ST(o.posteam).kr; a[0]++; a[1] -= ep; b[0]++; b[1] += ep }
       else { const a = ST(o.posteam).fg; a[0]++; a[1] += ep } }
+    /* Oct 12 (round 2, on nflverse's win probability added — Sam: "who comes up with this?"): the play's state for OUR win model (the one
+       on the game pages), kept in order per game so each play's win probability added can be worked out after the loop; and each
+       completion's air yards, side and yards after the catch for our own expected-YAC */
+    if (o.posteam && o.defteam && num(o.down) >= 1 && num(o.game_seconds_remaining) != null && num(o.score_differential) != null) {
+      const home = o.posteam === o.home_team, sp0 = num(o.spread_line) || 0;
+      (WPS[g] = WPS[g] || []).push({ off: o.posteam, m: num(o.score_differential), sec: num(o.game_seconds_remaining), sp: home ? sp0 : -sp0, ytg: num(o.yardline_100) ?? 75, dn: num(o.down), ds: num(o.ydstogo) || 10, home,
+        pt, ps: o.passer_player_id && o.passer_player_id !== "NA" ? o.passer_player_id : null, ru: o.rusher_player_id && o.rusher_player_id !== "NA" ? o.rusher_player_id : null, rc: o.receiver_player_id && o.receiver_player_id !== "NA" ? o.receiver_player_id : null }) }
+    if (o.passer_player_id && o.complete_pass === "1" && o.receiver_player_id && o.receiver_player_id !== "NA" && num(o.yards_after_catch) != null && num(o.air_yards) != null)
+      YACS.push([o.receiver_player_id, Math.max(-5, Math.min(40, Math.round(num(o.air_yards) / 5) * 5)) + "|" + (o.pass_location || "x"), num(o.yards_after_catch)]);
+    { const po = num(o.pass_oe); if (po != null && o.defteam && (pt === "pass" || pt === "run") && o.two_point_attempt !== "1") { const td = T[o.defteam] = T[o.defteam] || { off: {}, def: {} }, xd = td.proeD = td.proeD || [0, 0]; xd[0] += po; xd[1]++ } }
     { const po = num(o.pass_oe); if (po != null && o.posteam && (pt === "pass" || pt === "run") && o.two_point_attempt !== "1") { const tt = T[o.posteam] = T[o.posteam] || { off: {}, def: {} }, x = tt.proe = tt.proe || [0, 0]; x[0] += po; x[1]++ } }
     if (pt === "pass" && o.passer_player_id) {
       const ev = { sack: o.sack === "1", cmp: o.complete_pass === "1", int: o.interception === "1", td: td && o.interception !== "1", fl, yds, epa, fd: o.first_down === "1" };
@@ -389,6 +400,18 @@ async function pbp(S, log) {
           const oc = all[0] - c, oy = all[1] - y, x = tD.gapAdj[k] = tD.gapAdj[k] || [0, 0, 0]; x[0] += c; x[1] += y; x[2] += c * (oy + 20 * lg) / (oc + 20) } } }
     for (const t in T) for (const k in T[t].gapAdj || {}) T[t].gapAdj[k] = T[t].gapAdj[k].map(v => Math.round(v)) }
   for (const id in DF) { DF[id].g = DF[id].g.size; for (const k in DF[id].P) if (!DF[id].P[k].some(Boolean)) delete DF[id].P[k] }
+  /* win probability added with our own model (the NFL win chance on the game pages, NWP_W there): each play's chance for the offense
+     before the snap against the next snap's (from the same side), the last play against the final result; credited to the passer on
+     dropbacks, the rusher on runs and the receiver on targets → pass/rush/rec[id].wpa = [plays, wpa sum] */
+  { const W = [0.2708, 0.1931, 0.5836, 1.3304, 0.8243, -0.242, -0.0812, -0.108, -0.4046], wp = x => { const t = Math.max(0, x.sec) / 3600, f = [1, x.m / 7, (x.m / 7) / Math.sqrt(t + 0.02), x.sp / 7 * t, (100 - x.ytg) / 100, x.dn === 3 || x.dn === 4 ? 1 : 0, Math.min(x.ds || 10, 20) / 10, x.home ? 1 : 0, t]; let z = 0; for (let j = 0; j < 9; j++) z += W[j] * f[j]; return 1 / (1 + Math.exp(-z)) };
+    const add = (M, id, v) => { if (!id) return; const x = pl(M, id); const a = x.wpa = x.wpa || [0, 0]; a[0]++; a[1] += v };
+    for (const [g, L] of Object.entries(WPS)) { const fin = FS[g]; for (let i = 0; i < L.length; i++) { const a = L[i], b = L[i + 1]; let after;
+        if (b) { const w = wp(b); after = b.off === a.off ? w : 1 - w } else if (fin && fin[2] != null && fin[3] != null) { const hm = a.home ? fin[2] - fin[3] : fin[3] - fin[2]; after = hm > 0 ? 1 : hm < 0 ? 0 : .5 } else continue;
+        const d = after - wp(a); if (a.pt === "pass") { add(P, a.ps, d); add(R, a.rc, d) } else if (a.pt === "run") add(U, a.ru, d) } } }
+  /* our own expected yards after the catch: the league's average YAC this season for the same air-yards band (5-yard steps) and side;
+     each receiver's YAC over that, per catch → rec[id].yacx = [catches, yac over expected sum] */
+  { const avg = {}; for (const [, k, y] of YACS) { const a = avg[k] = avg[k] || [0, 0]; a[0]++; a[1] += y }
+    for (const [id, k, y] of YACS) { const a = avg[k]; if (!a || a[0] < 20) continue; const x = pl(R, id), e = x.yacx = x.yacx || [0, 0]; e[0]++; e[1] += y - a[1] / a[0] } }
   for (const t in T) if (T[t].sit) for (const side of ["o", "d"]) { const z = T[t].sit[side], v = Object.values(z.rzd); z.rz = [v.length, v.filter(Boolean).length]; delete z.rzd }
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],

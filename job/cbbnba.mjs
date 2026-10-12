@@ -226,10 +226,13 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
       log(`nba logs ${y}: ${Object.keys(P).length} players`); break } } catch (e) { log("nba logs: " + e.message) }
   /* every NBA player on a current roster or who played the last two seasons gets a profile (Oct 11 — Sam: "multiple players are unclickable
      for the NBA"): his NBA seasons since 2009 — [season, team, gp, gs, min, pts, reb, ast, stl, blk, tov, fgm, fga, tpm, tpa, ftm, fta, playoffs [gp, gs, min, pts] or null] */
+  /* Oct 12 (Sam: career tags for NBA players who skipped college "seems like a yes"): every NBA player gets the same tag, against the league */
+  const RKS = seasonRanks((NH && NH.seasons) || {}), latestY = Object.keys(RKS).length ? Math.max(...Object.keys(RKS).map(Number)) : null;
+  const tagOf = (id, S0) => { const o = {}; for (const [y, M] of Object.entries(RKS)) if (M[id]) o[y] = M[id]; return nbaTag(S0, curNba, Object.keys(RKS).length ? o : null, latestY).t };
   const allp = {}; { const want = new Set([...Object.keys(lastS), ...Object.keys(curS)]); if (ros) for (const r of rowsOf(ros)) want.add(String(r.athlete_id));
     const nmR = {}; if (ros) for (const r of rowsOf(ros)) nmR[String(r.athlete_id)] = [r.display_name, r.team_abbreviation, r.position_abbreviation, r.height, +r.experience_years || 0];
     for (const id of want) { const S0 = []; for (const [y, P] of Object.entries((NH && NH.seasons) || {})) { const r = P[id]; if (r) S0.push([+y, r[1], ...r.slice(2, 17), r[17] ? r[17].slice(0, 3).concat([r[17][3]]) : null]) }
-      S0.sort((a, b) => a[0] - b[0]); const rr = nmR[id]; if (!S0.length && !rr) continue; allp[id] = { nm: rr ? rr[0] : (S0.length ? (NH.seasons[S0[S0.length - 1][0]][id] || [])[0] : ""), tm: rr ? rr[1] : (S0.length ? S0[S0.length - 1][1] : null), pos: rr ? rr[2] : null, ht: rr ? rr[3] : null, exp: rr ? rr[4] : null, s: S0 } } }
+      S0.sort((a, b) => a[0] - b[0]); const rr = nmR[id]; if (!S0.length && !rr) continue; allp[id] = { tag: S0.length ? tagOf(id, S0) : "Rookie", nm: rr ? rr[0] : (S0.length ? (NH.seasons[S0[S0.length - 1][0]][id] || [])[0] : ""), tm: rr ? rr[1] : (S0.length ? S0[S0.length - 1][1] : null), pos: rr ? rr[2] : null, ht: rr ? rr[3] : null, exp: rr ? rr[4] : null, s: S0 } } }
   /* every NBA team's seasons (Oct 12 — Sam: "the NBA team profiles look very thin compared to every other profile"): from the team box
      scores, 2010 on, keyed by ESPN team id (abbreviations changed: NJN → BKN, NOH → NOP) → p2000_cbb-nbateamhist
      { cols, s: { season: { teamId: [w, l, net, ortg, drtg, pace, playoffW, playoffL, abbr] } } }; finished seasons are read once */
@@ -243,7 +246,7 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
   /* everyone else with an NBA season since 2009 (Oct 11 audit: retired and overseas draft picks — Emmanuel Mudiay, Dragan Bender — had no
      page): the same shape as allp, in its own pack the page reads only when it needs a name it can't find */
   { const all = {}; for (const [y, P] of Object.entries((NH && NH.seasons) || {})) for (const [id, r] of Object.entries(P)) { if (allp[id]) continue; const X = all[id] = all[id] || { nm: r[0], tm: r[1], s: [] }; X.s.push([+y, r[1], ...r.slice(2, 17), r[17] ? r[17].slice(0, 3).concat([r[17][3]]) : null]); X.tm = r[1] }
-    for (const X of Object.values(all)) X.s.sort((a, b) => a[0] - b[0]);
+    for (const [id, X] of Object.entries(all)) { X.s.sort((a, b) => a[0] - b[0]); X.tag = tagOf(id, X.s) }
     await putPack(`p${S}_cbb-nbaall`, { p: all }); log(`nba: ${Object.keys(all).length} more NBA players with pages`) }
   await putPack(`p${S}_cbb-nbagames`, { season: curNba, zSeason: Z ? zSeason : null, zAvg: Z ? Z.avg : null, pz, allp, series, seriesCols: ["season", "date", "home", "away", "hs", "as"], teams: T, games, cols: ["id", "date", "home", "away", "hs", "as", "state", "tv", "pHome", "ourMargin", "playoffs"], rosCols: ["espnId", "name", "pos", "ht", "exp", "collegeCbbdId", "ppgLast", "outcome", "gamesLast"] });
   log(`nba games: ${games.length} games, ${Object.keys(T).length} teams`);

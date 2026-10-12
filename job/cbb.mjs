@@ -235,6 +235,13 @@ export async function main() {
   /* the source's 2020 ratings for five CAA teams are broken (William & Mary +556, James Madison −205; Oct 10 audit): a net beyond ±45
      isn't a basketball team, so it's dropped wherever it's read (player model, coach seasons, conference strength) */
   for (const m of Object.values(H.adj)) for (const v of Object.values(m)) if (v[0] != null && Math.abs(v[0]) > 45) v[0] = null;
+  /* one scale for every season (Oct 11; fixAdjScale above). Tested on the pick (cbbtest, last-season input, trained 2017–23, blind):
+     log loss 2024 0.5454 → 0.5369 (its input is the broken 2023 ratings), 2025 0.5185 → 0.5186, 2026 0.5330 → 0.5326. SRS by season is
+     kept in p2000_cbb-srs (finished seasons read once). */
+  { let SR = await getPack("p2000_cbb-srs").catch(() => null); SR = SR && SR.s ? SR : { s: {} }; let got = 0;
+    for (const y of Object.keys(H.adj).map(Number)) if (!SR.s[y] || y >= S - 1) { const R = await cb("/ratings/srs", { season: y }).catch(() => []); if (R.length) { SR.s[y] = Object.fromEntries(R.map(t => [t.teamId, t.rating])); got++ } }
+    if (got) await putPack("p2000_cbb-srs", SR);
+    log("rating scale: " + JSON.stringify(fixAdjScale(H.adj, SR.s))) }
   const D1 = new Set(adjS.map(t => t.teamId));
   const srsS = await cb("/ratings/srs", { season: S }); const SRS = Object.fromEntries(srsS.map(t => [t.teamId, t.rating]));
   if (!H.rec[S - 1]) { const rc = await cb("/recruiting/players", { year: S - 1 }); H.rec[S - 1] = rc.map(r => [normName(r.name), (r.committedTo || {}).id || null, r.rating, r.stars, r.ranking, r.heightInches, r.athleteId || null]) }

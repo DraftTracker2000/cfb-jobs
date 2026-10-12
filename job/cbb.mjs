@@ -282,7 +282,9 @@ export async function main() {
   { const nmOf = {}; for (const rows of Object.values(ALL)) for (const r of rows) if (r.sid) nmOf[r.sid] = r.nm;
     const sur = n => String(n || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\s+/).map(w => w.replace(/[^a-z]/g, "")).filter(w => w && !/^(jr|sr|ii|iii|iv|v)$/.test(w)).pop() || "";
     let drop = 0; for (const eid of Object.keys(NBA)) { const c = nmOf[eid]; if (c && sur(c) !== sur(NBA[eid].nm)) { delete NBA[eid]; drop++ } } if (drop) log(`nba: ${drop} id matches dropped (names disagree)`) }
-  const lastTeamOf = {}; for (const y of Object.keys(ALL).sort()) for (const r of ALL[y]) lastTeamOf[r.id] = [r.tm, +y];
+  /* the team of his last season — where he played the most games that season (CBBD carries stray one-game rows under another team:
+     Cade Cunningham 2021 has 27 games at Oklahoma State and one listed under Texas Tech) */
+  const lastTeamOf = {}; for (const y of Object.keys(ALL).sort()) for (const r of ALL[y]) { const c = lastTeamOf[r.id]; if (!c || c[1] < +y || (r.g || 0) > c[2]) lastTeamOf[r.id] = [r.tm, +y, r.g || 0] }
   for (const X of Object.values(NBA)) { const lt = lastTeamOf[X.cid]; if (lt) { X.col = lt[0]; X.colY = lt[1] } }
   const NBA_BY_CID = {}; for (const [eid, X] of Object.entries(NBA)) NBA_BY_CID[X.cid] = { eid, tag: X.tag };
 
@@ -571,7 +573,8 @@ export async function main() {
   /* every NBA player's college seasons (Oct 10 — Sam: "do pro players not have profiles?" … "like college"): the College tab of his NBA page */
   { const want = new Set(Object.values(NBA).map(X => X.cid).filter(Boolean)), car = {};
     for (const [y, rows] of Object.entries(ALL)) for (const r of rows) if (want.has(r.id) && r.min > 0) (car[r.id] = car[r.id] || []).push([+y, r.tm, r.g, r.gs, r.min, r.pts, r.reb, r.ast, r.stl, r.blk, r.tov, r.fgm, r.fga, r.tpm, r.tpa, r.ftm, r.fta, r3(r.ws40)]);
-    for (const X of Object.values(NBA)) if (car[X.cid]) X.car = car[X.cid].sort((a, b) => a[0] - b[0]) }
+    /* a stray one-game row under another team in a season where he played 5+ games for his own team is dropped (see lastTeamOf) */
+    for (const X of Object.values(NBA)) if (car[X.cid]) X.car = car[X.cid].filter((c, _, A) => !(c[2] <= 1 && A.some(d => d[0] === c[0] && d[1] !== c[1] && d[2] >= 5))).sort((a, b) => a[0] - b[0]) }
   /* each NBA player's final college season, for the Blind résumé game and his NBA profile */
   for (const X of Object.values(NBA)) { const a = (hBy[X.cid] || []).filter(h => h.r.min >= 200).sort((x, y) => y.r.s - x.r.s)[0];
     if (a) X.cl = { s: a.r.s, tm: a.r.tm, yr: a.yr, pos: a.r.pos, p5: a.d.p5, g: a.r.g, mpg: r1(a.d.mpg), grade: grade(a.m), prof: profileOf(a), pD: r3(a.pD), pR1: r3(a.pR1), pL: r3(a.pL), ...Object.fromEntries(["pts40", "reb40", "ast40", "stl40", "blk40", "tov40", "ts", "tpp", "tpr", "ftp", "usg", "ws40", "ht", "net"].map(k => [k, r3(a.d[k])])) } }

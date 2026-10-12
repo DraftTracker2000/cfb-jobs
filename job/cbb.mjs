@@ -585,7 +585,9 @@ export async function main() {
       A = A.filter((c, _, B) => !(c[2] <= 1 && B.some(d => d[0] === c[0] && d[1] !== c[1] && d[2] >= 5))).sort((a, b) => a[0] - b[0]);
       X.car = A.map(c => c.slice());
       /* his college: the team of his last season there, where he played the most games */
-      const ly = A[A.length - 1][0], lt = A.filter(c => c[0] === ly).sort((a, b) => b[2] - a[2])[0]; X.col = lt[1]; X.colY = ly } }
+      const ly = A[A.length - 1][0], lt = A.filter(c => c[0] === ly).sort((a, b) => b[2] - a[2])[0]; X.col = lt[1]; X.colY = ly;
+      /* still two full seasons in one year (no ESPN ids on those rows to tell them apart): say so on his page rather than guess */
+      if (A.some(c => c[2] >= 5 && A.some(d => d !== c && d[0] === c[0] && d[1] !== c[1] && d[2] >= 5))) { X.carMixed = 1; delete X.col; delete X.colY } } }
   /* each NBA player's final college season, for the Blind résumé game and his NBA profile */
   for (const X of Object.values(NBA)) { const a = (hBy[X.cid] || []).filter(h => h.r.min >= 200).sort((x, y) => y.r.s - x.r.s)[0];
     if (a) X.cl = { s: a.r.s, tm: a.r.tm, yr: a.yr, pos: a.r.pos, p5: a.d.p5, g: a.r.g, mpg: r1(a.d.mpg), grade: grade(a.m), prof: profileOf(a), pD: r3(a.pD), pR1: r3(a.pR1), pL: r3(a.pL), ...Object.fromEntries(["pts40", "reb40", "ast40", "stl40", "blk40", "tov40", "ts", "tpp", "tpr", "ftp", "usg", "ws40", "ht", "net"].map(k => [k, r3(a.d[k])])) } }

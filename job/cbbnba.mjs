@@ -108,12 +108,16 @@ export function rowsOf(text) { const rows = []; let row = [], cur = "", q = fals
   const H = rows.shift() || []; return rows.map(f => { const o = {}; H.forEach((h, j) => o[h] = f[j]); return o }) }
 export function nbaTeamRatings(box, minG = 20) {
   const T = {};
-  for (const r of box) { if (+r.season_type !== 2) continue; const a = r.team_abbreviation; const X = T[a] = T[a] || { nm: r.team_display_name, id: +r.team_id, c1: r.team_color, g: 0, w: 0, pf: 0, pa: 0, poss: 0, fga: 0, tpa: 0, paint: 0, fb: 0, tov: 0 };
+  /* the other side of each game (Oct 12 — Sam picked box-score stand-ins for the defense play types NBA.com doesn't track): fast-break
+     points and offensive rebounds given up, per game */
+  const byG = {}; for (const r of box) if (+r.season_type === 2) (byG[r.game_id] = byG[r.game_id] || []).push(r);
+  for (const r of box) { if (+r.season_type !== 2) continue; const a = r.team_abbreviation; const X = T[a] = T[a] || { nm: r.team_display_name, id: +r.team_id, c1: r.team_color, g: 0, w: 0, pf: 0, pa: 0, poss: 0, fga: 0, tpa: 0, paint: 0, fb: 0, tov: 0, ofb: 0, oorb: 0, og: 0 };
+    const op = (byG[r.game_id] || []).find(x => x !== r && x.team_abbreviation !== a); if (op) { X.og++; X.ofb += +op.fast_break_points || 0; X.oorb += +op.offensive_rebounds || 0 }
     const poss = (+r.field_goals_attempted || 0) - (+r.offensive_rebounds || 0) + (+r.total_turnovers || +r.turnovers || 0) + .44 * (+r.free_throws_attempted || 0);
     X.g++; if (/true/i.test(r.team_winner)) X.w++; X.pf += +r.team_score || 0; X.pa += +r.opponent_team_score || 0; X.poss += poss; X.fga += +r.field_goals_attempted || 0; X.tpa += +r.three_point_field_goals_attempted || 0; X.paint += +r.points_in_paint || 0; X.fb += +r.fast_break_points || 0; X.tov += +r.total_turnovers || 0 }
   const r1 = x => Math.round(10 * x) / 10;
   for (const [k, X] of Object.entries(T)) if (X.g < minG) delete T[k];   /* the All-Star teams (a whole season: under 20 games) */
-  for (const X of Object.values(T)) { const p = X.poss || 1; X.l = X.g - X.w; X.ortg = r1(100 * X.pf / p); X.drtg = r1(100 * X.pa / p); X.net = r1(X.ortg - X.drtg); X.pace = r1(p / Math.max(1, X.g)); X.tpr = r1(100 * X.tpa / Math.max(1, X.fga)); X.paint = r1(X.paint / Math.max(1, X.g)); X.fb = r1(X.fb / Math.max(1, X.g)); X.tovp = r1(100 * X.tov / p); delete X.poss; delete X.fga; delete X.tpa; delete X.tov; X.pf = r1(X.pf / Math.max(1, X.g)); X.pa = r1(X.pa / Math.max(1, X.g)) }
+  for (const X of Object.values(T)) { const p = X.poss || 1; X.l = X.g - X.w; X.ortg = r1(100 * X.pf / p); X.drtg = r1(100 * X.pa / p); X.net = r1(X.ortg - X.drtg); X.pace = r1(p / Math.max(1, X.g)); X.tpr = r1(100 * X.tpa / Math.max(1, X.fga)); X.paint = r1(X.paint / Math.max(1, X.g)); X.fb = r1(X.fb / Math.max(1, X.g)); X.ofb = X.og ? r1(X.ofb / X.og) : null; X.oorb = X.og ? r1(X.oorb / X.og) : null; delete X.og; X.tovp = r1(100 * X.tov / p); delete X.poss; delete X.fga; delete X.tpa; delete X.tov; X.pf = r1(X.pf / Math.max(1, X.g)); X.pa = r1(X.pa / Math.max(1, X.g)) }
   return T;
 }
 /* our pick (Oct 11, refit — job/nbatest.mjs): the gap in net rating (points per 100; last season blended with this one) → a logistic

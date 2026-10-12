@@ -165,7 +165,7 @@ async function nbaPbpSeason(y, log) {
   return out;
 }
 
-export async function buildNbaGames({ getPack, putPack, log, S, curNba, players }) {
+export async function buildNbaGames({ getPack, putPack, log, S, curNba, players, colOfEspn = () => null }) {
   const sched = await getCsv(REL("espn_nba_schedules", `nba_schedule_${curNba}.csv`)), box = await getCsv(REL("espn_nba_team_boxscores", `team_box_${curNba - 1}.csv`)), ros = await getCsv(REL("espn_nba_rosters", `rosters_${curNba}.csv`));
   if (!sched || !box) { log("nba games: files not out yet"); return null }
   const T = nbaTeamRatings(rowsOf(box));
@@ -184,7 +184,7 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players 
   if (ros) for (const r of rowsOf(ros)) { const X = T[r.team_abbreviation]; if (!X) continue; const c = curS[r.athlete_id], l = lastS[r.athlete_id];
     const mpg = c && c[2] >= 3 ? c[4] / c[2] : l && l[2] >= 10 ? l[4] / l[2] : 0; if (mpg >= 12) (X.rot = X.rot || []).push([String(r.athlete_id), r.display_name, Math.round(10 * mpg) / 10]) }
   if (ros) for (const r of rowsOf(ros)) { const X = T[r.team_abbreviation]; if (!X) continue; const P = byE[r.athlete_id], ls = lastS[r.athlete_id];
-    (X.ros = X.ros || []).push([r.athlete_id, r.display_name, r.position_abbreviation, r.height, +r.experience_years || 0, P ? P.cid : null, ls && ls[2] ? Math.round(10 * ls[5] / ls[2]) / 10 : null, P ? P.tag.t : null, ls ? ls[2] : 0]) }
+    (X.ros = X.ros || []).push([r.athlete_id, r.display_name, r.position_abbreviation, r.height, +r.experience_years || 0, P ? P.cid : null, ls && ls[2] ? Math.round(10 * ls[5] / ls[2]) / 10 : null, P ? P.tag.t : null, ls ? ls[2] : 0, colOfEspn(String(r.athlete_id)), String(r.date_of_birth || "").slice(0, 10) || null]) }   /* [9] college team id, [10] birth date (Oct 12) */
   const games = []; for (const g of rowsOf(sched)) { const st = +g.season_type; if (st !== 2 && st !== 3) continue; const h = g.home_abbreviation, a = g.away_abbreviation; if (!T[h] || !T[a]) continue;
     const pk = nbaPick({ net: T[h].pnet }, { net: T[a].pnet }, /true/i.test(g.neutral_site)); games.push([+g.id, g.date, h, a, g.status_type_completed === "true" ? +g.home_score : null, g.status_type_completed === "true" ? +g.away_score : null, g.status_type_state, g.broadcast_name || g.broadcast || "", pk.p, pk.m, st === 3 ? 1 : 0]) }
   games.sort((x, y) => x[1].localeCompare(y[1]));

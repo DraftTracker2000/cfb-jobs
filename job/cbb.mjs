@@ -278,7 +278,11 @@ export async function main() {
   const nameMatch = (nm, fy) => { const c = [...(byName[normName(nm)] || [])].filter(id => { const l = lastSeasonOf[id]; return l && l <= fy - 1 && l >= fy - 4 }); return c.length === 1 ? c[0] : null };
   let NBA = {}; try { NBA = await buildNba({ getPack, putPack, log, full, curNba, live: nbaLive, sidToCbbd, draftById: DRAFTED, nameMatch }) } catch (e) { log("nba: " + e.message) }
   for (const [eid, X] of Object.entries(NBA)) if (X.cid && !sidToCbbd[eid]) sidToCbbd[eid] = X.cid;   /* the name matches reach the rosters' colleges too */
-  try { await buildNbaGames({ getPack, putPack, log, S, curNba: M >= 7 ? Yr + 1 : Yr, players: NBA }) } catch (e) { log("nba games: " + e.message) }
+  /* each roster player's last college team, by ESPN id (Oct 12 — Sam: "way too much empty space here on the roster page"): his last
+     season's team where he played the most games — rookies who never played an NBA game included (through the ESPN id join) */
+  const lastColOf = {}; for (const y of Object.keys(ALL).sort()) for (const r of ALL[y]) { const c = lastColOf[r.id]; if (!c || c[1] < +y || (r.g || 0) > c[2]) lastColOf[r.id] = [r.tm, +y, r.g || 0] }
+  const colOfEspn = eid => { const cid = (NBA[eid] && NBA[eid].cid) || sidToCbbd[eid]; const c = cid && lastColOf[cid]; return c ? c[0] : null };
+  try { await buildNbaGames({ getPack, putPack, log, S, curNba: M >= 7 ? Yr + 1 : Yr, players: NBA, colOfEspn }) } catch (e) { log("nba games: " + e.message) }
   /* an old NBA ESPN id can be a different person's college ESPN id (Tony Parker's 1015 matched a 2009 college player): the surnames must agree */
   { const nmOf = {}; for (const rows of Object.values(ALL)) for (const r of rows) if (r.sid) nmOf[r.sid] = r.nm;
     const sur = n => String(n || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\s+/).map(w => w.replace(/[^a-z]/g, "")).filter(w => w && !/^(jr|sr|ii|iii|iv|v)$/.test(w)).pop() || "";

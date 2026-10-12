@@ -117,26 +117,34 @@ export async function* csvStream(chunks) {
 }
 /* one season's play-by-play → { games, avg, teams: { ABBR: { o, d, cl:[w,l] } }, series: [[date, home, away, hs, as]] } (regular season) */
 export async function nbaPbpSummary(rows) {
-  let I = null; const G = {}, T = {}, avg = NBA_ZONES.map(() => [0, 0]);
+  let I = null; const G = {}, T = {}, avg = NBA_ZONES.map(() => [0, 0]), PL = {};
+  /* players (Oct 11 — Sam approved "NBA player play-by-play"): the shooter's zones, his assists (the second athlete on a made shot), and
+     his clutch line — last 5 minutes of the 4th or overtime, within 5: [points, fgm, fga, ftm, fta] */
+  const pl = (id, ab) => { if (!id || id === "NA") return null; const P = PL[id] = PL[id] || { tm: ab, z: NBA_ZONES.map(() => [0, 0]), ast: 0, cl: [0, 0, 0, 0, 0] }; if (ab) P.tm = ab; return P };
   const team = ab => T[ab] = T[ab] || { o: NBA_ZONES.map(() => [0, 0]), d: NBA_ZONES.map(() => [0, 0]), cl: [0, 0] };
   for await (const f of rows) {
-    if (!I) { const ix = n => f.indexOf(n); I = { st: ix("season_type"), gid: ix("game_id"), ha: ix("home_team_abbrev"), aa: ix("away_team_abbrev"), hid: ix("home_team_id"), tid: ix("team_id"), hs: ix("home_score"), as: ix("away_score"), per: ix("period_number"), rem: ix("end_game_seconds_remaining"), sh: ix("shooting_play"), sc: ix("scoring_play"), pa: ix("points_attempted"), x: ix("coordinate_x_raw"), y: ix("coordinate_y_raw"), dt: ix("game_date") };
+    if (!I) { const ix = n => f.indexOf(n); I = { st: ix("season_type"), gid: ix("game_id"), ha: ix("home_team_abbrev"), aa: ix("away_team_abbrev"), hid: ix("home_team_id"), tid: ix("team_id"), hs: ix("home_score"), as: ix("away_score"), per: ix("period_number"), rem: ix("end_game_seconds_remaining"), sh: ix("shooting_play"), sc: ix("scoring_play"), pa: ix("points_attempted"), a1: ix("athlete_id_1"), a2: ix("athlete_id_2"), x: ix("coordinate_x_raw"), y: ix("coordinate_y_raw"), dt: ix("game_date") };
       if (I.gid < 0 || I.x < 0 || I.pa < 0) throw new Error("NBA play-by-play columns changed: " + f.slice(0, 25).join(",")); continue }
     if (f[I.st] !== "2") continue;
     const ha = f[I.ha], aa = f[I.aa]; if (!ha || !aa) continue;
     const g = G[f[I.gid]] = G[f[I.gid]] || { h: ha, a: aa, d: f[I.dt], hs: 0, as: 0, cl: false };
     const hs = +f[I.hs] || 0, as = +f[I.as] || 0; if (hs > g.hs) g.hs = hs; if (as > g.as) g.as = as;
     const per = +f[I.per] || 0; if (per > 4 || (per === 4 && +f[I.rem] <= 300 && Math.abs(hs - as) <= 5)) g.cl = true;
-    if (f[I.sh] !== "true") continue; const pts = +f[I.pa]; if (pts !== 2 && pts !== 3) continue;
+    if (f[I.sh] !== "true") continue; const pts = +f[I.pa];
+    const off0 = f[I.tid] === f[I.hid] ? ha : aa, made0 = f[I.sc] === "true", clutch = per > 4 || (per === 4 && +f[I.rem] <= 300 && Math.abs(hs - as) <= 5 + (made0 ? pts : 0));
+    const S1 = I.a1 >= 0 ? pl(f[I.a1], off0) : null;
+    if (S1 && clutch) { if (pts === 1) { S1.cl[3] += made0 ? 1 : 0; S1.cl[4]++ } else if (pts === 2 || pts === 3) { S1.cl[1] += made0 ? 1 : 0; S1.cl[2]++ } if (made0) S1.cl[0] += pts }
+    if (pts !== 2 && pts !== 3) continue;
+    if (made0 && I.a2 >= 0) { const A2 = pl(f[I.a2], off0); if (A2) A2.ast++ }
     const z = nbaZone(+f[I.x], +f[I.y], pts); if (!z) continue;
-    const off = f[I.tid] === f[I.hid] ? ha : aa, def = off === ha ? aa : ha, k = NZI[z], m = f[I.sc] === "true" ? 1 : 0;
+    const off = off0, def = off === ha ? aa : ha, k = NZI[z], m = made0 ? 1 : 0; if (S1) { S1.z[k][0] += m; S1.z[k][1]++ }
     team(off).o[k][0] += m; team(off).o[k][1]++; team(def).d[k][0] += m; team(def).d[k][1]++; avg[k][0] += m; avg[k][1]++;
   }
   const series = [];
   for (const g of Object.values(G)) { if (!g.hs && !g.as) continue; series.push([g.d, g.h, g.a, g.hs, g.as]);
     if (g.cl) { const hw = g.hs > g.as; team(g.h).cl[hw ? 0 : 1]++; team(g.a).cl[hw ? 1 : 0]++ } }
   series.sort((x, y) => x[0].localeCompare(y[0]));
-  return { games: series.length, avg, teams: T, series };
+  return { v: 2, games: series.length, avg, teams: T, series, players: PL };
 }
 async function nbaPbpSeason(y, log) {
   const r = await fetch(REL("espn_nba_pbp", `play_by_play_${y}.csv`), { redirect: "follow" }).catch(() => null);
@@ -172,12 +180,20 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players 
   /* shot zones, close games and the series from the play-by-play: last season's is cached (it won't change); this season's is
      re-read each run and takes over once there are 150 games */
   let last = getPack ? await getPack(`p2000_cbb-nbapbp${curNba - 1}`).catch(() => null) : null;
-  if (!last || !last.games) { last = await nbaPbpSeason(curNba - 1, log).catch(e => (log("nba pbp: " + e.message), null)); if (last && last.games > 1000 && putPack) await putPack(`p2000_cbb-nbapbp${curNba - 1}`, last) }
+  if (!last || !last.games || last.v !== 2) { last = await nbaPbpSeason(curNba - 1, log).catch(e => (log("nba pbp: " + e.message), null)); if (last && last.games > 1000 && putPack) await putPack(`p2000_cbb-nbapbp${curNba - 1}`, last) }
   const cur = await nbaPbpSeason(curNba, log).catch(e => (log("nba pbp: " + e.message), null));
   const Z = cur && cur.games >= 150 ? cur : last, zSeason = Z === cur ? curNba : curNba - 1;
   if (Z) for (const [ab, X] of Object.entries(T)) { const z = Z.teams[ab]; if (z) { X.zo = z.o; X.zd = z.d; X.cl = z.cl } }
   const series = [...(last ? last.series.map(g => [curNba - 1, ...g]) : []), ...(cur ? cur.series.map(g => [curNba, ...g]) : [])];
-  await putPack(`p${S}_cbb-nbagames`, { season: curNba, zSeason: Z ? zSeason : null, zAvg: Z ? Z.avg : null, series, seriesCols: ["season", "date", "home", "away", "hs", "as"], teams: T, games, cols: ["id", "date", "home", "away", "hs", "as", "state", "tv", "pHome", "ourMargin", "playoffs"], rosCols: ["espnId", "name", "pos", "ht", "exp", "collegeCbbdId", "ppgLast", "outcome", "gamesLast"] });
+  /* players' zones, assists and clutch lines from the same season as the team zones (20+ shots, or any clutch shot) */
+  const pz = {}; if (Z && Z.players) for (const [id, P] of Object.entries(Z.players)) { const n = P.z.reduce((a, z) => a + z[1], 0); if (n >= 20 || P.cl[2] + P.cl[4] > 0) pz[id] = P }
+  /* game logs (this season once it has games, else last season): [date, team, opp, home 1/0, min, pts, reb, ast, stl, blk, tov, fgm, fga, tpm, tpa, ftm, fta, +/-, started] */
+  try { for (const y of [curNba, curNba - 1]) { const txt = await getCsv(REL("espn_nba_player_boxscores", `player_box_${y}.csv`)); if (!txt) continue; const R = rowsOf(txt).filter(r => +r.season_type === 2 && +r.minutes > 0); if (R.length < 500) continue;
+      const P = {}; for (const r of R) (P[r.athlete_id] = P[r.athlete_id] || []).push([String(r.game_date || "").slice(0, 10), r.team_abbreviation, r.opponent_team_abbreviation, /home/i.test(r.home_away) ? 1 : 0, Math.round(+r.minutes), +r.points || 0, +r.rebounds || 0, +r.assists || 0, +r.steals || 0, +r.blocks || 0, +r.turnovers || 0, +r.field_goals_made || 0, +r.field_goals_attempted || 0, +r.three_point_field_goals_made || 0, +r.three_point_field_goals_attempted || 0, +r.free_throws_made || 0, +r.free_throws_attempted || 0, r.plus_minus === "" || r.plus_minus == null ? null : +r.plus_minus, /true/i.test(r.starter) ? 1 : 0]);
+      for (const k in P) P[k].sort((a, b) => a[0].localeCompare(b[0]));
+      await putPack(`p${S}_cbb-nbalogs`, { season: y, cols: ["date", "team", "opp", "home", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "pm", "start"], p: P });
+      log(`nba logs ${y}: ${Object.keys(P).length} players`); break } } catch (e) { log("nba logs: " + e.message) }
+  await putPack(`p${S}_cbb-nbagames`, { season: curNba, zSeason: Z ? zSeason : null, zAvg: Z ? Z.avg : null, pz, series, seriesCols: ["season", "date", "home", "away", "hs", "as"], teams: T, games, cols: ["id", "date", "home", "away", "hs", "as", "state", "tv", "pHome", "ourMargin", "playoffs"], rosCols: ["espnId", "name", "pos", "ht", "exp", "collegeCbbdId", "ppgLast", "outcome", "gamesLast"] });
   log(`nba games: ${games.length} games, ${Object.keys(T).length} teams`);
   return true;
 }

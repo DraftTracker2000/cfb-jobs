@@ -311,6 +311,8 @@ async function pbp(S, log) {
        down (conversions), late and close (4th/OT within 8), the two-minute drill (EPA per play) and red-zone trips (drives that reached
        the 20, and how many ended in a touchdown) → team.sit = { o, d } with third [att, conv], late [plays, epa], two [plays, epa], rz [trips, td] */
     if ((pt === "pass" || pt === "run") && o.posteam && o.defteam && o.two_point_attempt !== "1") {
+      /* per game, each side's plays, EPA and successes → team.gm[game] = [off plays, off epa, off success, def plays, def epa, def success] (Oct 12) */
+      { const ep0 = num(o.epa) || 0, sc = o.success === "1" ? 1 : 0; for (const [t, k] of [[o.posteam, 0], [o.defteam, 3]]) { const x = T[t] = T[t] || { off: {}, def: {} }, gm = (x.gm = x.gm || {})[g] = (x.gm || {})[g] || [0, 0, 0, 0, 0, 0]; gm[k]++; gm[k + 1] += ep0; gm[k + 2] += sc } }
       const S2 = t => { const x = T[t] = T[t] || { off: {}, def: {} }; return x.sit = x.sit || { o: { third: [0, 0], late: [0, 0], two: [0, 0], rzd: {} }, d: { third: [0, 0], late: [0, 0], two: [0, 0], rzd: {} } } };
       const ep = num(o.epa) || 0, k = g + "|" + o.fixed_drive, otd = o.pass_touchdown === "1" || o.rush_touchdown === "1";
       for (const z of [S2(o.posteam).o, S2(o.defteam).d]) {

@@ -57,7 +57,7 @@ async function depthIdFix(path, txt, log) {
   for (const [a, b] of sw) txt = txt.split("," + a + ",").join("," + b + ",");
   return txt;
 }
-async function get0(path, log) {
+export async function get0(path, log) {
   if (process.env.NFL_LOCAL) {   /* testing: the files from a local folder, by name */
     const fs = await import("node:fs"), f = process.env.NFL_LOCAL + "/" + path.split("/").pop();
     if (!fs.existsSync(f)) { log && log("nfl: no local " + f); return null }
@@ -70,7 +70,7 @@ async function get0(path, log) {
 }
 
 /* CSV, one row at a time, keeping only the columns asked for (the play-by-play file has 370+ columns) */
-function rows(txt, want, cb) {
+export function rows(txt, want, cb) {
   if (!txt) return;
   let i = 0, n = txt.length, head = null, idx = null;
   const line = () => {

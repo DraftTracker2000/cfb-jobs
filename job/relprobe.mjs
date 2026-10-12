@@ -8,8 +8,8 @@ export async function run({ log = console.log }) {
     out[repo] = tags.filter(t => /nba/i.test(t)).slice(0, 80); log(`${repo}: ${tags.length} tags`) }
   /* the files of a few NBA Stats releases for the last two seasons */
   const files = {};
-  for (const tag of ["nba_stats_synergy", "nba_stats_hustle", "nba_stats_player_season_stats", "nba_stats_team_season_stats", "nba_stats_matchups", "nba_stats_shots"]) {
+  for (const tag of (out["sportsdataverse/sportsdataverse-data"] || []).map(t => t.split(" ")[0]).filter(t => /lineup|leaguedash|injur|depth|roster|coach|matchup/i.test(t)).slice(0, 12)) {
     const r = await fetch(`https://api.github.com/repos/sportsdataverse/sportsdataverse-data/releases/tags/${tag}`, { headers: { "User-Agent": "cfb-board-probe" } }); if (!r.ok) { files[tag] = "HTTP " + r.status; continue }
     const j = await r.json(); files[tag] = (j.assets || []).map(a => a.name + " " + Math.round(a.size / 1024) + "K").filter(n => /2026/.test(n) && !/playoff/i.test(n)).map(n => n.replace(/_2026\.(parquet|csv|rds)/, "").replace(/ \d+K$/, "")).filter((n, i, a) => a.indexOf(n) === i).slice(0, 40) }
-  return { ok: true, files };
+  return { ok: true, tags: (out["sportsdataverse/sportsdataverse-data"] || []).map(t => t.split(" ")[0]).join(" "), files };
 }

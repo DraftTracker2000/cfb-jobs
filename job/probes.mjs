@@ -2,6 +2,14 @@
    async function evaluated in the page (w(ms) waits, W is the width). Return {ok, ...whatever helps}. Keep results short. */
 const res = `const R=()=>performance.getEntriesByType("resource").map(e=>decodeURIComponent(e.name));`;
 export const PROBES = [
+  /* Oct 11 (#331): does CFBD's opponent-adjusted player EPA (/wepa/players/passing|rushing) predict a player's next season better than
+     his raw EPA per play? Pearson r with next season's raw EPA per play (and next season's adjusted), players with enough plays both years */
+  { name: "wepa-test", page: "/lab/", widths: [390], run: `const o={ok:true,shape:null,res:{}};const cor=(a,b)=>{const n=a.length,ma=a.reduce((x,y)=>x+y,0)/n,mb=b.reduce((x,y)=>x+y,0)/n;let s=0,sa=0,sb=0;for(let i=0;i<n;i++){s+=(a[i]-ma)*(b[i]-mb);sa+=(a[i]-ma)**2;sb+=(b[i]-mb)**2}return +(s/Math.sqrt(sa*sb)).toFixed(3)};
+    const RAW={},WP={},WR={};for(const y of [2021,2022,2023,2024,2025]){RAW[y]=(await ppaYearLive(y)).d;const p=await api("/wepa/players/passing?year="+y).catch(()=>[]),r=await api("/wepa/players/rushing?year="+y).catch(()=>[]);if(!o.shape)o.shape=JSON.stringify(p[0]).slice(0,300);WP[y]={};WR[y]={};for(const x of p)WP[y][String(x.athleteId)]=[x.wepa,x.plays];for(const x of r)WR[y][String(x.athleteId)]=[x.wepa,x.plays];o["n"+y]=[p.length,r.length]}
+    for(const [k,W,vi,ni,min,pos] of [["QB pass",WP,3,5,150,/QB/],["RB rush",WR,4,6,80,/RB/],["QB rush",WR,4,6,50,/QB/]]){const A=[],B=[],C=[],D=[];
+     for(const y of [2021,2022,2023,2024]){for(const [id,x] of Object.entries(RAW[y])){if(!pos.test(x[0])||x[ni]<min)continue;const nx=RAW[y+1][id];if(!nx||nx[ni]<min)continue;const w=W[y][id],wn=W[y+1][id];if(!w||w[0]==null)continue;A.push(x[vi]);B.push(w[0]);C.push(nx[vi]);D.push(wn&&wn[0]!=null?wn[0]:nx[vi])}}
+     o.res[k]={n:A.length,rawToNextRaw:cor(A,C),adjToNextRaw:cor(B,C),rawToNextAdj:cor(A,D),adjToNextAdj:cor(B,D),sameYearRawVsAdj:cor(A,B)}}
+    return o` },
   { name: "trend-file", page: "/lab/", widths: [390], run: `${res}
     tab="CTREND";render();for(let i=0;i<40&&!CT_DATA;i++)await w(500);await w(1500);
     const L=R(),ct=L.filter(u=>/\\/api\\/pack\\/p\\d{4}_ct/.test(u)).length,live=L.filter(u=>/stats\\/player\\/season/.test(u)).length;

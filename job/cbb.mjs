@@ -239,7 +239,7 @@ export async function main() {
      log loss 2024 0.5454 → 0.5369 (its input is the broken 2023 ratings), 2025 0.5185 → 0.5186, 2026 0.5330 → 0.5326. SRS by season is
      kept in p2000_cbb-srs (finished seasons read once). */
   { let SR = await getPack("p2000_cbb-srs").catch(() => null); SR = SR && SR.s ? SR : { s: {} }; let got = 0;
-    for (const y of Object.keys(H.adj).map(Number)) if (!SR.s[y] || y >= S - 1) { const R = await cb("/ratings/srs", { season: y }).catch(() => []); if (R.length) { SR.s[y] = Object.fromEntries(R.map(t => [t.teamId, t.rating])); got++ } }
+    for (const y of Object.keys(H.adj).map(Number)) if (!SR.s[y] || (y >= S && !off)) { const R = await cb("/ratings/srs", { season: y }).catch(() => []); if (R.length) { SR.s[y] = Object.fromEntries(R.map(t => [t.teamId, t.rating])); got++ } }
     if (got) await putPack("p2000_cbb-srs", SR);
     log("rating scale: " + JSON.stringify(fixAdjScale(H.adj, SR.s))) }
   const D1 = new Set(adjS.map(t => t.teamId));

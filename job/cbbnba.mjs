@@ -210,6 +210,16 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players 
     const nmR = {}; if (ros) for (const r of rowsOf(ros)) nmR[String(r.athlete_id)] = [r.display_name, r.team_abbreviation, r.position_abbreviation, r.height, +r.experience_years || 0];
     for (const id of want) { const S0 = []; for (const [y, P] of Object.entries((NH && NH.seasons) || {})) { const r = P[id]; if (r) S0.push([+y, r[1], ...r.slice(2, 17), r[17] ? r[17].slice(0, 3).concat([r[17][3]]) : null]) }
       S0.sort((a, b) => a[0] - b[0]); const rr = nmR[id]; if (!S0.length && !rr) continue; allp[id] = { nm: rr ? rr[0] : (S0.length ? (NH.seasons[S0[S0.length - 1][0]][id] || [])[0] : ""), tm: rr ? rr[1] : (S0.length ? S0[S0.length - 1][1] : null), pos: rr ? rr[2] : null, ht: rr ? rr[3] : null, exp: rr ? rr[4] : null, s: S0 } } }
+  /* every NBA team's seasons (Oct 12 — Sam: "the NBA team profiles look very thin compared to every other profile"): from the team box
+     scores, 2010 on, keyed by ESPN team id (abbreviations changed: NJN → BKN, NOH → NOP) → p2000_cbb-nbateamhist
+     { cols, s: { season: { teamId: [w, l, net, ortg, drtg, pace, playoffW, playoffL, abbr] } } }; finished seasons are read once */
+  try { let TH = await getPack("p2000_cbb-nbateamhist").catch(() => null); if (!TH || !TH.s) TH = { s: {} }; let got = 0;
+    for (let y = 2010; y <= curNba; y++) { if (TH.s[y] && y < curNba - 1) continue; const txt = await getCsv(REL("espn_nba_team_boxscores", `team_box_${y}.csv`)).catch(() => null); if (!txt) continue;
+      const R = rowsOf(txt), Tr = nbaTeamRatings(R, y === curNba ? 1 : 20), po = {};
+      for (const r of R) if (+r.season_type === 3) { const o = po[r.team_id] = po[r.team_id] || [0, 0]; if (/true/i.test(r.team_winner)) o[0]++; else o[1]++ }
+      const out = {}; for (const [ab, X] of Object.entries(Tr)) out[X.id] = [X.w, X.l, X.net, X.ortg, X.drtg, X.pace, (po[X.id] || [0, 0])[0], (po[X.id] || [0, 0])[1], ab];
+      if (Object.keys(out).length) { TH.s[y] = out; got++ } }
+    TH.cols = ["w", "l", "net", "ortg", "drtg", "pace", "playoffW", "playoffL", "abbr"]; if (got) await putPack("p2000_cbb-nbateamhist", TH); log(`nba team history: ${Object.keys(TH.s).length} seasons (${got} read)`) } catch (e) { log("nba team history: " + e.message) }
   /* everyone else with an NBA season since 2009 (Oct 11 audit: retired and overseas draft picks — Emmanuel Mudiay, Dragan Bender — had no
      page): the same shape as allp, in its own pack the page reads only when it needs a name it can't find */
   { const all = {}; for (const [y, P] of Object.entries((NH && NH.seasons) || {})) for (const [id, r] of Object.entries(P)) { if (allp[id]) continue; const X = all[id] = all[id] || { nm: r[0], tm: r[1], s: [] }; X.s.push([+y, r[1], ...r.slice(2, 17), r[17] ? r[17].slice(0, 3).concat([r[17][3]]) : null]); X.tm = r[1] }

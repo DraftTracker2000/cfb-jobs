@@ -65,7 +65,7 @@ export function pastPlayers(rows, { grade, profileOf, ht = {} }) {
 }
 
 export async function buildPast({ cb, getPack, putPack, log, S, off, full, hist, grade, profileOf, H, NCAA, curGames = [] }) {
-  const last = off ? S : S - 1, first = Math.max(2012, last - 9);
+  const last = off ? S : S - 1, first = 2012;   /* Oct 12: every season since 2012 (was the last ten), so a 2013 draft pick who never reached the NBA still has his college page */
   const [GH, TH] = await Promise.all([getPack("p2000_cbb-ghist").catch(() => null), getPack("p2000_cbb-teamhist").catch(() => null)]);
   const byS = {}; for (const h of hist) if (h.r.s >= first && h.r.s <= last) (byS[h.r.s] = byS[h.r.s] || []).push(h);
   let wrote = 0;

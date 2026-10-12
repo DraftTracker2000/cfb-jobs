@@ -16,6 +16,7 @@ export const PT_D = ["isolation", "prballhandler", "prrollman", "postup", "spotu
 export const H_COLS = ["g", "min", "contested", "contested3", "deflections", "charges", "screenAst", "screenAstPts", "looseBalls", "boxOuts"];
 export const M_COLS = ["partialPoss", "pts", "fgm", "fga", "fg3m", "fg3a", "ast", "tov", "blk", "sfl"];
 const ABBR = { GSW: "GS", NYK: "NY", SAS: "SA", NOP: "NO", UTA: "UTAH", WAS: "WSH" }, ab = a => ABBR[a] || a;
+const iso = v => v instanceof Date ? v.toISOString() : String(v || "");
 const n = v => v == null ? 0 : typeof v === "bigint" ? Number(v) : +v || 0, r3 = v => Math.round(v * 1000) / 1000;
 
 /* one season's files (objects already read) → the season block */
@@ -47,6 +48,26 @@ export function seasonBlock({ off = {}, def = {}, hp = [], ht = [], mu = [], lsm
   return { p: P, t: T };
 }
 
+/* NBA.com team ids → ESPN abbreviations (the 30 franchises; ids are fixed) */
+export const NBA_TID = { 1610612737: "ATL", 1610612738: "BOS", 1610612739: "CLE", 1610612740: "NO", 1610612741: "CHI", 1610612742: "DAL", 1610612743: "DEN", 1610612744: "GS", 1610612745: "HOU",
+  1610612746: "LAC", 1610612747: "LAL", 1610612748: "MIA", 1610612749: "MIL", 1610612750: "MIN", 1610612751: "BKN", 1610612752: "NY", 1610612753: "ORL", 1610612754: "IND", 1610612755: "PHI", 1610612756: "PHX",
+  1610612757: "POR", 1610612758: "SAC", 1610612759: "SA", 1610612760: "OKC", 1610612761: "TOR", 1610612762: "UTAH", 1610612763: "MEM", 1610612764: "WSH", 1610612765: "DET", 1610612766: "CHA" };
+/* round 3 (Sam ticked "NBA five-man lineups and an NBA head coach line", and injury history):
+   five-man units: nba_stats_leaguedash/lineups_advanced_{season} (group_quantity 5), each team's eight most used (30+ minutes):
+     [player keys, NBA.com's short names, minutes, net, off. rating, def. rating, possessions, games]
+   head coaches: nba_stats_coaches/coaches_{season} since 2010 (coach_type "Head Coach") → { team: [[season, name]] }
+   injury reports: espn_nba_injuries/injuries_{season} (ESPN ids; the file starts with this season, so the log grows from here) →
+     { espnId: [[date, status, injury, side, expected return]] (ESPN's written notes are left out — they're reporters' words) }, newest first, one row per injury, eight at most */
+export function lineupRows(rows, espnOf = {}) { const T = {};
+  for (const r of rows || []) { if (Number(r.group_quantity) !== 5 || (r.group_set && r.group_set !== "Lineups")) continue; const t = NBA_TID[n(r.team_id)] || ab(String(r.team_abbreviation || "")); if (!t) continue;
+    const ids = String(r.group_id || "").split("-").filter(Boolean).map(x => espnOf[+x] || "n" + x), min = Math.round(n(r.min)); if (ids.length !== 5 || min < 30) continue;
+    (T[t] = T[t] || []).push([ids, String(r.group_name || "").split(" - "), min, n(r.net_rating), n(r.off_rating), n(r.def_rating), Math.round(n(r.poss)), n(r.gp)]) }
+  for (const t in T) T[t] = T[t].sort((a, b) => b[2] - a[2]).slice(0, 8); return T }
+export function injuryRows(rows) { const M = {}, seen = {};
+  const L = (rows || []).slice().sort((a, b) => iso(b.as_of_date).localeCompare(iso(a.as_of_date)));
+  for (const r of L) { const id = String(r.athlete_id || ""), k = String(r.injury_id || ""); if (!id || !k || seen[k]) continue; seen[k] = 1;
+    (M[id] = M[id] || []).push([iso(r.injury_date || r.as_of_date).slice(0, 10), String(r.status || ""), String(r.detail_type || ""), String(r.detail_side || "").replace(/^Not Specified$/, ""), iso(r.detail_return_date).slice(0, 10)]) }
+  for (const id in M) M[id] = M[id].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 8); return M }
 export async function buildNbaStats({ getPack, putPack, log, curNba, live, full }) {
   let K = full ? null : await getPack("p2000_cbb-nbastats").catch(() => null);
   if (!K || K.v !== 2) K = { v: 2, got: [], ptO: PT_O, ptD: PT_D, hCols: H_COLS, mCols: M_COLS, s: {} };
@@ -62,6 +83,14 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
       mu = await get(`nba_stats_matchups/matchupsrollup_regular-season_totals_${y}.parquet`) || [], lsm = await get(`nba_stats_matchups/leagueseasonmatchups_regular-season_totals_${y}.parquet`) || [];
     K.s[y] = seasonBlock({ off, def, hp, ht, mu, lsm }, espnOf); if (!K.got.includes(y)) K.got.push(y);
     log(`nbastats ${y}: ${Object.keys(K.s[y].p).length} players (${Object.keys(K.s[y].p).filter(k => !k.startsWith("n")).length} on ESPN ids) · ${Object.keys(K.s[y].t).length} teams`) }
+  /* lineups for the seasons on hand; head coaches since 2010 (finished seasons kept); this season's injury reports */
+  for (const y of Object.keys(K.s)) if (!K.s[y].lu || +y === curNba) { const rows = await readParquet(REL(`nba_stats_leaguedash/lineups_advanced_${y}.parquet`)).catch(e => (log(`nbastats lineups ${y}: ${e.message}`), null)); files++; if (rows) K.s[y].lu = lineupRows(rows, espnOf) }
+  K.coach = K.coach || {}; K.coachGot = K.coachGot || [];
+  for (let y = 2010; y <= curNba + 1; y++) { if (K.coachGot.includes(y) && y < curNba) continue; const rows = await readParquet(REL(`nba_stats_coaches/coaches_${y}.parquet`)).catch(() => null); files++; if (!rows || !rows.length) continue;
+    for (const r of rows) { if (r.coach_type !== "Head Coach") continue; const t = NBA_TID[n(r.team_id)]; if (!t) continue; const L = K.coach[t] = (K.coach[t] || []).filter(x => x[0] !== y); L.push([y, String(r.coach_name || "")]); L.sort((a, b) => a[0] - b[0]) }
+    if (!K.coachGot.includes(y)) K.coachGot.push(y) }
+  for (const y of [curNba + 1, curNba]) { const rows = await readParquet(REL(`espn_nba_injuries/injuries_${y}.parquet`)).catch(() => null); files++; if (rows && rows.length) { K.inj = injuryRows(rows); K.injSeason = y; K.injAsOf = rows.reduce((a, r) => iso(r.as_of_date) > a ? iso(r.as_of_date) : a, "").slice(0, 10); break } }
+  log(`nbastats: lineups for ${Object.keys(K.s).filter(y => K.s[y].lu).join(", ")} · coaches for ${Object.keys(K.coach).length} teams · injury reports for ${K.inj ? Object.keys(K.inj).length : 0} players`);
   for (const y of Object.keys(K.s)) if (+y < curNba - 2) delete K.s[y];
   if (files) await putPack("p2000_cbb-nbastats", K);
   return K;

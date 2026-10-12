@@ -140,7 +140,7 @@ async function main() {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   page.on("pageerror", e => console.log("page error:", e.message));
-  page.on("console", m => { if (/^\[builder\]/.test(m.text())) console.log(m.text()) });
+  const BLOG = []; page.on("console", m => { if (/^\[builder\]/.test(m.text())) { console.log(m.text()); if (BLOG.length < 400) BLOG.push(m.text()) } });
   await page.goto(SITE + "/404");                                     // any page on the site, to set storage
   await page.evaluate(t => { localStorage.clear(); localStorage.setItem("cfbTok", t) }, sess.token);
   await page.goto(`${SITE}${PAGE}?builder=${MODE}${SUNDAY_CATCHUP ? "&catchup=1" : ""}`, { waitUntil: "domcontentloaded" });
@@ -191,6 +191,10 @@ async function main() {
     index[name] = { sha: r.sha, bytes: r.bytes, at: Date.now() };
   }
   if (held.length) B.note = (B.note || MODE) + ` · HELD BACK (under 40% of last size): ${held.join(", ")}`;
+  /* Oct 11: the run's logs can't be read from here, so what went wrong goes on the run as annotations — held packs and the builder's own
+     messages (first and last few, and how many) */
+  if (held.length) console.log(`::warning title=held packs::${held.join(", ")}`);
+  if (BLOG.length) console.log(`::notice title=builder messages (${BLOG.length})::${[...BLOG.slice(0, 6), ...(BLOG.length > 10 ? ["…"] : []), ...BLOG.slice(-4)].join(" | ").replace(/[\r\n]+/g, " ").slice(0, 3500)}`);
   if (Object.keys(index).length) {
     await api("PUT", "/api/pack-index", { body: index });
     const mb = Object.values(index).reduce((a, x) => a + x.bytes, 0) / 1048576;

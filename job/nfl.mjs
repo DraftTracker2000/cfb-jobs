@@ -316,6 +316,14 @@ async function pbp(S, log) {
         if (third) { z.third[0]++; if (o.third_down_converted === "1") z.third[1]++ }
         if (late) { z.late[0]++; z.late[1] += ep } if (two) { z.two[0]++; z.two[1] += ep }
         if ((num(o.yardline_100) ?? 99) <= 20 || (otd && k in z.rzd)) { if (!(k in z.rzd)) z.rzd[k] = 0; if (otd) z.rzd[k] = 1 } } }
+    /* special teams (Oct 12 — first audit: "special teams people … hmm. ok"): each team's EPA on its own punts, kickoffs and field goals
+       (and extra points), and on the punts and kickoffs it returned → team.st = { pu, ko, fg, pr, kr: [plays, epa] } */
+    if (/^(punt|kickoff|field_goal|extra_point)$/.test(o.play_type || "") && o.posteam && o.defteam && num(o.epa) != null) { const ep = num(o.epa);
+      const ST = t => { const x = T[t] = T[t] || { off: {}, def: {} }; return x.st = x.st || { pu: [0, 0], ko: [0, 0], fg: [0, 0], pr: [0, 0], kr: [0, 0] } };
+      /* nflverse puts the kicking team in posteam on punts and field goals, and the RECEIVING team on kickoffs */
+      if (o.play_type === "punt") { const a = ST(o.posteam).pu, b = ST(o.defteam).pr; a[0]++; a[1] += ep; b[0]++; b[1] -= ep }
+      else if (o.play_type === "kickoff") { const a = ST(o.defteam).ko, b = ST(o.posteam).kr; a[0]++; a[1] -= ep; b[0]++; b[1] += ep }
+      else { const a = ST(o.posteam).fg; a[0]++; a[1] += ep } }
     { const po = num(o.pass_oe); if (po != null && o.posteam && (pt === "pass" || pt === "run") && o.two_point_attempt !== "1") { const tt = T[o.posteam] = T[o.posteam] || { off: {}, def: {} }, x = tt.proe = tt.proe || [0, 0]; x[0] += po; x[1]++ } }
     if (pt === "pass" && o.passer_player_id) {
       const ev = { sack: o.sack === "1", cmp: o.complete_pass === "1", int: o.interception === "1", td: td && o.interception !== "1", fl, yds, epa, fd: o.first_down === "1" };

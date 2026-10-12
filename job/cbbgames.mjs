@@ -181,7 +181,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     const x = [...xOf(he, ae, g.homeTeamId, g.awayTeamId, home, g.startDate.slice(0, 10), g.season), ...((g.season === S ? exFor(S, curRowsAll) : exFor(g.season, nextRowsAll))[g.id] || [0, 0, 0, 0, 0])];
     const known = (he != null && ae != null) || (priorNet(g.homeTeamId, g.season) != null && priorNet(g.awayTeamId, g.season) != null);
     const PKg = g.season === S && g.status === "final" ? PKx : PK; const p = known ? pickP(PKg, x) : null, m = known ? pickM(PKg, x) : null;
-    return { id: g.id, s: g.season, d: g.startDate, tbd: g.startTimeTbd ? 1 : 0, h: g.homeTeamId, a: g.awayTeamId, hs: g.homePoints ?? null, as: g.awayPoints ?? null, st: g.status, n: g.neutralSite ? 1 : 0, c: g.conferenceGame ? 1 : 0,
+    return { id: g.id, sid: g.sourceId ? String(g.sourceId) : undefined, s: g.season, d: g.startDate, tbd: g.startTimeTbd ? 1 : 0, h: g.homeTeamId, a: g.awayTeamId, hs: g.homePoints ?? null, as: g.awayPoints ?? null, st: g.status, n: g.neutralSite ? 1 : 0, c: g.conferenceGame ? 1 : 0,
       t: g.tournament || null, note: g.gameNotes || null, post: g.seasonType === "postseason" ? 1 : 0, hSeed: g.homeSeed ?? null, aSeed: g.awaySeed ?? null, venue: g.venue || null, city: [g.city, g.state].filter(Boolean).join(", "),
       tv: TV[g.id] || null, rest: REST[g.id] || null, ln: LINES[g.id] || null, p: r3(p), m: r1(m), elo: [he != null ? Math.round(he) : null, ae != null ? Math.round(ae) : null],
       hr: g.season === S ? rankAt(g.homeTeamId, g.startDate.slice(0, 10)) : null, ar: g.season === S ? rankAt(g.awayTeamId, g.startDate.slice(0, 10)) : null,

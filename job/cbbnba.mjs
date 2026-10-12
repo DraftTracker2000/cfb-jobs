@@ -29,20 +29,23 @@ export function seasonFromCsv(text) {
 /* how an NBA career turned out, from what he did on the floor (no awards data): Star · Former star · Starter · Rotation · Bench · Brief.
    Oct 12 (Sam: "we also call a lot of people stars in the NBA when there probably arent that many … a lot of them are vets that arent
    playing at their level anymore, they should be denoted"): a star is measured against the league, not a points line. Each season every
-   player with 40+ games is ranked by box-score game score per game (points, shooting, rebounds, assists, steals, blocks, turnovers —
-   seasonRanks). A star career: top 5 once, top 10 twice, or top 15 three times. Still a star: top 15 in the latest finished season, or
-   top 10 in one of the last two (an injury year doesn't end it). A star career that isn't still at that level → "Former star"; a retired
-   star stays "Star". (Was: any 20-point season, which made 73 active stars; now about 20.) */
+   player with 30+ games is ranked twice — by box-score game score per game (points, shooting, rebounds, assists, steals, blocks,
+   turnovers) and by points per game (seasonRanks). A star season: top 15 in either. A star career: a top-5 season (top 3 in scoring) or
+   two star seasons. Still a star: a star season in one of the last two (an injury year doesn't end it). A star career that isn't still
+   at that level → "Former star"; a retired star stays "Star". (Was: any 20-point season — 73 active stars.) */
 export const gameScore = r => { const [, , gp, , , pts, reb, ast, stl, blk, tov, fgm, fga, , , ftm, fta] = r; return gp ? (pts + .4 * fgm - .7 * fga - .4 * (fta - ftm) + .4 * reb + stl + .7 * ast + .7 * blk - tov) / gp : 0 };
 export function seasonRanks(seasons) { const RK = {};
-  for (const [y, P] of Object.entries(seasons)) { const L = Object.entries(P).filter(([, r]) => r[2] >= 40).map(([k, r]) => [k, gameScore(r)]).sort((a, b) => b[1] - a[1]); if (L.length < 150) continue; RK[y] = {}; L.forEach(([k], i) => RK[y][k] = i + 1) }
+  for (const [y, P] of Object.entries(seasons)) { const E = Object.entries(P).filter(([, r]) => r[2] >= 30); if (E.length < 150) continue; RK[y] = {};
+    E.map(([k, r]) => [k, gameScore(r)]).sort((a, b) => b[1] - a[1]).forEach(([k], i) => RK[y][k] = [i + 1, 0]);
+    E.map(([k, r]) => [k, r[5] / r[2]]).sort((a, b) => b[1] - a[1]).forEach(([k], i) => RK[y][k][1] = i + 1) }
   return RK }
+const starSeason = r => !!r && (r[0] <= 15 || r[1] <= 15), topSeason = r => !!r && (r[0] <= 5 || r[1] <= 3);
 export function nbaTag(seasons, curY, rk = null, latest = null) {
   const reg = seasons.map(s => ({ y: s[0], gp: s[2], gs: s[3], mpg: s[2] ? s[4] / s[2] : 0, ppg: s[2] ? s[5] / s[2] : 0 }));
   const gp = reg.reduce((a, s) => a + s.gp, 0), starterYrs = reg.filter(s => s.gs >= 41).length, rotYrs = reg.filter(s => s.gp >= 40 && s.mpg >= 18).length;
-  const yrs = reg.length, young = curY - Math.min(...reg.map(s => s.y)) < 3;
-  if (rk) { const R = Object.values(rk), n = t => R.filter(v => v <= t).length;
-    if (n(5) >= 1 || n(10) >= 2 || n(15) >= 3) { const active = latest && reg.some(s => s.y >= latest - 1), now = latest && ((rk[latest] && rk[latest] <= 15) || [latest, latest - 1].some(y => rk[y] && rk[y] <= 10));
+  const young = curY - Math.min(...reg.map(s => s.y)) < 3;
+  if (rk) { const R = Object.values(rk);
+    if (R.some(topSeason) || R.filter(starSeason).length >= 2) { const active = latest && reg.some(s => s.y >= latest - 1), now = latest && [latest, latest - 1].some(y => starSeason(rk[y]));
       return active && !now ? { t: "Former star", c: "ok" } : { t: "Star", c: "gold" } } }
   else { const peak = Math.max(0, ...reg.filter(s => s.gp >= 40).map(s => s.ppg)); if (peak >= 20 || reg.filter(s => s.gp >= 50 && s.ppg >= 17).length >= 3) return { t: "Star", c: "gold" } }
   if (starterYrs >= 3) return { t: "Starter", c: "good" };

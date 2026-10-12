@@ -26,12 +26,25 @@ export function seasonFromCsv(text) {
     if (!po) X.tm = f[I.tm] || X.tm }
   return out;
 }
-/* how an NBA career turned out, from what he did on the floor (no awards data): Star · Starter · Rotation · Bench · Brief */
-export function nbaTag(seasons, curY) {
+/* how an NBA career turned out, from what he did on the floor (no awards data): Star · Former star · Starter · Rotation · Bench · Brief.
+   Oct 12 (Sam: "we also call a lot of people stars in the NBA when there probably arent that many … a lot of them are vets that arent
+   playing at their level anymore, they should be denoted"): a star is measured against the league, not a points line. Each season every
+   player with 40+ games is ranked by box-score game score per game (points, shooting, rebounds, assists, steals, blocks, turnovers —
+   seasonRanks). A star career: top 5 once, top 10 twice, or top 15 three times. Still a star: top 15 in the latest finished season, or
+   top 10 in one of the last two (an injury year doesn't end it). A star career that isn't still at that level → "Former star"; a retired
+   star stays "Star". (Was: any 20-point season, which made 73 active stars; now about 20.) */
+export const gameScore = r => { const [, , gp, , , pts, reb, ast, stl, blk, tov, fgm, fga, , , ftm, fta] = r; return gp ? (pts + .4 * fgm - .7 * fga - .4 * (fta - ftm) + .4 * reb + stl + .7 * ast + .7 * blk - tov) / gp : 0 };
+export function seasonRanks(seasons) { const RK = {};
+  for (const [y, P] of Object.entries(seasons)) { const L = Object.entries(P).filter(([, r]) => r[2] >= 40).map(([k, r]) => [k, gameScore(r)]).sort((a, b) => b[1] - a[1]); if (L.length < 150) continue; RK[y] = {}; L.forEach(([k], i) => RK[y][k] = i + 1) }
+  return RK }
+export function nbaTag(seasons, curY, rk = null, latest = null) {
   const reg = seasons.map(s => ({ y: s[0], gp: s[2], gs: s[3], mpg: s[2] ? s[4] / s[2] : 0, ppg: s[2] ? s[5] / s[2] : 0 }));
-  const gp = reg.reduce((a, s) => a + s.gp, 0), starterYrs = reg.filter(s => s.gs >= 41).length, rotYrs = reg.filter(s => s.gp >= 40 && s.mpg >= 18).length, peak = Math.max(0, ...reg.filter(s => s.gp >= 40).map(s => s.ppg));
+  const gp = reg.reduce((a, s) => a + s.gp, 0), starterYrs = reg.filter(s => s.gs >= 41).length, rotYrs = reg.filter(s => s.gp >= 40 && s.mpg >= 18).length;
   const yrs = reg.length, young = curY - Math.min(...reg.map(s => s.y)) < 3;
-  if (peak >= 20 || reg.filter(s => s.gp >= 50 && s.ppg >= 17).length >= 3) return { t: "Star", c: "gold" };
+  if (rk) { const R = Object.values(rk), n = t => R.filter(v => v <= t).length;
+    if (n(5) >= 1 || n(10) >= 2 || n(15) >= 3) { const active = latest && reg.some(s => s.y >= latest - 1), now = latest && ((rk[latest] && rk[latest] <= 15) || [latest, latest - 1].some(y => rk[y] && rk[y] <= 10));
+      return active && !now ? { t: "Former star", c: "ok" } : { t: "Star", c: "gold" } } }
+  else { const peak = Math.max(0, ...reg.filter(s => s.gp >= 40).map(s => s.ppg)); if (peak >= 20 || reg.filter(s => s.gp >= 50 && s.ppg >= 17).length >= 3) return { t: "Star", c: "gold" } }
   if (starterYrs >= 3) return { t: "Starter", c: "good" };
   if (rotYrs >= 3 || starterYrs >= 2) return { t: "Rotation", c: "ok" };
   if (young) return { t: "Early career", c: "" };
@@ -61,7 +74,8 @@ export async function buildNba({ getPack, putPack, log, full, curNba, live, sidT
     const X = players[eid] = players[eid] || { nm: row[0], cid, seasons: [] };
     X.seasons.push([+y, row[1], ...row.slice(2, 17), row[17] ? row[17].slice(0, 3).concat([row[17][3]]) : null]);
   }
-  for (const X of Object.values(players)) { X.seasons.sort((a, b) => a[0] - b[0]); X.tag = nbaTag(X.seasons, curNba); const d = draftById[X.cid]; if (d) X.draft = [d.year, d.overall, d.draftTeam];
+  const RKS = seasonRanks(NH.seasons), latestY = Object.keys(RKS).length ? Math.max(...Object.keys(RKS).map(Number)) : null, rkOf = eid => { const o = {}; for (const [y, M] of Object.entries(RKS)) if (M[eid]) o[y] = M[eid]; return o };
+  for (const [eid, X] of Object.entries(players)) { X.seasons.sort((a, b) => a[0] - b[0]); X.tag = nbaTag(X.seasons, curNba, Object.keys(RKS).length ? rkOf(eid) : null, latestY);   /* a tiny test league has no ranks: the old points rule */ const d = draftById[X.cid]; if (d) X.draft = [d.year, d.overall, d.draftTeam];
     const t = X.seasons.reduce((a, s) => { for (let i = 2; i <= 16; i++) a[i - 2] += s[i] || 0; return a }, new Array(15).fill(0)); X.tot = t }
   /* this year's and last year's draft picks who haven't played an NBA game yet (Oct 11 — Sam: "their nba pages should have their college
      data, which would then populate the players like them tab"): an NBA page with no NBA seasons, so the college season, BoardScore and

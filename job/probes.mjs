@@ -2,6 +2,19 @@
    async function evaluated in the page (w(ms) waits, W is the width). Return {ok, ...whatever helps}. Keep results short. */
 const res = `const R=()=>performance.getEntriesByType("resource").map(e=>decodeURIComponent(e.name));`;
 export const PROBES = [
+  /* Oct 11 (#334, Sam on "who made the play": "this seems like a huge miss"): CFBD's play stats (every player on a play, by role, with
+     his id) against what the defender charts read out of play text — same team, same season */
+  { name: "playstats-cmp", page: "/lab/", widths: [390], run: `const o={ok:true,types:null,teams:{}};try{o.types=(await api("/plays/stats/types")).map(t=>t.id+":"+t.name).join(", ")}catch(e){o.types="ERR "+e.message}
+    for(const team of ["Ohio State","Iowa","San José State"]){const y=2025,ST={},calls=[0];let sample=null;
+     for(let wk=1;wk<=16;wk++){let L=[];try{L=await api("/plays/stats?year="+y+"&week="+wk+"&team="+encodeURIComponent(team));calls[0]++}catch(e){continue}
+      for(const r of L||[]){if(!sample)sample=JSON.stringify(r).slice(0,400);if(r.team!==team)continue;const a=ST[r.athleteId]=ST[r.athleteId]||{n:r.athleteName,t:{}};a.t[r.statType]=(a.t[r.statType]||0)+1}}
+     const X=await dcTeam(team,y);const cmp=[];let both=0,onlyText=0,onlyStats=0;
+     const byId={};for(const d of Object.values(X.D))byId[d.id]=d;
+     for(const [id,a] of Object.entries(ST)){const d=byId[id];const tk=(a.t["Tackle"]||0)+(a.t["Solo Tackle"]||0),bu=a.t["Pass Breakup"]||0,int=a.t["Interception"]||0,sk=a.t["Sack"]||0;if(!(tk+bu+int+sk))continue;if(d)both++;else onlyStats++;
+      if(cmp.length<8&&d)cmp.push(a.n+" stats:"+JSON.stringify(a.t)+" text: tkC "+d.tkC+" rt "+d.rt+" bu "+d.bu+" int "+d.int+" sk "+d.sk.toFixed(1))}
+     for(const id of Object.keys(byId))if(!ST[id])onlyText++;
+     o.teams[team]={calls:calls[0],sample,defendersInStats:Object.keys(ST).length,both,onlyStats,onlyText,cmp}}
+    return o` },
   /* Oct 11 (#331): does CFBD's opponent-adjusted player EPA (/wepa/players/passing|rushing) predict a player's next season better than
      his raw EPA per play? Pearson r with next season's raw EPA per play (and next season's adjusted), players with enough plays both years */
   { name: "wepa-test", page: "/lab/", widths: [390], run: `const o={ok:true,shape:null,res:{}};const cor=(a,b)=>{const n=a.length,ma=a.reduce((x,y)=>x+y,0)/n,mb=b.reduce((x,y)=>x+y,0)/n;let s=0,sa=0,sb=0;for(let i=0;i<n;i++){s+=(a[i]-ma)*(b[i]-mb);sa+=(a[i]-ma)**2;sb+=(b[i]-mb)**2}return +(s/Math.sqrt(sa*sb)).toFixed(3)};

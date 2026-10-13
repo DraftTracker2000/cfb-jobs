@@ -17,7 +17,7 @@
    the team's own shooting). Together: log loss 0.548 → 0.545, 0.521 → 0.519, 0.536 → 0.533; right 72.4 → 73.0%, 73.9 → 74.4%, 73.0 → 73.0%.
    Altitude and time zones crossed were tried too and didn't help. */
 
-import { buildCoachIds, coachRecords, dedupeCoachSeasons, buildTeamHist, wikiCoaches, trustWiki } from "./cbbcoach.mjs";
+import { buildCoachIds, coachRecords, dedupeCoachSeasons, buildTeamHist, wikiCoaches, trustWiki, repairLateHires } from "./cbbcoach.mjs";
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 /* date ranges [a, b) that keep every answer under CBBD's 3,000-row cap */
@@ -161,6 +161,8 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   /* ---- head coaches (ESPN staff lists; records from our results — job/cbbcoach.mjs) ---- */
   let CO = { coaches: {}, current: {} }, CI = null;
   try { CI = await buildCoachIds({ getPack, putPack, log, teams: teamList, to: NEXT, full });
+    { const Wp = await getPack("p2000_cbb-wiki").catch(() => null), nm0 = Object.fromEntries((teamList || []).map(t => [t.id, t.school]));
+      const n = repairLateHires(CI, Wp && Wp.c, nm0); if (n) { log(`coaches: ${n} season(s) given back to the coach before a late hire`); await putPack("p2000_cbb-coachids", CI) } }
     CO = coachRecords({ C: CI, seasons: { ...GH.seasons, [S]: curRows }, lines: { ...GH.lines, [S]: curLines }, adj, S });
     /* style by season: adj O / D, pace, 3-point rate, turnovers forced, eFG for and against, offensive rebounding — with each season's D-I rank for pace */
     const TH = await buildTeamHist({ cb, getPack, putPack, log, S, full }).catch(e => { log("team history: " + e.message); return null });

@@ -30,7 +30,10 @@ export async function buildCoachIds({ getPack, putPack, log, teams, from = 2013,
       const cid = (ref.match(/coaches\/(\d+)/) || [])[1]; if (!cid) return; map[t.id] = cid;
       if (!C.names[cid]) { const c = await getJSON(`${BASE}/seasons/${y}/coaches/${cid}`); calls++; if (c) C.names[cid] = [c.firstName, c.lastName].filter(Boolean).join(" ") }
     });
-    if (Object.keys(map).length) C.seasons[y] = map;
+    /* a season that has ended keeps the coaches it had (Oct 13 — Sam: Michael Malone was shown coaching North Carolina's 2025–26 season):
+       after mid-April ESPN files a spring hire under the season just played, so only teams with no coach yet are added */
+    const ended = Date.now() > Date.UTC(y, 3, 15);
+    if (Object.keys(map).length) C.seasons[y] = ended && C.seasons[y] ? { ...map, ...C.seasons[y] } : map;
   }
   C.at = Date.now();
   await putPack("p2000_cbb-coachids", C);
@@ -43,6 +46,19 @@ export async function buildCoachIds({ getPack, putPack, log, teams, from = 2013,
 /* one team per coach per season. ESPN sometimes lists a coach at two teams in one season (his old team's page not yet updated). The
    team he is at the season after is where he went, so the other one was that season's; in the latest season, the team that's new
    to him is the real one. */
+/* undo a late hire filed under the season before he arrived (Oct 13 — Malone's 2025–26 at North Carolina was Hubert Davis's): when a
+   team's coach changes between two seasons and the new man's Wikipedia stop at that school starts in or after the season's end year,
+   the season goes back to the coach before him. W = the p2000_cbb-wiki pack's c ({ espnCoachId: { stops: [[years, team]] } });
+   names = { cbbdTeamId: school }. Returns how many seasons were put back. */
+export function repairLateHires(C, W, names) {
+  const k = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); let n = 0;
+  for (const y of Object.keys(C.seasons).map(Number).sort((a, b) => a - b)) { const m = C.seasons[y], pm = C.seasons[y - 1]; if (!pm) continue;
+    for (const [t, c] of Object.entries(m)) { const p = pm[t]; if (!p || p === c) continue; const w = W && W[c]; if (!w || !w.stops) continue;
+      const sch = k(names[t]); if (!sch) continue;
+      const st = w.stops.find(([yy, nm]) => { const a = k(nm); return a && (a === sch || a.includes(sch) || sch.includes(a)) && /\d{4}/.test(yy) });
+      if (!st) continue; const y0 = +(String(st[0]).match(/\d{4}/) || [0])[0];
+      if (y0 >= y) { m[t] = p; n++ } } }
+  return n }
 export function dedupeCoachSeasons(seasons) {
   const out = {}; const ys = Object.keys(seasons).map(Number).sort((a, b) => a - b);
   const teamOf = (y, cid) => { const m = seasons[y]; if (!m) return []; return Object.keys(m).filter(t => m[t] === cid) };

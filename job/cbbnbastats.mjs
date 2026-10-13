@@ -10,6 +10,7 @@
    pctile, freq, ft trips] }, d: { type: [poss, pts, pctile] }, h: [...hCols], m: [...mCols] } }, t: { ESPN abbr: { o: { type: [poss, pts, freq, ft trips] },
    d: { type: [poss, pts] }, h: [...hCols] } } } }. Finished seasons are cached; the current one is re-read each run while it is being played. */
 import { REL, readParquet, crosswalk } from "./cbbcombine.mjs";
+import { buildNbaCoaches, teamOf } from "./cbbnbacoach.mjs";
 
 export const PT_O = ["transition", "isolation", "prballhandler", "prrollman", "postup", "spotup", "handoff", "cut", "offscreen", "offrebound", "misc"];
 export const PT_D = ["isolation", "prballhandler", "prrollman", "postup", "spotup", "handoff", "offscreen"];
@@ -130,6 +131,12 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
     if (got >= 25) K.coNowAt = Date.now(); log(`nbastats: current head coaches from ESPN for ${got} teams (season ${coSeason})`) }
   for (const y of [curNba + 1, curNba]) { const rows = await readParquet(REL(`espn_nba_injuries/injuries_${y}.parquet`)).catch(() => null); files++; if (rows && rows.length) { K.inj = injuryRows(rows); K.injSeason = y; K.injAsOf = rows.reduce((a, r) => iso(r.as_of_date) > a ? iso(r.as_of_date) : a, "").slice(0, 10); break } }
   log(`nbastats: lineups for ${Object.keys(K.s).filter(y => K.s[y].lu).join(", ")} · coaches for ${Object.keys(K.coach).length} teams · injury reports for ${K.inj ? Object.keys(K.inj).length : 0} players`);
+  /* NBA head coaches season by season from their Wikipedia record tables (job/cbbnbacoach.mjs, Oct 13): everyone in the coaches list,
+     plus college head coaches with an NBA stop on their Wikipedia list (Michael Malone, Rick Pitino …) */
+  try { const names = {}; for (const [t, L] of Object.entries(K.coach || {})) for (const [y, nm] of L) { const o = names[nm] = names[nm] || { list: [], cur: false }; if (!o.list.includes(t)) o.list.push(t); if (y >= curNba) o.cur = true }
+    for (const y of [curNba, curNba - 1, curNba + 1]) { const CP = await getPack(`p${y}_cbb-coaches`).catch(() => null); if (!CP || !CP.coaches) continue;
+      for (const c of Object.values(CP.coaches)) { const st = (c.wiki && c.wiki.stops) || []; const nb = st.map(s => teamOf(s[1])).filter(Boolean); if (nb.length && c.nm && !names[c.nm]) names[c.nm] = { list: nb, cur: false } } break }
+    await buildNbaCoaches(K, names, log, curNba); files++ } catch (e) { log("nbastats coach records: " + e.message) }
   for (const y of Object.keys(K.s)) if (+y < curNba - 2) delete K.s[y];
   if (files) await putPack("p2000_cbb-nbastats", K);
   return K;

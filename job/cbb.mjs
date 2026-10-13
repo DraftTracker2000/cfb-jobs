@@ -210,6 +210,12 @@ export async function main() {
   const now = new Date(), M = now.getUTCMonth() + 1, Yr = now.getUTCFullYear();
   const UPCOMING = M >= 9 ? Yr + 1 : Yr;                       // the season that ends next spring (Oct 2026 → 2027); stats may not exist yet
   const full = MODE === "cbbhistory";
+  /* nbastats: only the NBA.com tables (play types, hustle, matchups, tracking) from the open sportsdataverse files — no CBBD or ESPN
+     calls at all (Oct 12: to fill new NBA profile pieces without spending the day's calls) */
+  if (MODE === "nbastats") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
+    await buildNbaStats({ getPack, putPack, log, curNba, live: nbaLive, full: false });
+    await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `Basketball · NBA stats only · ${((Date.now() - started) / 60e3).toFixed(1)} min · 0 CBBD calls`; log(msg);
+    await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return }
 
   /* teams and Division I */
   const teamsRaw = await cb("/teams");

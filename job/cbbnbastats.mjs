@@ -15,12 +15,29 @@ export const PT_O = ["transition", "isolation", "prballhandler", "prrollman", "p
 export const PT_D = ["isolation", "prballhandler", "prrollman", "postup", "spotup", "handoff", "offscreen"];
 export const H_COLS = ["g", "min", "contested", "contested3", "deflections", "charges", "screenAst", "screenAstPts", "looseBalls", "boxOuts"];
 export const M_COLS = ["partialPoss", "pts", "fgm", "fga", "fg3m", "fg3a", "ast", "tov", "blk", "sfl"];
+/* NBA.com's player tracking and dashboard tables (Oct 12 — Sam: the NBA Scoring and Defense tabs should have as much as the college
+   ones): nba_stats_leaguedash/{file}_{season}.parquet, season totals. One row per player — the row with the most games (the files carry
+   some players twice: an earlier snapshot, or a stint before a trade). Kept per player as x: [...X_COLS]. */
+export const X_SRC = {
+  player_tracking_catchshoot: ["catch_shoot_fgm", "catch_shoot_fga", "catch_shoot_fg3_m", "catch_shoot_fg3_a", "catch_shoot_pts"],
+  player_tracking_pullupshot: ["pull_up_fgm", "pull_up_fga", "pull_up_fg3_m", "pull_up_fg3_a", "pull_up_pts"],
+  player_tracking_drives: ["drives", "drive_fgm", "drive_fga", "drive_fta", "drive_pts", "drive_ast", "drive_tov"],
+  player_tracking_possessions: ["touches", "time_of_poss", "avg_sec_per_touch", "avg_drib_per_touch", "elbow_touches", "post_touches", "paint_touches"],
+  player_tracking_passing: ["passes_made", "potential_ast", "ast_pts_created", "secondary_ast"],
+  player_stats_scoring: ["pct_pts_2_pt_mr", "pct_pts_3_pt", "pct_pts_paint", "pct_pts_ft", "pct_pts_fb", "pct_pts_off_tov", "pct_uast_fgm"],
+  player_stats_advanced: ["off_rating", "def_rating", "net_rating", "usg_pct", "ts_pct", "pie", "ast_pct", "poss"],
+  player_tracking_defense: ["def_rim_fgm", "def_rim_fga"],
+  player_stats_defense: ["pct_stl", "pct_blk", "dreb_pct", "opp_pts_off_tov", "opp_pts_2_nd_chance", "opp_pts_fb", "opp_pts_paint"],
+  player_tracking_rebounding: ["dreb_contest", "dreb_chances", "oreb_chances", "oreb"],
+  player_tracking_speeddistance: ["dist_miles_off", "dist_miles_def", "avg_speed_off", "avg_speed_def"],
+  player_stats_misc: ["pts_paint", "pts_fb", "pts_off_tov", "pts_2_nd_chance", "pfd", "pf"] };
+export const X_COLS = ["gp", "min", ...Object.values(X_SRC).flat()];
 const ABBR = { GSW: "GS", NYK: "NY", SAS: "SA", NOP: "NO", UTA: "UTAH", WAS: "WSH" }, ab = a => ABBR[a] || a;
 const iso = v => v instanceof Date ? v.toISOString() : String(v || "");
 const n = v => v == null ? 0 : typeof v === "bigint" ? Number(v) : +v || 0, r3 = v => Math.round(v * 1000) / 1000;
 
 /* one season's files (objects already read) → the season block */
-export function seasonBlock({ off = {}, def = {}, hp = [], ht = [], mu = [], lsm = [] }, espnOf = {}) {
+export function seasonBlock({ off = {}, def = {}, hp = [], ht = [], mu = [], lsm = [], xf = {} }, espnOf = {}) {
   const P = {}, T = {}, tmOfId = {}, key = id => espnOf[id] || "n" + id;
   const pl = (r) => { const k = key(n(r.player_id || r.def_player_id)); return P[k] = P[k] || { nm: String(r.player_name || r.def_player_name || ""), tm: r.team_abbreviation ? ab(r.team_abbreviation) : null } };
   for (const [side, files] of [["o", off], ["d", def]]) for (const [type, rows] of Object.entries(files)) for (const r of rows || []) {
@@ -47,6 +64,12 @@ export function seasonBlock({ off = {}, def = {}, hp = [], ht = [], mu = [], lsm
       push(TA, d, [o, String(r.off_player_name || ""), sec, ...st]); push(GB, o, [d, String(r.def_player_name || ""), sec, ...st]) }
     for (const [k, L] of Object.entries(TA)) if (P[k]) P[k].ta = L.sort((a, b) => b[2] - a[2]).slice(0, 8);   /* eight (Oct 12, Sam: "their top 8 matched on") */
     for (const [k, L] of Object.entries(GB)) if (P[k]) P[k].gb = L.sort((a, b) => b[2] - a[2]).slice(0, 8) }
+  /* tracking and dashboard tables → x (minutes from the tracking files, which are season totals; gp from the same row) */
+  const best = {}; for (const [f, rows] of Object.entries(xf)) { const B = best[f] = {}; for (const r of rows || []) { const id = n(r.player_id); if (!B[id] || n(r.gp) > n(B[id].gp)) B[id] = r } }
+  const ids = new Set(Object.values(best).flatMap(B => Object.keys(B)));
+  for (const id of ids) { const k = key(+id), p = P[k]; if (!p) continue; const tr = (best.player_tracking_drives || {})[id] || (best.player_tracking_possessions || {})[id]; if (!tr) continue;
+    const x = [n(tr.gp), Math.round(n(tr.min))]; for (const [f, cols] of Object.entries(X_SRC)) { const r = (best[f] || {})[id]; for (const c of cols) x.push(r && r[c] != null ? Math.round(n(r[c]) * 1000) / 1000 : null) }
+    p.x = x }
   return { p: P, t: T };
 }
 
@@ -75,7 +98,8 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
   if (!K || K.v !== 2) K = { v: 2, got: [], ptO: PT_O, ptD: PT_D, hCols: H_COLS, mCols: M_COLS, s: {} };
   const espnOf = await crosswalk([curNba - 1, curNba]); let files = 0;
   K.fin = K.fin || {};
-  if (!K.ftv) { delete K.fin[curNba - 1]; K.ftv = 1 }   /* free-throw trips by play type (Oct 12): last season's play-type files read once more, then kept */ const want = [curNba - 1, curNba].filter(y => !K.got.includes(y) || (y === curNba && live) || !K.fin[y]);   /* a finished season once more after it ends, then never (Oct 12) */
+  if (!K.xv) { delete K.fin[curNba - 1]; K.xv = 1 }   /* Oct 12: free-throw trips by play type, eight matchups each way, and the tracking tables — last season's files read once more, then kept */
+  K.xCols = X_COLS; const want = [curNba - 1, curNba].filter(y => !K.got.includes(y) || (y === curNba && live) || !K.fin[y]);   /* a finished season once more after it ends, then never (Oct 12) */
   for (const y of want) {
     const get = async f => { files++; return readParquet(REL(f)).catch(e => (log(`nbastats ${f}: ${e.message}`), null)) };
     const off = {}, def = {};
@@ -84,7 +108,8 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
     if (!Object.values(off).some(v => v && v.length)) { log(`nbastats ${y}: no play-type files yet`); continue }
     const hp = await get(`nba_stats_hustle/leaguehustlestatsplayer_regular-season_totals_${y}.parquet`) || [], ht = await get(`nba_stats_hustle/leaguehustlestatsteam_regular-season_totals_${y}.parquet`) || [],
       mu = await get(`nba_stats_matchups/matchupsrollup_regular-season_totals_${y}.parquet`) || [], lsm = await get(`nba_stats_matchups/leagueseasonmatchups_regular-season_totals_${y}.parquet`) || [];
-    K.s[y] = seasonBlock({ off, def, hp, ht, mu, lsm }, espnOf); if (!K.got.includes(y)) K.got.push(y); if (!(y === curNba && live)) K.fin[y] = 1;
+    const xf = {}; for (const f of Object.keys(X_SRC)) xf[f] = await get(`nba_stats_leaguedash/${f}_${y}.parquet`) || [];
+    K.s[y] = seasonBlock({ off, def, hp, ht, mu, lsm, xf }, espnOf); if (!K.got.includes(y)) K.got.push(y); if (!(y === curNba && live)) K.fin[y] = 1;
     log(`nbastats ${y}: ${Object.keys(K.s[y].p).length} players (${Object.keys(K.s[y].p).filter(k => !k.startsWith("n")).length} on ESPN ids) · ${Object.keys(K.s[y].t).length} teams`) }
   /* lineups for the seasons on hand; head coaches since 2010 (finished seasons kept); this season's injury reports */
   for (const y of Object.keys(K.s)) if (!K.s[y].lu || !K.luV || (+y === curNba && live)) { const rows = await readParquet(REL(`nba_stats_leaguedash/lineups_advanced_${y}.parquet`)).catch(e => (log(`nbastats lineups ${y}: ${e.message}`), null)); files++; if (rows) K.s[y].lu = lineupRows(rows, espnOf) }

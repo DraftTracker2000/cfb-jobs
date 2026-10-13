@@ -206,6 +206,10 @@ async function nbaPbpSeason(y, log) {
   return out;
 }
 
+/* roster extras for the NBA profile header (Oct 12 — Sam: "the nba player profile header should also be a lot more like this"): weight,
+   jersey, where he's from, ESPN's position name */
+export const rosExtra = r => [parseInt(r.weight) || null, r.jersey != null && r.jersey !== "" && r.jersey !== "NA" ? String(r.jersey) : null,
+  [r.birth_place_city, r.birth_place_country && r.birth_place_country !== "USA" ? r.birth_place_country : r.birth_place_state].filter(x => x && x !== "NA").join(", ") || null, r.position_name && r.position_name !== "NA" ? r.position_name : null];
 export async function buildNbaGames({ getPack, putPack, log, S, curNba, players, colOfEspn = () => null }) {
   const sched = await getCsv(REL("espn_nba_schedules", `nba_schedule_${curNba}.csv`)), box = await getCsv(REL("espn_nba_team_boxscores", `team_box_${curNba - 1}.csv`)), ros = await getCsv(REL("espn_nba_rosters", `rosters_${curNba}.csv`));
   if (!sched || !box) { log("nba games: files not out yet"); return null }
@@ -225,7 +229,7 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
   if (ros) for (const r of rowsOf(ros)) { const X = T[r.team_abbreviation]; if (!X) continue; const c = curS[r.athlete_id], l = lastS[r.athlete_id];
     const mpg = c && c[2] >= 3 ? c[4] / c[2] : l && l[2] >= 10 ? l[4] / l[2] : 0; if (mpg >= 12) (X.rot = X.rot || []).push([String(r.athlete_id), r.display_name, Math.round(10 * mpg) / 10]) }
   if (ros) for (const r of rowsOf(ros)) { const X = T[r.team_abbreviation]; if (!X) continue; const P = byE[r.athlete_id], ls = lastS[r.athlete_id];
-    (X.ros = X.ros || []).push([r.athlete_id, r.display_name, r.position_abbreviation, r.height, +r.experience_years || 0, P ? P.cid : null, ls && ls[2] ? Math.round(10 * ls[5] / ls[2]) / 10 : null, P ? P.tag.t : null, ls ? ls[2] : 0, colOfEspn(String(r.athlete_id)), String(r.date_of_birth || "").slice(0, 10) || null]) }   /* [9] college team id, [10] birth date (Oct 12) */
+    (X.ros = X.ros || []).push([r.athlete_id, r.display_name, r.position_abbreviation, r.height, +r.experience_years || 0, P ? P.cid : null, ls && ls[2] ? Math.round(10 * ls[5] / ls[2]) / 10 : null, P ? P.tag.t : null, ls ? ls[2] : 0, colOfEspn(String(r.athlete_id)), String(r.date_of_birth || "").slice(0, 10) || null, ...rosExtra(r)]) }   /* [9] college team id, [10] birth date (Oct 12); [11] weight, [12] jersey, [13] from, [14] position name (Oct 12, the profile header) */
   const games = []; for (const g of rowsOf(sched)) { const st = +g.season_type; if (st !== 2 && st !== 3) continue; const h = g.home_abbreviation, a = g.away_abbreviation; if (!T[h] || !T[a]) continue;
     const pk = nbaPick({ net: T[h].pnet }, { net: T[a].pnet }, /true/i.test(g.neutral_site)); games.push([+g.id, g.date, h, a, g.status_type_completed === "true" ? +g.home_score : null, g.status_type_completed === "true" ? +g.away_score : null, g.status_type_state, g.broadcast_name || g.broadcast || "", pk.p, pk.m, st === 3 ? 1 : 0]) }
   games.sort((x, y) => x[1].localeCompare(y[1]));
@@ -281,6 +285,8 @@ export async function refreshNbaOnCourt({ getPack, putPack, log, curNba, packNam
   if (!last || !last.games || last.v !== 3) { last = await nbaPbpSeason(curNba - 1, log).catch(e => (log("nba pbp: " + e.message), null)); if (last && last.games > 1000) await putPack(`p2000_cbb-nbapbp${curNba - 1}`, last) }
   if (!last || !last.players) return;
   for (const nm of packNames) { const G = await getPack(nm).catch(() => null); if (!G || !G.pz) continue; if (G.zSeason !== curNba - 1) { log(`nba on-court: ${nm} shows ${G.zSeason}, left alone`); return }
+    try { const ros = await getCsv(REL("espn_nba_rosters", `rosters_${curNba}.csv`)); if (ros) { const X = {}; for (const r of rowsOf(ros)) X[String(r.athlete_id)] = rosExtra(r);
+        for (const T of Object.values(G.teams || {})) for (const row of T.ros || []) { const e = X[String(row[0])]; if (e) row.splice(11, 4, ...e) } } } catch (e) { log("nba roster extras: " + e.message) }
     let n = 0; for (const [id, P] of Object.entries(last.players)) { if (!P.dz || P.dz.reduce((a, z) => a + z[1], 0) < 300) continue; G.pz[id] = { ...(G.pz[id] || { tm: P.tm, z: P.z, ast: P.ast, cl: P.cl }), dz: P.dz }; n++ }
     await putPack(nm, G); log(`nba on-court: ${n} players' opponent shots added to ${nm}`); return }
 }

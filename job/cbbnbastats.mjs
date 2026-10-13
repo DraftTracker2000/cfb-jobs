@@ -98,7 +98,7 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
   if (!K || K.v !== 2) K = { v: 2, got: [], ptO: PT_O, ptD: PT_D, hCols: H_COLS, mCols: M_COLS, s: {} };
   const espnOf = await crosswalk([curNba - 1, curNba]); let files = 0;
   K.fin = K.fin || {};
-  if (!K.xv) { delete K.fin[curNba - 1]; K.xv = 1 }   /* Oct 12: free-throw trips by play type, eight matchups each way, and the tracking tables — last season's files read once more, then kept */
+  if (K.xv !== 2) { for (const y of Object.keys(K.fin)) delete K.fin[y]; K.xv = 2 }   /* (in the preseason the season just finished is curNba itself, so both seasons on hand) */   /* Oct 12: free-throw trips by play type, eight matchups each way, and the tracking tables — last season's files read once more, then kept */
   K.xCols = X_COLS; const want = [curNba - 1, curNba].filter(y => !K.got.includes(y) || (y === curNba && live) || !K.fin[y]);   /* a finished season once more after it ends, then never (Oct 12) */
   for (const y of want) {
     const get = async f => { files++; return readParquet(REL(f)).catch(e => (log(`nbastats ${f}: ${e.message}`), null)) };

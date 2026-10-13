@@ -27,7 +27,7 @@ import { buildCombine } from "./cbbcombine.mjs";
 import { buildNbaStats } from "./cbbnbastats.mjs";
 import { buildPast, confTourneyIds } from "./cbbpast.mjs";
 import { runPbp } from "./cbbpbp.mjs";
-import { buildNba, buildNbaGames } from "./cbbnba.mjs";
+import { buildNba, buildNbaGames, refreshNbaOnCourt } from "./cbbnba.mjs";
 import { fetchRosters, fetchSummary } from "./cbbespn.mjs";
 
 let SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
@@ -214,6 +214,7 @@ export async function main() {
      calls at all (Oct 12: to fill new NBA profile pieces without spending the day's calls) */
   if (MODE === "nbastats") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
     await buildNbaStats({ getPack, putPack, log, curNba, live: nbaLive, full: false });
+    try { await refreshNbaOnCourt({ getPack, putPack, log, curNba: M >= 7 ? Yr + 1 : Yr, packNames: [`p${UPCOMING}_cbb-nbagames`, `p${UPCOMING - 1}_cbb-nbagames`] }) } catch (e) { log("nba on-court: " + e.message) }
     await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `Basketball · NBA stats only · ${((Date.now() - started) / 60e3).toFixed(1)} min · 0 CBBD calls`; log(msg);
     await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return }
 

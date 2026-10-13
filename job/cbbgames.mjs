@@ -17,7 +17,7 @@
    the team's own shooting). Together: log loss 0.548 → 0.545, 0.521 → 0.519, 0.536 → 0.533; right 72.4 → 73.0%, 73.9 → 74.4%, 73.0 → 73.0%.
    Altitude and time zones crossed were tried too and didn't help. */
 
-import { buildCoachIds, coachRecords, dedupeCoachSeasons, buildTeamHist, wikiCoaches, trustWiki, repairLateHires } from "./cbbcoach.mjs";
+import { buildCoachIds, coachRecords, dedupeCoachSeasons, buildTeamHist, wikiCoaches, trustWiki, repairLateHires, wikiRecords } from "./cbbcoach.mjs";
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 /* date ranges [a, b) that keep every answer under CBBD's 3,000-row cap */
@@ -172,6 +172,8 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     const nameOf = Object.fromEntries((teamList || []).map(t => [t.id, t.school]));
     const W = await wikiCoaches({ getPack, putPack, log, full, coaches: Object.entries(CO.current).map(([tid, cid]) => ({ cid, nm: (CO.coaches[cid] || {}).nm, school: nameOf[tid] || "" })).filter(c => c.nm) }).catch(e => { log("wikipedia: " + e.message); return null });
     if (W) for (const [cid, X] of Object.entries(CO.coaches)) { const w = trustWiki(W.c[cid], X.seasons); if (w) X.wiki = w }
+    /* their whole careers season by season from the same pages (p2000_cbb-wikirec, read by the coach pages) */
+    if (W) { const curSet = new Set(Object.values(CO.current)); await wikiRecords({ getPack, putPack, log, W, S, coaches: Object.entries(CO.coaches).map(([cid, X]) => ({ cid, seasons: X.seasons, names: nameOf, cur: curSet.has(cid) })) }).catch(e => log("wikipedia records: " + e.message)) }
     CI = { ...CI, seasons: dedupeCoachSeasons(CI.seasons) };   /* one team per coach per season everywhere, game cards too */
     await putPack(`p${S}_cbb-coaches`, { season: S, next: NEXT, ...CO, bySeason: CI.seasons });
     log(`coaches: ${Object.keys(CO.coaches).length} with records, ${Object.keys(CO.current).length} current`) } catch (e) { log("coaches: " + e.message) }

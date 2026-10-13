@@ -170,3 +170,36 @@ export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
   log(`wikipedia coaches: ${todo.length} to look up, ${found} found in ${n} calls · ${Object.values(W.c).filter(x => x.t).length} on file · ${JSON.stringify(codes)}`);
   return W;
 }
+/* each coach's whole head-coaching record, season by season (Oct 13 — Sam: "the basketball coach data would also be good"; our games
+   start in 2013–14, so Tom Izzo showed 13 of his 31 seasons). Read from the {{CBB Yearly Record Entry}} templates in his Wikipedia
+   page's head coaching record (season, team, overall and conference record, postseason). Kept only when a row's team and season match
+   a season our own data has him coaching (namesakes ruled out). A coach still coaching is re-read once a month; others never again.
+   Pack p2000_cbb-wikirec: { v, c: { espnCoachId: { r: [[season end, team, W, L, conf W, conf L, postseason]], at } }, miss: [ids] } */
+export function parseCbbRecord(w) {
+  const out = [], cl = s => String(s || "").replace(/<ref[^>]*\/>|<ref[^>]*>[\s\S]*?<\/ref>/g, "").replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1").replace(/\{\{[^{}]*\}\}/g, "").replace(/'{2,3}/g, "").replace(/\s+/g, " ").trim();
+  for (const m of w.matchAll(/\{\{\s*CBB Yearly Record Entry([\s\S]*?)\n\s*\}\}/gi)) {
+    const f = {}; for (const p of m[1].split(/\n\s*\|/)) { const i = p.indexOf("="); if (i > 0) f[p.slice(0, i).replace(/^\s*\|?\s*/, "").trim().toLowerCase()] = p.slice(i + 1).trim() }
+    const sy = (f.season || "").match(/(\d{4})[–-](\d{2,4})/); if (!sy) continue;
+    const ov = cl(f.overall).match(/(\d+)\s*[–-]\s*(\d+)/); if (!ov) continue;
+    const cf = cl(f.conference).match(/(\d+)\s*[–-]\s*(\d+)/);
+    out.push([+sy[1] + 1, cl(f.name), +ov[1], +ov[2], cf ? +cf[1] : null, cf ? +cf[2] : null, cl(f.postseason).slice(0, 70)]) }
+  return out }
+export async function wikiRecords({ getPack, putPack, log, coaches, W, S }) {
+  let R = await getPack("p2000_cbb-wikirec").catch(() => null); if (!R || !R.c || R.v !== 1) R = { v: 1, c: {}, miss: [] };
+  const k = s => String(s || "").toLowerCase().replace(/&amp;/g, "&").replace(/[^a-z0-9]/g, "").replace(/university|college|of|the/g, "");
+  const todo = coaches.filter(c => W && W.c[c.cid] && W.c[c.cid].t && !R.miss.includes(c.cid) && (!R.c[c.cid] || (c.cur && Date.now() - (R.c[c.cid].at || 0) > 30 * 864e5)));
+  let n = 0, kept = 0;
+  for (let i = 0; i < todo.length; i += 15) { const B = todo.slice(i, i + 15), titles = B.map(c => W.c[c.cid].t);
+    let j = null; for (let a = 0; a < 4 && !j; a++) { try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(titles.join("|"))}`, { headers: WUA }); n++;
+        if (r.ok) j = await r.json(); else await new Promise(z => setTimeout(z, 5000 * (a + 1))) } catch { await new Promise(z => setTimeout(z, 3000)) } }
+    if (!j || !j.query) continue;
+    const norm = {}; for (const x of j.query.normalized || []) norm[x.from] = x.to; const red = {}; for (const x of j.query.redirects || []) red[x.from] = x.to;
+    const byTitle = {}; for (const p of j.query.pages || []) if (p.revisions) byTitle[p.title] = p.revisions[0].slots.main.content;
+    for (const c of B) { let t = W.c[c.cid].t; t = norm[t] || t; t = red[t] || t; const w = byTitle[t]; if (!w) continue;
+      const rows = parseCbbRecord(w), ours = c.seasons || {};
+      const ok = rows.some(([y, tm]) => ours[y] && (k(tm).includes(k(c.names[ours[y].tm])) || k(c.names[ours[y].tm]).includes(k(tm))));
+      if (rows.length && ok) { R.c[c.cid] = { r: rows, at: Date.now() }; kept++ } else if (!R.c[c.cid]) R.miss.push(c.cid) }
+    await new Promise(z => setTimeout(z, 1500)) }
+  if (n) await putPack("p2000_cbb-wikirec", R);
+  log(`wikipedia coach records: ${todo.length} to read, ${kept} kept in ${n} calls · ${Object.keys(R.c).length} on file`);
+  return R }

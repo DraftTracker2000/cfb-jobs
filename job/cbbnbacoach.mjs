@@ -17,7 +17,9 @@ const teamOf = s => { s = String(s || "").trim(); for (const [k, v] of Object.en
 export function parseNbaRecord(w) {
   const out = [], sec = w.match(/==\s*Head coaching record\s*==([\s\S]*?)(\n==[^=]|$)/i); if (!sec) return out;
   const disp = s => String(s || "").replace(/<ref[^>]*\/>|<ref[^>]*>[\s\S]*?<\/ref>/g, "").replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1").replace(/'{2,3}/g, "").replace(/style="[^"]*"\s*\|/g, "").trim();
-  for (const row of sec[1].split(/\n\|-/)) {
+  /* some pages write games-wins-losses as one template: {{GP-wins-losses-pct in table|38|44}} → "82 || 38 || 44 || pct" */
+  const body = sec[1].replace(/\{\{\s*GP-wins-losses-pct in table\s*\|\s*(\d+)\s*\|\s*(\d+)[^}]*\}\}/gi, (m, a, b) => `${+a + +b} || ${a} || ${b} || pct`);
+  for (const row of body.split(/\n\|-/)) {
     let y0 = null, tm = null; const ln = row.match(/\[\[(\d{4})[–-]\d{2,4} ([^|\]]+?) season(?:\|[^\]]*)?\]\]/);
     if (ln) { y0 = +ln[1]; tm = teamOf(ln[2]) }
     if (!y0) { const ny = row.match(/\{\{\s*nbay\s*\|\s*(\d{4})/i); if (ny) y0 = +ny[1] }
@@ -35,7 +37,8 @@ async function wikiText(title) { for (let k = 0; k < 5; k++) { try { const r = a
       if (r.status === 429 || r.status >= 500) { await new Promise(z => setTimeout(z, 4000 * (k + 1))); continue } const j = await r.json(); return j.parse ? j.parse.wikitext["*"] : "" } catch { await new Promise(z => setTimeout(z, 1500)) } } return null }
 /* names: { name: [team abbreviations we have him at] } → K.coh { name: { r: [[seasonEnd, team, W, L, playoff W, playoff L, result]], at } }, K.cohMiss */
 export async function buildNbaCoaches(K, names, log, curNba) {
-  K.coh = K.coh || {}; K.cohMiss = K.cohMiss || []; let added = 0, tried = 0, errs = 0;
+  K.coh = K.coh || {}; K.cohMiss = K.cohMiss || []; if (K.cohV !== 2) { K.cohMiss = []; K.cohV = 2 }   /* v2: the GP-wins-losses template is read — coaches missed before get another look */
+  let added = 0, tried = 0, errs = 0;
   for (const [nm, teams] of Object.entries(names)) {
     const have = K.coh[nm]; if (have && !(teams.cur && Math.max(...have.r.map(r => r[0])) < curNba)) continue; if (!have && K.cohMiss.includes(nm)) continue;
     tried++; let got = null;

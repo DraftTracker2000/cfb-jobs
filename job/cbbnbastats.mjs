@@ -117,6 +117,17 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
   for (let y = 2010; y <= curNba + 1; y++) { if (K.coachGot.includes(y) && y < curNba) continue; const rows = await readParquet(REL(`nba_stats_coaches/coaches_${y}.parquet`)).catch(() => null); files++; if (!rows || !rows.length) continue;
     for (const r of rows) { if (r.coach_type !== "Head Coach") continue; const t = NBA_TID[n(r.team_id)]; if (!t) continue; const L = K.coach[t] = (K.coach[t] || []).filter(x => x[0] !== y); L.push([y, String(r.coach_name || "")]); L.sort((a, b) => a[0] - b[0]) }
     if (!K.coachGot.includes(y)) K.coachGot.push(y) }
+  /* the head coach now (Oct 12 — Sam: "so it doesnt catch coaching changes in the offseason?"; "do what you think is best"): NBA.com's
+     coaches file only covers seasons played, so once a week ESPN's team rosters (30 public requests, no key) name each team's current
+     head coach; it is filed under the season being played (or the next one before it starts), so a new hire shows right away and a
+     coach who stays keeps his run */
+  const coSeason = live ? curNba : curNba + 1;
+  if (!K.coNowAt || Date.now() - K.coNowAt > 6 * 864e5) { let got = 0;
+    for (let id = 1; id <= 30; id++) { try { const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${id}/roster`); if (!r.ok) continue; const d = await r.json();
+        const t = d.team && d.team.abbreviation, c = (d.coach || [])[0]; if (!t || !c || !c.lastName) continue; let nm = `${c.firstName || ""} ${c.lastName}`.trim();
+        const L = K.coach[t] = (K.coach[t] || []).filter(x => x[0] !== coSeason), kk = v => String(v).toLowerCase().replace(/[^a-z]/g, ""), prev = L[L.length - 1];
+        if (prev && kk(prev[1]) === kk(nm)) nm = prev[1];   /* same man, NBA.com's spelling (J.B. / JB) so his run stays one run */ L.push([coSeason, nm]); L.sort((a, b) => a[0] - b[0]); got++ } catch { } }
+    if (got >= 25) K.coNowAt = Date.now(); log(`nbastats: current head coaches from ESPN for ${got} teams (season ${coSeason})`) }
   for (const y of [curNba + 1, curNba]) { const rows = await readParquet(REL(`espn_nba_injuries/injuries_${y}.parquet`)).catch(() => null); files++; if (rows && rows.length) { K.inj = injuryRows(rows); K.injSeason = y; K.injAsOf = rows.reduce((a, r) => iso(r.as_of_date) > a ? iso(r.as_of_date) : a, "").slice(0, 10); break } }
   log(`nbastats: lineups for ${Object.keys(K.s).filter(y => K.s[y].lu).join(", ")} · coaches for ${Object.keys(K.coach).length} teams · injury reports for ${K.inj ? Object.keys(K.inj).length : 0} players`);
   for (const y of Object.keys(K.s)) if (+y < curNba - 2) delete K.s[y];

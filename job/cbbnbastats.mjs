@@ -39,14 +39,14 @@ export function seasonBlock({ off = {}, def = {}, hp = [], ht = [], mu = [], lsm
   for (const r of ht) { const t = tmOfId[n(r.team_id)]; if (t) (T[t] = T[t] || { o: {}, d: {} }).h = hRow({ ...r, g: 82 }) }
   for (const r of mu) { const p = pl(r), m = [n(r.partial_poss), n(r.player_pts), n(r.matchup_fgm), n(r.matchup_fga), n(r.matchup_fg3_m), n(r.matchup_fg3_a), n(r.matchup_ast), n(r.matchup_tov), n(r.matchup_blk), n(r.sfl)];
     p.m = p.m ? p.m.map((v, i) => Math.round((v + m[i]) * 10) / 10) : m.map(v => Math.round(v * 10) / 10) }
-  /* toughest assignments (round 3): from the season matchups — the six men each defender guarded longest, and the six who guarded each
-     scorer longest: [player key, name, seconds, points, fgm, fga, 3pm, 3pa] */
+  /* toughest assignments (round 3): from the season matchups — the men each defender guarded longest, and the ones who guarded each
+     scorer longest (eight each): [player key, name, seconds, points, fgm, fga, 3pm, 3pa] */
   if (lsm.length) { const TA = {}, GB = {}, push = (M, k, row) => (M[k] = M[k] || []).push(row);
     for (const r of lsm) { const d = key(n(r.def_player_id)), o = key(n(r.off_player_id)), sec = n(r.matchup_time_sec); if (sec < 120) continue;
       const st = [n(r.player_pts), n(r.matchup_fgm), n(r.matchup_fga), n(r.matchup_fg3_m), n(r.matchup_fg3_a)];
       push(TA, d, [o, String(r.off_player_name || ""), sec, ...st]); push(GB, o, [d, String(r.def_player_name || ""), sec, ...st]) }
-    for (const [k, L] of Object.entries(TA)) if (P[k]) P[k].ta = L.sort((a, b) => b[2] - a[2]).slice(0, 6);
-    for (const [k, L] of Object.entries(GB)) if (P[k]) P[k].gb = L.sort((a, b) => b[2] - a[2]).slice(0, 6) }
+    for (const [k, L] of Object.entries(TA)) if (P[k]) P[k].ta = L.sort((a, b) => b[2] - a[2]).slice(0, 8);   /* eight (Oct 12, Sam: "their top 8 matched on") */
+    for (const [k, L] of Object.entries(GB)) if (P[k]) P[k].gb = L.sort((a, b) => b[2] - a[2]).slice(0, 8) }
   return { p: P, t: T };
 }
 

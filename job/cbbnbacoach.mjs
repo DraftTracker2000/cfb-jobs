@@ -31,17 +31,17 @@ export function parseNbaRecord(w) {
     const resL = row.split("\n").filter(x => /^\s*\|(?![}+])/.test(x)).pop() || "", res = disp(resL.replace(/^\s*\|/, "")).replace(/\s+/g, " ");
     out.push([y0 + 1, tm, wn, l, pw, pl, /^[—–-]$/.test(res) || /^\d/.test(res) ? "" : res.slice(0, 60)]) }
   return out }
-async function wikiText(title) { for (let k = 0; k < 3; k++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?action=parse&redirects=1&prop=wikitext&format=json&page=" + encodeURIComponent(title), { headers: { "User-Agent": "mycfbbigboard.com data job (NBA coach records)" } });
-      if (r.status === 429 || r.status >= 500) { await new Promise(z => setTimeout(z, 2000 * (k + 1))); continue } const j = await r.json(); return j.parse ? j.parse.wikitext["*"] : "" } catch { await new Promise(z => setTimeout(z, 1500)) } } return null }
+async function wikiText(title) { for (let k = 0; k < 5; k++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?action=parse&redirects=1&prop=wikitext&format=json&page=" + encodeURIComponent(title), { headers: { "User-Agent": "mycfbbigboard.com data job (NBA coach records)" } });
+      if (r.status === 429 || r.status >= 500) { await new Promise(z => setTimeout(z, 4000 * (k + 1))); continue } const j = await r.json(); return j.parse ? j.parse.wikitext["*"] : "" } catch { await new Promise(z => setTimeout(z, 1500)) } } return null }
 /* names: { name: [team abbreviations we have him at] } → K.coh { name: { r: [[seasonEnd, team, W, L, playoff W, playoff L, result]], at } }, K.cohMiss */
 export async function buildNbaCoaches(K, names, log, curNba) {
-  K.coh = K.coh || {}; K.cohMiss = K.cohMiss || []; let added = 0, tried = 0;
+  K.coh = K.coh || {}; K.cohMiss = K.cohMiss || []; let added = 0, tried = 0, errs = 0;
   for (const [nm, teams] of Object.entries(names)) {
     const have = K.coh[nm]; if (have && !(teams.cur && Math.max(...have.r.map(r => r[0])) < curNba)) continue; if (!have && K.cohMiss.includes(nm)) continue;
     tried++; let got = null;
     for (const title of [nm, nm + " (basketball)", nm + " (basketball coach)"]) { const w = await wikiText(title); if (w == null) { got = "ERR"; break } if (!w || /may refer to|\{\{\s*(disambiguation|hndis)/i.test(w)) continue;
       const R = parseNbaRecord(w); if (R.length && (!teams.list.length || R.some(r => teams.list.includes(r[1])))) { got = R; break } }
-    if (got === "ERR") continue; if (got) { K.coh[nm] = { r: got, at: Date.now() }; added++ } else if (!K.cohMiss.includes(nm)) K.cohMiss.push(nm);
-    await new Promise(z => setTimeout(z, 200)) }
-  log(`nbastats: NBA coach records — ${tried} looked up, ${added} kept, ${Object.keys(K.coh).length} on file`) }
+    if (got === "ERR") { errs++; continue } if (got) { K.coh[nm] = { r: got, at: Date.now() }; added++ } else if (!K.cohMiss.includes(nm)) K.cohMiss.push(nm);
+    await new Promise(z => setTimeout(z, 700)) }
+  log(`nbastats: NBA coach records — ${tried} looked up, ${added} kept, ${errs} to retry next run (Wikipedia busy), ${Object.keys(K.coh).length} on file`) }
 export { teamOf, kk };

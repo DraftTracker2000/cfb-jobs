@@ -28,6 +28,7 @@ import { buildNbaStats } from "./cbbnbastats.mjs";
 import { buildPast, confTourneyIds } from "./cbbpast.mjs";
 import { runPbp } from "./cbbpbp.mjs";
 import { buildCoachX } from "./cbbcoachx.mjs";
+import { buildOldDraft } from "./cbbolddraft.mjs";
 import { wikiSchoolKey } from "./cbbcoach.mjs";
 import { buildNba, buildNbaGames, refreshNbaOnCourt } from "./cbbnba.mjs";
 import { fetchRosters, fetchSummary } from "./cbbespn.mjs";
@@ -558,6 +559,7 @@ export async function main() {
   /* ---------- games: lines, TV, our pick, series, splits, game logs (job/cbbgames.mjs) ---------- */
   const GM = await buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList: teamsRaw.filter(t => D1.has(t.id)), adj: H.adj });
   /* coach extras: recruiting classes, transfers in and out, player development, shot diet (job/cbbcoachx.mjs) */
+  try { await buildOldDraft({ getPack, putPack, log, teams: teamsRaw, schoolKey: wikiSchoolKey }) } catch (e) { log("old drafts: " + e.message) }
   try { if (GM && GM.CI) await buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTED, normName, bySeason: GM.CI.seasons, D1, teams: teamsRaw, schoolKey: wikiSchoolKey }) } catch (e) { log("coach extras: " + e.message) }
   /* NCAA tournament runs since 2008, for the "Name the run" game (job/cbbncaa.mjs) */
   let NCAA = null; try { NCAA = await buildNcaaRuns({ cb, getPack, putPack, log, S, full }) } catch (e) { log("ncaa runs: " + e.message) }

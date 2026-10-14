@@ -30,7 +30,8 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
   const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10, r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 
   /* a recruit's display name: his college rows (the recruiting list keeps names squeezed for matching) */
-  const nmOf = {}; for (const rows of Object.values(ALL)) for (const r of rows) if (r.nm) nmOf[r.id] = r.nm;
+  const nmOf = {}, nmAt = {}; for (const rows of Object.values(ALL)) for (const r of rows) if (r.nm) { nmOf[r.id] = r.nm; nmAt[normName(r.nm) + "|" + r.tm] = r.nm }
+  const recName = (r, t) => (r[6] != null && nmOf[r[6]]) || nmAt[r[0] + "|" + t] || null;   /* no athlete id (Gary Harris, 2012): his name at that school */
   /* ---- recruiting classes ---- */
   for (const [Y, list] of Object.entries(H.rec || {})) {
     const byT = {}; for (const r of list) if (r[1] != null) (byT[r[1]] = byT[r[1]] || []).push(r);
@@ -39,7 +40,7 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
     for (const [t, L] of Object.entries(byT)) { const cid = coachOf(t, +Y + 1); if (!cid) continue;
       const rated = L.filter(r => r[2]), best = [...L].sort((a, b) => (a[4] || 999) - (b[4] || 999)).slice(0, 3);
       push("rc", cid, [+Y + 1, +t, L.length, L.filter(r => r[4] && r[4] <= 100).length, L.filter(r => r[3] === 5).length, L.filter(r => r[3] === 4).length,
-        rated.length ? r3(rated.reduce((a, r) => a + r[2], 0) / rated.length) : null, rank[t], L.filter(r => r[6] != null && DRAFTED[r[6]]).length, best.map(r => [(r[6] != null && nmOf[r[6]]) || null, r[4] || null, r[3] || null])]) } }
+        rated.length ? r3(rated.reduce((a, r) => a + r[2], 0) / rated.length) : null, rank[t], L.filter(r => r[6] != null && DRAFTED[r[6]]).length, best.map(r => [recName(r, t), r[4] || null, r[3] || null])]) } }
 
   /* the rows we look players up in */
   const rowOf = {}; for (const [y, rows] of Object.entries(ALL)) for (const r of rows) { const k = r.id + "|" + y; if (!rowOf[k] || r.min > rowOf[k].min) rowOf[k] = r }
@@ -67,7 +68,7 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
   const yrOf = {}; for (const y of Object.keys(ALL).sort()) for (const r of ALL[y]) if (r.min > 0) { const k = r.id; yrOf[k + "|" + y] = (yrOf[k + "|last"] || 0) + 1; yrOf[k + "|last"] = yrOf[k + "|" + y] }
   const pairs = [];
   for (const [y, rows] of Object.entries(ALL)) { const y2 = +y + 1; if (!ALL[y2]) continue;
-    for (const r of rows) { if (r.min < 200 || r.ws40 == null) continue; const n = rowOf[r.id + "|" + y2]; if (!n || n.tm !== r.tm || n.min < 200 || n.ws40 == null) continue;
+    for (const r of rows) { if (r.min < 200 || r.ws40 == null || Math.abs(r.ws40) > .6) continue; const n = rowOf[r.id + "|" + y2]; if (!n || n.tm !== r.tm || n.min < 200 || n.ws40 == null || Math.abs(n.ws40) > .6) continue;   /* a broken row (Travis Trice 2012–13: −3.17 WS/40) is left out */
       if (rowOf[r.id + "|" + y] !== r) continue;
       pairs.push({ id: r.id, nm: n.nm, tm: r.tm, y: y2, cls: Math.min(4, yrOf[r.id + "|" + y] || 1), dws: n.ws40 - r.ws40, dpts: 40 * n.pts / n.min - 40 * r.pts / r.min, a: r, b: n, c: coachOf(r.tm, y2), c0: coachOf(r.tm, +y) }) } }
   const base = {}; for (const p of pairs) { const k = p.y + "|" + p.cls, b = base[k] = base[k] || [0, 0, 0]; b[0] += p.dws; b[1] += p.dpts; b[2]++ }

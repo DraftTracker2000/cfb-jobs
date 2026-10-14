@@ -110,12 +110,17 @@ export function midseasonSplits({ C, seasons, R, names }) {
       out[y + "|" + tid] = prev[tid] === B ? [[B, nB], [A, 999]] : [[A, nA], [B, 999]] } }
   return out }
 export function coachRecords({ C, seasons, lines, adj, S, split }) {
-  const out = {}, cur = {}; C = { ...C, seasons: dedupeCoachSeasons(C.seasons) }; split = split || {};
+  const out = {}, cur = {}, itm = {}, played = {}; C = { ...C, seasons: dedupeCoachSeasons(C.seasons) }; split = split || {};
   for (const [y, rows0] of Object.entries(seasons)) {
     const map = C.seasons[y]; if (!map) continue; const rows = [...rows0].sort((a, b) => String(a[1]).localeCompare(String(b[1]))), seen = {};
+    for (const r of rows) if (r[4] != null && r[5] != null) for (const t of [r[2], r[3]]) if (split[y + "|" + t]) played[y + "|" + t] = (played[y + "|" + t] || 0) + 1;
     for (const r of rows) for (const side of ["h", "a"]) {
       const tid = side === "h" ? r[2] : r[3]; let cid = map[tid]; if (!cid) continue;
-      const sp = split[y + "|" + tid]; if (sp && r[4] != null && r[5] != null) { const i = seen[tid] = (seen[tid] || 0) + 1; let acc = 0; for (const [c, n] of sp) { acc += n; if (i <= acc) { cid = c; break } } if (!cid) continue }
+      const sp = split[y + "|" + tid]; if (sp && r[4] != null && r[5] != null) { const i = seen[tid] = (seen[tid] || 0) + 1; let acc = 0; for (const [c, n] of sp) { acc += n; if (i <= acc) { cid = c; break } }
+        /* games of an interim we have no record for (Oct 13 — Sam: "putting an asterisk on those seasons and calling out the interim in the
+           pop-up"): kept per team-season with the coach(es) around them; the name comes from Wikipedia (interimNames) */
+        if (!cid) { const my = side === "h" ? r[4] : r[5], th = side === "h" ? r[5] : r[4], I = itm[y + "|" + tid] = itm[y + "|" + tid] || { w: 0, l: 0, by: sp.map(([c]) => c).filter(Boolean), first: null };
+          if (I.first == null) I.first = i === 1; I.lastAt = i; my > th ? I.w++ : I.l++; continue } }
       const my = side === "h" ? r[4] : r[5], th = side === "h" ? r[5] : r[4]; if (my == null || th == null) continue;
       const X = out[cid] = out[cid] || { nm: C.names[cid] || "Coach " + cid, seasons: {} };
       const s = X.seasons[y] = X.seasons[y] || { tm: tid, w: 0, l: 0, cw: 0, cl: 0, nw: 0, nl: 0, aw: 0, al: 0, ap: 0, close: [0, 0], fav: [0, 0], dog: [0, 0] };
@@ -138,7 +143,8 @@ export function coachRecords({ C, seasons, lines, adj, S, split }) {
   const pctOf = (k) => { const v = rows.map(r => r[k]).sort((a, b) => a - b); return x => v.length ? 100 * v.filter(z => z < x).length / v.length : 50 };
   const P = [1, 2, 3, 4].map(pctOf);
   for (const r of rows) out[r[0]].score = Math.round(.5 * P[0](r[1]) + .2 * P[1](r[2]) + .2 * P[2](r[3]) + .1 * P[3](r[4]));
-  return { coaches: out, current: cur };
+  for (const [k, I] of Object.entries(itm)) { const [y, tid] = k.split("|"); I.last = I.lastAt === (played[k] || 0); delete I.lastAt; for (const c of I.by) if (out[c] && out[c].seasons[y]) out[c].seasons[y].int = 1 }
+  return { coaches: out, current: cur, interim: itm };
 }
 
 /* ---- each team's style by season (Oct 10 — Sam: "coaches for pace of play for his team and all of that") ----
@@ -229,6 +235,28 @@ export function parseCbbRecord(w) {
     const cf = cl(f.conference).match(/(\d+)\s*[–-]\s*(\d+)/);
     out.push([+sy[1] + 1, cl(f.name), +ov[1], +ov[2], cf ? +cf[1] : null, cf ? +cf[2] : null, cl(f.postseason).slice(0, 70)]) }
   return out }
+/* the interim's name for a split season (Oct 13 — Sam: "if they didnt become head coaches im fine just putting an asterisk on those
+   seasons and calling out the interim in the pop-up … they don't need profiles"): Wikipedia's page for that team-season, found by search
+   ("2021–22 Louisville men's basketball team"), whose infobox coach line names him. Kept in p2000_cbb-interim, read once per season. */
+export function interimFromInfobox(w, known) {
+  const lines = (w.match(/\|\s*(?:head_)?coach\w*\s*=[^\n]*/gi) || []).join(" ");
+  const names = [...lines.matchAll(/\[\[(?:[^\]|]*\|)?([^\]]+)\]\]\s*(\([^)]*\))?/g)].map(m => [m[1].trim(), m[2] || ""]);
+  const kn = String(known || "").toLowerCase(), cand = names.filter(([n]) => n.toLowerCase() !== kn && !/basketball|university|college/i.test(n));
+  const pick = cand.find(([, t]) => /interim|acting/i.test(t)) || (cand.length === 1 ? cand[0] : null);
+  return pick ? pick[0] : null }
+export async function interimNames({ getPack, putPack, log, itm, names, coachNames }) {
+  let P = await getPack("p2000_cbb-interim").catch(() => null); if (!P || !P.k) P = { k: {} }; let n = 0, got = 0;
+  for (const [key, I] of Object.entries(itm)) { if (key in P.k) { I.n = P.k[key]; continue }
+    const [y, tid] = key.split("|"), school = names[tid]; if (!school) continue; const szn = `${+y - 1}–${String(y).slice(2)}`;
+    try { const q = await (await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srlimit=5&format=json&formatversion=2&srsearch=${encodeURIComponent(`${szn} ${school} men's basketball team`)}`, { headers: WUA })).json(); n++;
+      const hit = ((q.query || {}).search || []).find(r => r.title.startsWith(szn) && /men's basketball/i.test(r.title) && r.title.toLowerCase().includes(school.toLowerCase().split(" ")[0]));
+      let nm = null; if (hit) { const j = await (await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&rvsection=0&format=json&formatversion=2&titles=${encodeURIComponent(hit.title)}`, { headers: WUA })).json(); n++;
+        const pg = (j.query.pages || [])[0], w = pg && pg.revisions ? pg.revisions[0].slots.main.content : ""; nm = interimFromInfobox(w, coachNames[I.by[0]]) }
+      P.k[key] = nm; I.n = nm; if (nm) got++ } catch (e) {}
+    await new Promise(r => setTimeout(r, 700)) }
+  if (n) await putPack("p2000_cbb-interim", P);
+  log(`interims: ${Object.keys(itm).length} split seasons, ${Object.values(itm).filter(I => I.n).length} named (${got} new, ${n} Wikipedia calls)`);
+  return itm }
 export async function wikiRecords({ getPack, putPack, log, coaches, W, S }) {
   let R = await getPack("p2000_cbb-wikirec").catch(() => null); if (!R || !R.c || R.v !== 1) R = { v: 1, c: {}, miss: [] };
   const k = s => String(s || "").toLowerCase().replace(/&amp;/g, "&").replace(/[^a-z0-9]/g, "").replace(/university|college|of|the/g, "");

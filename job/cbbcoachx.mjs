@@ -10,7 +10,7 @@
           games, points a game, win shares]] …]; pout the ones who left after season Y: [season, team, [[name, to team, next season's
           points a game, win shares]] …].
    - dev  player development: players who played two straight seasons at his school under him (200+ minutes both years). His players'
-          jump in win shares per 40 and points per 40, minus the jump every Division I player of the same class made that year — how much
+          jump in production per 40 (box score) and points per 40, minus the jump every Division I player of the same class made that year — how much
           more (or less) his players improved than everyone else's. { n, ws, pts, top: best five improvers }.
    - sh   shot diet by team-season (2020–21 on, from the shot charts): share of shots at the rim, other paint, mid-range, corner 3 and
           above-the-break 3, for his offense and against his defense; shAvg is the Division I average each season.
@@ -66,16 +66,19 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
 
   /* ---- player development ---- */
   const yrOf = {}; for (const y of Object.keys(ALL).sort()) for (const r of ALL[y]) if (r.min > 0) { const k = r.id; yrOf[k + "|" + y] = (yrOf[k + "|last"] || 0) + 1; yrOf[k + "|last"] = yrOf[k + "|" + y] }
+  const eff40 = r => 40 * ((r.pts || 0) + (r.reb || 0) + (r.ast || 0) + (r.stl || 0) + (r.blk || 0) - ((r.fga || 0) - (r.fgm || 0)) - ((r.fta || 0) - (r.ftm || 0)) - (r.tov || 0)) / Math.max(1, r.min);
   const pairs = [];
   for (const [y, rows] of Object.entries(ALL)) { const y2 = +y + 1; if (!ALL[y2]) continue;
-    for (const r of rows) { if (r.min < 200 || r.ws40 == null || Math.abs(r.ws40) > .6) continue; const n = rowOf[r.id + "|" + y2]; if (!n || n.tm !== r.tm || n.min < 200 || n.ws40 == null || Math.abs(n.ws40) > .6) continue;   /* a broken row (Travis Trice 2012–13: −3.17 WS/40) is left out */
+    /* production per 40 from the box score (points + rebounds + assists + steals + blocks − missed shots − turnovers): the same math every
+       season — CollegeBasketballData's win shares run on a different, broken scale before 2013–14 (median −0.15 WS/40 in 2007–08) */
+    for (const r of rows) { if (r.min < 200) continue; const n = rowOf[r.id + "|" + y2]; if (!n || n.tm !== r.tm || n.min < 200) continue;
       if (rowOf[r.id + "|" + y] !== r) continue;
-      pairs.push({ id: r.id, nm: n.nm, tm: r.tm, y: y2, cls: Math.min(4, yrOf[r.id + "|" + y] || 1), dws: n.ws40 - r.ws40, dpts: 40 * n.pts / n.min - 40 * r.pts / r.min, a: r, b: n, c: coachOf(r.tm, y2), c0: coachOf(r.tm, +y) }) } }
+      pairs.push({ id: r.id, nm: n.nm, tm: r.tm, y: y2, cls: Math.min(4, yrOf[r.id + "|" + y] || 1), dws: eff40(n) - eff40(r), dpts: 40 * n.pts / n.min - 40 * r.pts / r.min, a: r, b: n, c: coachOf(r.tm, y2), c0: coachOf(r.tm, +y) }) } }
   const base = {}; for (const p of pairs) { const k = p.y + "|" + p.cls, b = base[k] = base[k] || [0, 0, 0]; b[0] += p.dws; b[1] += p.dpts; b[2]++ }
   const byC = {}; for (const p of pairs) { if (!p.c || p.c !== p.c0) continue; const b = base[p.y + "|" + p.cls]; const ex = { ...p, xws: p.dws - b[0] / b[2], xpts: p.dpts - b[1] / b[2] }; (byC[p.c] = byC[p.c] || []).push(ex) }
   for (const [c, L] of Object.entries(byC)) { const n = L.length;
-    out.dev[c] = { n, ws: r3(L.reduce((a, p) => a + p.xws, 0) / n), pts: r1(L.reduce((a, p) => a + p.xpts, 0) / n), up: L.filter(p => p.xws > 0).length,
-      top: [...L].sort((a, b) => b.xws - a.xws).slice(0, 5).map(p => [p.nm, p.y, p.tm, pg(p.a), pg(p.b), r3(p.a.ws40), r3(p.b.ws40)]) } }
+    out.dev[c] = { n, ws: r1(L.reduce((a, p) => a + p.xws, 0) / n), pts: r1(L.reduce((a, p) => a + p.xpts, 0) / n), up: L.filter(p => p.xws > 0).length,
+      top: [...L].sort((a, b) => b.xws - a.xws).slice(0, 5).map(p => [p.nm, p.y, p.tm, pg(p.a), pg(p.b), r1(eff40(p.a)), r1(eff40(p.b))]) } }
 
   /* ---- shot diet ---- */
   const share = z => { const a = z.map(v => v[1]), t = a.reduce((x, v) => x + v, 0); if (t < 200) return null;

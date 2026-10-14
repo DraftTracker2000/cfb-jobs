@@ -200,11 +200,13 @@ export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
       if (!j || !j.query) continue; batch.forEach(c => tried.add(c.cid)); const map = {}; for (const x of j.query.normalized || []) map[x.from] = x.to; for (const x of j.query.redirects || []) map[x.from] = x.to;
       const pages = Object.fromEntries((j.query.pages || []).map(p => [p.title, p]));
       for (const c of batch) { let t = c.nm + suffix; t = map[t] || t; t = map[t] || t; const pg = pages[t]; const w = pg && pg.revisions && pg.revisions[0] ? (pg.revisions[0].slots ? pg.revisions[0].slots.main.content : pg.revisions[0].content) : "";
-        if (!w || !/coach_team|overall_record/.test(w) || (c.school && !w.includes(c.school.split(" ")[0]))) continue;
+        /* a former player's page has the basketball biography infobox, not the coach one (Danny Manning) — accepted too; the record
+           reader then keeps the page only if its season table matches our seasons */
+        if (!w || !(/coach_team|overall_record/.test(w) || /\{\{\s*Infobox (basketball biography|NBA biography)/i.test(w) && /coach/i.test(w)) || (c.school && !w.includes(c.school.split(" ")[0]))) continue;
         W.c[c.cid] = { at: Date.now(), t, ...parseCoachInfobox(w) }; found++ }
       await new Promise(r => setTimeout(r, 1000)) }
     left = left.filter(c => !(W.c[c.cid] && W.c[c.cid].t && Date.now() - W.c[c.cid].at < 60e3)) }
-  for (const c of left) if (!W.c[c.cid] && tried.has(c.cid)) W.c[c.cid] = { at: Date.now(), m: 1 };   /* no page found: looked again later — but not when Wikipedia turned the call away (429) */
+  for (const c of left) if ((!W.c[c.cid] || !W.c[c.cid].t) && tried.has(c.cid)) W.c[c.cid] = { at: Date.now(), m: 1 };   /* no page found: looked again later — but not when Wikipedia turned the call away (429) */
   W.lastRun = { at: Date.now(), calls: n, found, codes, secs: Math.round((Date.now() - t0) / 1000) };
   await putPack("p2000_cbb-wiki", W);
   log(`wikipedia coaches: ${todo.length} to look up, ${found} found in ${n} calls · ${Object.values(W.c).filter(x => x.t).length} on file · ${JSON.stringify(codes)}`);

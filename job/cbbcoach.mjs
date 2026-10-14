@@ -88,7 +88,11 @@ export function midseasonSplits({ C, seasons, R, names }) {
           equal losses mean vacated wins or a few games missed (Self 2017–18, 2022–23), not a change — and then the rest go to no one, or to last year's coach */
         const lA = ra[1][3], my = rows.filter(r => r[4] != null && r[5] != null && (r[2] == tid || r[3] == tid)), lost = my.filter(r => r[2] == tid ? r[4] < r[5] : r[5] < r[4]).length;
         if (lost - lA <= 2) continue; const P = prev[tid] && prev[tid] !== A ? prev[tid] : null;
-        out[y + "|" + tid] = prev[tid] === A ? [[A, nA], [null, 999]] : [[P, N[tid] - nA], [A, 999]]; continue }
+        /* which run of his games: the one whose wins match Wikipedia (Mack missed Louisville's first six in 2021–22, then was let go) — else first if he was there last year, last if he is new */
+        const srt = [...my].sort((a, b) => String(a[1]).localeCompare(String(b[1]))), won = srt.map(r => (r[2] == tid ? r[4] > r[5] : r[5] > r[4]) ? 1 : 0), Nt = srt.length;
+        const wAt = i => won.slice(i, i + nA).reduce((a, b) => a + b, 0), wA = ra[1][2], def = prev[tid] === A ? 0 : Nt - nA;
+        let at = wAt(def) === wA ? def : wAt(0) === wA ? 0 : wAt(Nt - nA) === wA ? Nt - nA : -1; if (at < 0) for (let i = 0; i + nA <= Nt; i++) if (wAt(i) === wA) { at = i; break } if (at < 0) at = def;
+        out[y + "|" + tid] = at === 0 ? [[A, nA], [null, 999]] : at + nA >= Nt ? [[P, at], [A, 999]] : [[null, at], [A, nA], [null, 999]]; continue }
       const B = rb[0], nB = rb[1][2] + rb[1][3];
       out[y + "|" + tid] = prev[tid] === B ? [[B, nB], [A, 999]] : [[A, nA], [B, 999]] } }
   return out }

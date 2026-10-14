@@ -71,12 +71,29 @@ export function dedupeCoachSeasons(seasons) {
     out[y] = keep }
   return out;
 }
-export function coachRecords({ C, seasons, lines, adj, S }) {
-  const out = {}, cur = {}; C = { ...C, seasons: dedupeCoachSeasons(C.seasons) };
-  for (const [y, rows] of Object.entries(seasons)) {
-    const map = C.seasons[y]; if (!map) continue;
+/* midseason changes (Oct 13 audit — Sam: "did you audit all the other coaches and teams"): ESPN names one coach per team per season, so
+   Jake Diebler had all of Ohio State's 2023–24 (Chris Holtmann coached 25 of those games). When the credited coach's Wikipedia record
+   for that season has fewer games than the team played, and another coach's record has that team-season with the rest of the games,
+   the season is split in date order: whoever coached the team the season before takes the first games. Returns { "y|tid": [[cid, n], [cid2, 999]] }. */
+export function midseasonSplits({ C, seasons, R, names }) {
+  const k = s => String(s || "").toLowerCase().replace(/&amp;/g, "&").replace(/[^a-z0-9]/g, "").replace(/university|college|of|the/g, "");
+  const out = {}; if (!R || !R.c) return out; const recBy = {};
+  for (const [cid, x] of Object.entries(R.c)) for (const r of x.r) (recBy[r[0]] = recBy[r[0]] || []).push([cid, r]);
+  for (const [y, rows] of Object.entries(seasons)) { const map = C.seasons[y]; if (!map) continue; const N = {};
+    for (const r of rows) { if (r[4] == null || r[5] == null) continue; N[r[2]] = (N[r[2]] || 0) + 1; N[r[3]] = (N[r[3]] || 0) + 1 }
+    for (const [tid, A] of Object.entries(map)) { const tn = k(names[tid]); if (!tn || !N[tid]) continue; const same = r => { const a = k(r[1]); return a && (a === tn || a.includes(tn) || tn.includes(a)) };
+      const ra = (recBy[y] || []).find(([cid, r]) => cid === A && same(r)); if (!ra) continue; const nA = ra[1][2] + ra[1][3]; if (N[tid] - nA <= 2 || nA < 1) continue;
+      const rb = (recBy[y] || []).find(([cid, r]) => cid !== A && same(r) && Math.abs(nA + r[2] + r[3] - N[tid]) <= 3); if (!rb) continue;
+      const B = rb[0], nB = rb[1][2] + rb[1][3], prev = C.seasons[y - 1] || {};
+      out[y + "|" + tid] = prev[tid] === B ? [[B, nB], [A, 999]] : [[A, nA], [B, 999]] } }
+  return out }
+export function coachRecords({ C, seasons, lines, adj, S, split }) {
+  const out = {}, cur = {}; C = { ...C, seasons: dedupeCoachSeasons(C.seasons) }; split = split || {};
+  for (const [y, rows0] of Object.entries(seasons)) {
+    const map = C.seasons[y]; if (!map) continue; const rows = [...rows0].sort((a, b) => String(a[1]).localeCompare(String(b[1]))), seen = {};
     for (const r of rows) for (const side of ["h", "a"]) {
-      const tid = side === "h" ? r[2] : r[3], cid = map[tid]; if (!cid) continue;
+      const tid = side === "h" ? r[2] : r[3]; let cid = map[tid]; if (!cid) continue;
+      const sp = split[y + "|" + tid]; if (sp && r[4] != null && r[5] != null) { const i = seen[tid] = (seen[tid] || 0) + 1; let acc = 0; for (const [c, n] of sp) { acc += n; if (i <= acc) { cid = c; break } } }
       const my = side === "h" ? r[4] : r[5], th = side === "h" ? r[5] : r[4]; if (my == null || th == null) continue;
       const X = out[cid] = out[cid] || { nm: C.names[cid] || "Coach " + cid, seasons: {} };
       const s = X.seasons[y] = X.seasons[y] || { tm: tid, w: 0, l: 0, cw: 0, cl: 0, nw: 0, nl: 0, aw: 0, al: 0, ap: 0, close: [0, 0], fav: [0, 0], dog: [0, 0] };

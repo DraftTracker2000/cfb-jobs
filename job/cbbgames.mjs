@@ -17,7 +17,7 @@
    the team's own shooting). Together: log loss 0.548 → 0.545, 0.521 → 0.519, 0.536 → 0.533; right 72.4 → 73.0%, 73.9 → 74.4%, 73.0 → 73.0%.
    Altitude and time zones crossed were tried too and didn't help. */
 
-import { buildCoachIds, coachRecords, dedupeCoachSeasons, buildTeamHist, wikiCoaches, trustWiki, repairLateHires, wikiRecords } from "./cbbcoach.mjs";
+import { buildCoachIds, coachRecords, dedupeCoachSeasons, buildTeamHist, wikiCoaches, trustWiki, repairLateHires, wikiRecords, midseasonSplits } from "./cbbcoach.mjs";
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 /* date ranges [a, b) that keep every answer under CBBD's 3,000-row cap */
@@ -163,7 +163,8 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   try { CI = await buildCoachIds({ getPack, putPack, log, teams: teamList, to: NEXT, full });
     { const Wp = await getPack("p2000_cbb-wiki").catch(() => null), nm0 = Object.fromEntries((teamList || []).map(t => [t.id, t.school]));
       const n = repairLateHires(CI, Wp && Wp.c, nm0); if (n) { log(`coaches: ${n} season(s) given back to the coach before a late hire`); await putPack("p2000_cbb-coachids", CI) } }
-    CO = coachRecords({ C: CI, seasons: { ...GH.seasons, [S]: curRows }, lines: { ...GH.lines, [S]: curLines }, adj, S });
+    const split = await (async () => { try { const R0 = await getPack("p2000_cbb-wikirec"); const sp = midseasonSplits({ C: { ...CI, seasons: dedupeCoachSeasons(CI.seasons) }, seasons: { ...GH.seasons, [S]: curRows }, R: R0, names: Object.fromEntries((teamList || []).map(t => [t.id, t.school])) }); log(`coaches: ${Object.keys(sp).length} midseason coaching changes split`); return sp } catch (e) { log("midseason splits: " + e.message); return {} } })();
+    CO = coachRecords({ C: CI, seasons: { ...GH.seasons, [S]: curRows }, lines: { ...GH.lines, [S]: curLines }, adj, S, split });
     /* style by season: adj O / D, pace, 3-point rate, turnovers forced, eFG for and against, offensive rebounding — with each season's D-I rank for pace */
     const TH = await buildTeamHist({ cb, getPack, putPack, log, S, full }).catch(e => { log("team history: " + e.message); return null });
     if (TH) for (const X of Object.values(CO.coaches)) for (const [y, s] of Object.entries(X.seasons)) { const row = (TH.seasons[y] || {})[s.tm]; if (!row) continue; s.st = row.map((v, i) => i < 2 && v != null && (v < 60 || v > 150) ? null : v);   /* cached broken ratings (2020 CAA) */

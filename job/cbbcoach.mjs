@@ -83,8 +83,13 @@ export function midseasonSplits({ C, seasons, R, names }) {
     for (const r of rows) { if (r[4] == null || r[5] == null) continue; N[r[2]] = (N[r[2]] || 0) + 1; N[r[3]] = (N[r[3]] || 0) + 1 }
     for (const [tid, A] of Object.entries(map)) { const tn = k(names[tid]); if (!tn || !N[tid]) continue; const same = r => { const a = k(r[1]); return a && (a === tn || a.includes(tn) || tn.includes(a)) };
       const ra = (recBy[y] || []).find(([cid, r]) => cid === A && same(r)); if (!ra) continue; const nA = ra[1][2] + ra[1][3]; if (N[tid] - nA <= 2 || nA < 1) continue;
-      const rb = (recBy[y] || []).find(([cid, r]) => cid !== A && same(r) && Math.abs(nA + r[2] + r[3] - N[tid]) <= 3); if (!rb) continue;
-      const B = rb[0], nB = rb[1][2] + rb[1][3], prev = C.seasons[y - 1] || {};
+      const rb = (recBy[y] || []).find(([cid, r]) => cid !== A && same(r) && Math.abs(nA + r[2] + r[3] - N[tid]) <= 3), prev = C.seasons[y - 1] || {};
+      if (!rb) { /* the other coach has no Wikipedia record here (an interim, or a coach gone before 2014): only when the losses are short too —
+          equal losses mean vacated wins or a few games missed (Self 2017–18, 2022–23), not a change — and then the rest go to no one, or to last year's coach */
+        const lA = ra[1][3], my = rows.filter(r => r[4] != null && r[5] != null && (r[2] == tid || r[3] == tid)), lost = my.filter(r => r[2] == tid ? r[4] < r[5] : r[5] < r[4]).length;
+        if (lost - lA <= 2) continue; const P = prev[tid] && prev[tid] !== A ? prev[tid] : null;
+        out[y + "|" + tid] = prev[tid] === A ? [[A, nA], [null, 999]] : [[P, N[tid] - nA], [A, 999]]; continue }
+      const B = rb[0], nB = rb[1][2] + rb[1][3];
       out[y + "|" + tid] = prev[tid] === B ? [[B, nB], [A, 999]] : [[A, nA], [B, 999]] } }
   return out }
 export function coachRecords({ C, seasons, lines, adj, S, split }) {
@@ -93,7 +98,7 @@ export function coachRecords({ C, seasons, lines, adj, S, split }) {
     const map = C.seasons[y]; if (!map) continue; const rows = [...rows0].sort((a, b) => String(a[1]).localeCompare(String(b[1]))), seen = {};
     for (const r of rows) for (const side of ["h", "a"]) {
       const tid = side === "h" ? r[2] : r[3]; let cid = map[tid]; if (!cid) continue;
-      const sp = split[y + "|" + tid]; if (sp && r[4] != null && r[5] != null) { const i = seen[tid] = (seen[tid] || 0) + 1; let acc = 0; for (const [c, n] of sp) { acc += n; if (i <= acc) { cid = c; break } } }
+      const sp = split[y + "|" + tid]; if (sp && r[4] != null && r[5] != null) { const i = seen[tid] = (seen[tid] || 0) + 1; let acc = 0; for (const [c, n] of sp) { acc += n; if (i <= acc) { cid = c; break } } if (!cid) continue }
       const my = side === "h" ? r[4] : r[5], th = side === "h" ? r[5] : r[4]; if (my == null || th == null) continue;
       const X = out[cid] = out[cid] || { nm: C.names[cid] || "Coach " + cid, seasons: {} };
       const s = X.seasons[y] = X.seasons[y] || { tm: tid, w: 0, l: 0, cw: 0, cl: 0, nw: 0, nl: 0, aw: 0, al: 0, ap: 0, close: [0, 0], fav: [0, 0], dog: [0, 0] };

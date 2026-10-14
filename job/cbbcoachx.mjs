@@ -18,8 +18,13 @@
    Pack p{S}_cbb-coachx. */
 const SH_FROM = 2021;
 
-export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTED, normName, bySeason, D1 }) {
-  const coachOf = (tid, y) => (bySeason[y] || {})[tid] || null;
+export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTED, normName, bySeason, D1, teams, schoolKey }) {
+  /* who coached a team each season: our coach list (2013–14 on), and before that each coach's Wikipedia record table matched to the school
+     (Oct 13 — Sam: "we now go back to when izzo was coaching … so we gotta pick a lane": every section reaches as far back as its data) */
+  const wiki = {}; try { const WR = await getPack("p2000_cbb-wikirec"); const idOf = {}; for (const t of teams || []) idOf[schoolKey(t.school)] = t.id;
+    const first = Math.min(...Object.keys(bySeason).map(Number));
+    for (const [cid, x] of Object.entries((WR && WR.c) || {})) for (const r of x.r) { if (r[0] >= first) continue; const id = idOf[schoolKey(r[1])]; if (id != null) (wiki[r[0]] = wiki[r[0]] || {})[id] = cid } } catch (e) { log("coach extras: wikipedia tenure " + e.message) }
+  const coachOf = (tid, y) => (bySeason[y] || {})[tid] || (wiki[y] || {})[tid] || null;
   const out = { v: 1, S, rc: {}, pin: {}, pout: {}, dev: {}, sh: {}, shAvg: {} };
   const push = (k, cid, v) => { (out[k][cid] = out[k][cid] || []).push(v) };
   const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10, r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;

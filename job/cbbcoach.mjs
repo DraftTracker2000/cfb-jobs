@@ -175,23 +175,23 @@ export function trustWiki(w, seasons) {
 export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
   let W = full ? null : await getPack("p2000_cbb-wiki").catch(() => null); if (!W || !W.c || W.v !== 3) W = { v: 3, c: {} };   /* v3: batched */
   /* every coach since 2013–14, not just this season's (Oct 13 — Sam: "just finish coaches"): past coaches' pages are re-read every 90 days, current ones weekly */
-  const todo = coaches.filter(c => !W.c[c.cid] || Date.now() - (W.c[c.cid].at || 0) > (c.cur === false ? 90 : 7) * 864e5);
+  const todo = coaches.filter(c => !W.c[c.cid] || (!W.c[c.cid].t && !W.c[c.cid].m) || Date.now() - (W.c[c.cid].at || 0) > (c.cur === false ? 90 : 7) * 864e5);
   /* Wikipedia rate-limits the shared GitHub runners hard (109 of 199 calls refused on Oct 10), so pages are read 40 at a time:
      one query returns every page's top section. Titles tried in turn: "Name", "Name (basketball)", "Name (basketball coach)". */
   const t0 = Date.now(), codes = {}; let n = 0, found = 0;
   const get = async u => { for (let k = 0; k < 4; k++) { try { const r = await fetch(u, { headers: WUA }); codes[r.status] = (codes[r.status] || 0) + 1; n++; if (r.ok) return await r.json(); if (r.status === 404 || r.status === 403) return null } catch { codes.err = (codes.err || 0) + 1 } await new Promise(r => setTimeout(r, 4000 * (k + 1))) } return null };
-  let left = todo.slice();
+  let left = todo.slice(); const tried = new Set();
   for (const suffix of ["", " (basketball)", " (basketball coach)"]) {
     for (let b = 0; b < left.length && Date.now() - t0 < 480e3; b += 40) { const batch = left.slice(b, b + 40); const titles = batch.map(c => c.nm + suffix);
       const j = await get(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&rvsection=0&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(titles.join("|"))}`);
-      if (!j || !j.query) continue; const map = {}; for (const x of j.query.normalized || []) map[x.from] = x.to; for (const x of j.query.redirects || []) map[x.from] = x.to;
+      if (!j || !j.query) continue; batch.forEach(c => tried.add(c.cid)); const map = {}; for (const x of j.query.normalized || []) map[x.from] = x.to; for (const x of j.query.redirects || []) map[x.from] = x.to;
       const pages = Object.fromEntries((j.query.pages || []).map(p => [p.title, p]));
       for (const c of batch) { let t = c.nm + suffix; t = map[t] || t; t = map[t] || t; const pg = pages[t]; const w = pg && pg.revisions && pg.revisions[0] ? (pg.revisions[0].slots ? pg.revisions[0].slots.main.content : pg.revisions[0].content) : "";
         if (!w || !/coach_team|overall_record/.test(w) || (c.school && !w.includes(c.school.split(" ")[0]))) continue;
         W.c[c.cid] = { at: Date.now(), t, ...parseCoachInfobox(w) }; found++ }
       await new Promise(r => setTimeout(r, 1000)) }
     left = left.filter(c => !(W.c[c.cid] && W.c[c.cid].t && Date.now() - W.c[c.cid].at < 60e3)) }
-  for (const c of left) if (!W.c[c.cid]) W.c[c.cid] = { at: Date.now() };   /* no page found: looked again in a week */
+  for (const c of left) if (!W.c[c.cid] && tried.has(c.cid)) W.c[c.cid] = { at: Date.now(), m: 1 };   /* no page found: looked again later — but not when Wikipedia turned the call away (429) */
   W.lastRun = { at: Date.now(), calls: n, found, codes, secs: Math.round((Date.now() - t0) / 1000) };
   await putPack("p2000_cbb-wiki", W);
   log(`wikipedia coaches: ${todo.length} to look up, ${found} found in ${n} calls · ${Object.values(W.c).filter(x => x.t).length} on file · ${JSON.stringify(codes)}`);

@@ -171,7 +171,9 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
       const paces = Object.values(TH.seasons[y]).filter(r => r[0] != null).map(r => r[2]).filter(v => v != null);   /* Division I only (teams with an adjusted rating) */ if (row[2] != null) s.paceRk = paces.filter(v => v > row[2]).length + 1 }
     /* full careers from Wikipedia, for every coach with a current team */
     const nameOf = Object.fromEntries((teamList || []).map(t => [t.id, t.school]));
-    const W = await wikiCoaches({ getPack, putPack, log, full, coaches: Object.entries(CO.current).map(([tid, cid]) => ({ cid, nm: (CO.coaches[cid] || {}).nm, school: nameOf[tid] || "" })).filter(c => c.nm) }).catch(e => { log("wikipedia: " + e.message); return null });
+    const W = await wikiCoaches({ getPack, putPack, log, full, coaches: (() => { const cur = Object.entries(CO.current).map(([tid, cid]) => ({ cid, nm: (CO.coaches[cid] || {}).nm, school: nameOf[tid] || "", cur: true })), seen = new Set(cur.map(c => c.cid));
+      const past = Object.entries(CO.coaches).filter(([cid]) => !seen.has(cid)).map(([cid, X]) => { const ys = Object.keys(X.seasons).sort(), last = X.seasons[ys[ys.length - 1]]; return { cid, nm: X.nm, school: last ? nameOf[last.tm] || "" : "", cur: false } });
+      return [...cur, ...past].filter(c => c.nm && !/^Coach \d/.test(c.nm)) })() }).catch(e => { log("wikipedia: " + e.message); return null });
     if (W) for (const [cid, X] of Object.entries(CO.coaches)) { const w = trustWiki(W.c[cid], X.seasons); if (w) X.wiki = w }
     /* their whole careers season by season from the same pages (p2000_cbb-wikirec, read by the coach pages) */
     if (W) { const curSet = new Set(Object.values(CO.current)); await wikiRecords({ getPack, putPack, log, W, S, coaches: Object.entries(CO.coaches).map(([cid, X]) => ({ cid, seasons: X.seasons, names: nameOf, cur: curSet.has(cid) })) }).catch(e => log("wikipedia records: " + e.message)) }

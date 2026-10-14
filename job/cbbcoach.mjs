@@ -174,7 +174,8 @@ export function trustWiki(w, seasons) {
 }
 export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
   let W = full ? null : await getPack("p2000_cbb-wiki").catch(() => null); if (!W || !W.c || W.v !== 3) W = { v: 3, c: {} };   /* v3: batched */
-  const todo = coaches.filter(c => !W.c[c.cid] || Date.now() - (W.c[c.cid].at || 0) > 7 * 864e5);
+  /* every coach since 2013–14, not just this season's (Oct 13 — Sam: "just finish coaches"): past coaches' pages are re-read every 90 days, current ones weekly */
+  const todo = coaches.filter(c => !W.c[c.cid] || Date.now() - (W.c[c.cid].at || 0) > (c.cur === false ? 90 : 7) * 864e5);
   /* Wikipedia rate-limits the shared GitHub runners hard (109 of 199 calls refused on Oct 10), so pages are read 40 at a time:
      one query returns every page's top section. Titles tried in turn: "Name", "Name (basketball)", "Name (basketball coach)". */
   const t0 = Date.now(), codes = {}; let n = 0, found = 0;

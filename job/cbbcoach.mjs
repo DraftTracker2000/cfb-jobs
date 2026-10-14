@@ -174,7 +174,9 @@ export function parseCoachInfobox(w) {
   let titles = 0, ff = 0; for (const l of champ.split(/\n|<br\s*\/?>/)) { const t = clean(l); const years = (t.match(/\b(19|20)\d{2}\b/g) || []).length;
     if (/Final Four/i.test(t)) { const n = t.match(/^\*?\s*(\d+)\s*[×x]?\s/); ff += n ? +n[1] : years }
     else if (/NCAA Division I (men's basketball )?(tournament|champion)/i.test(t) && !/regional|Elite|Sweet/i.test(t)) { const n = t.match(/^\*?\s*(\d+)\s*[×x]?\s/); titles += n ? +n[1] : Math.max(1, years) } }
-  const stops = []; for (let i = 1; i <= 25; i++) { const yrs = clean(line("coach_years" + i)), tm = clean(line("coach_team" + i)); if (!yrs && !tm) continue; if (!tm || /assistant|associate|\bHS\b|high school|graduate|director|\(GA\)/i.test(tm)) continue; stops.push([yrs, tm.replace(/\s*\(.*?\)\s*$/, "")]) }
+  const stops = []; for (let i = 1; i <= 25; i++) { const yrs = clean(line("coach_years" + i)), tm = clean(line("coach_team" + i)); if (!yrs && !tm) continue; if (!tm || /assistant|associate|\bHS\b|high school|graduate|director|\(GA\)/i.test(tm)) continue;
+    /* a role in brackets is kept only when it's a head job — Diebler's "Valparaiso (SA)" and "Ohio State (AHC)" are not stops; a state ("Miami (OH)") stays */
+    { const p = (tm.match(/\(([^)]*)\)\s*$/) || [])[1]; if (p != null && !(/interim|head coach|\bHC\b/i.test(p) && !/AHC|associate/i.test(p)) && !(/^[A-Z]{2}$/.test(p) && !/^(SA|GA)$/.test(p))) continue } stops.push([yrs, tm.replace(/\s*\((?![A-Z]{2}\))[^)]*\)\s*$/, "")]) }
   return { ov, ncaa, titles, ff, stops };
 }
 /* Wikipedia's infobox can lag a season (Oct 10 audit: Greg Gard 237-128 there, 244-132 in our own Wisconsin games) or fail to parse
@@ -188,7 +190,8 @@ export function trustWiki(w, seasons) {
 export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
   let W = full ? null : await getPack("p2000_cbb-wiki").catch(() => null); if (!W || !W.c || W.v !== 3) W = { v: 3, c: {} };   /* v3: batched */
   /* every coach since 2013–14, not just this season's (Oct 13 — Sam: "just finish coaches"): past coaches' pages are re-read every 90 days, current ones weekly */
-  const todo = coaches.filter(c => !W.c[c.cid] || (!W.c[c.cid].t && !W.c[c.cid].m) || Date.now() - (W.c[c.cid].at || 0) > (c.cur === false ? 90 : 7) * 864e5);
+  const reparse = W.pv !== 2;   /* parser v2 (Oct 13): every page read again once */
+  const todo = coaches.filter(c => reparse || !W.c[c.cid] || (!W.c[c.cid].t && !W.c[c.cid].m) || Date.now() - (W.c[c.cid].at || 0) > (c.cur === false ? 90 : 7) * 864e5);
   /* Wikipedia rate-limits the shared GitHub runners hard (109 of 199 calls refused on Oct 10), so pages are read 40 at a time:
      one query returns every page's top section. Titles tried in turn: "Name", "Name (basketball)", "Name (basketball coach)". */
   const t0 = Date.now(), codes = {}; let n = 0, found = 0;
@@ -207,7 +210,7 @@ export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
       await new Promise(r => setTimeout(r, 1000)) }
     left = left.filter(c => !(W.c[c.cid] && W.c[c.cid].t && Date.now() - W.c[c.cid].at < 60e3)) }
   for (const c of left) if ((!W.c[c.cid] || !W.c[c.cid].t) && tried.has(c.cid)) W.c[c.cid] = { at: Date.now(), m: 1 };   /* no page found: looked again later — but not when Wikipedia turned the call away (429) */
-  W.lastRun = { at: Date.now(), calls: n, found, codes, secs: Math.round((Date.now() - t0) / 1000) };
+  W.lastRun = { at: Date.now(), calls: n, found, codes, secs: Math.round((Date.now() - t0) / 1000) }; if (left.length < todo.length / 2) W.pv = 2;
   await putPack("p2000_cbb-wiki", W);
   log(`wikipedia coaches: ${todo.length} to look up, ${found} found in ${n} calls · ${Object.values(W.c).filter(x => x.t).length} on file · ${JSON.stringify(codes)}`);
   return W;

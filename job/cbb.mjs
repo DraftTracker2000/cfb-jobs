@@ -270,11 +270,15 @@ export async function main() {
     for (const y of Object.keys(H.adj).map(Number)) if (!SR.s[y] || (y >= S && !off)) { const R = await cb("/ratings/srs", { season: y }).catch(() => []); if (R.length) { SR.s[y] = Object.fromEntries(R.map(t => [t.teamId, t.rating])); got++ } }
     if (got) await putPack("p2000_cbb-srs", SR);
     log("rating scale: " + JSON.stringify(fixAdjScale(H.adj, SR.s))) }
-  const D1 = new Set(adjS.map(t => t.teamId));
+  /* Division I = the teams with ratings — but on the first days of a season CBBD can carry stats before it rates every team, and a short
+     list would have shrunk the whole site to the rated few (Oct 13 opening-night check): then last season's list stands in */
+  const D1 = new Set(adjS.length >= 300 || !H.adj[S - 1] ? adjS.map(t => t.teamId) : Object.keys(H.adj[S - 1]).map(Number));
+  if (adjS.length < 300) log(`ratings: only ${adjS.length} teams rated for ${S} so far — Division I taken from ${S - 1}`);
   const srsS = await cb("/ratings/srs", { season: S }); const SRS = Object.fromEntries(srsS.map(t => [t.teamId, t.rating]));
   if (!H.rec[S - 1]) { const rc = await cb("/recruiting/players", { year: S - 1 }); H.rec[S - 1] = rc.map(r => [normName(r.name), (r.committedTo || {}).id || null, r.rating, r.stars, r.ranking, r.heightInches, r.athleteId || null]) }
   /* the incoming class (off-season: recruits of year S, who play in S+1) */
-  const recFresh = off ? await cb("/recruiting/players", { year: S }) : [];
+  /* in season the class that enrolled this year (recruits of S−1) keeps its recruiting grade until it has played enough (Oct 13 opening-night check) */
+  const recFresh = await cb("/recruiting/players", { year: off ? S : S - 1 });
   const ALL = { ...H.stats, [S]: rowsS };
 
   /* the NBA draft, each pick linked to a college player where we can */
@@ -438,7 +442,7 @@ export async function main() {
   const CLS = ["FR", "SO", "JR", "SR", "GR"];
   /* career totals (every Division I season since 2008) — the tiles show last season and the career side by side */
   const CAR = {}; for (const [y, rows] of Object.entries(ALL)) for (const x of rows) { if (!x.g) continue; const c = CAR[x.id] = CAR[x.id] || { g: 0, gs: 0, n: 0, min: 0, pts: 0 }; c.g += x.g; c.gs += x.gs; c.n++; c.min += x.min; c.pts += x.pts }
-  const statEntry = (r, h, tm, extra = {}) => { const pt = PORT[r.id], ro = RO[r.id] || {}, hw = H.ht[r.id] || [], rc = REC[r.id], yrNext = Math.min(5, off ? h.yr + 1 : h.yr);
+  const statEntry = (r, h, tm, extra = {}, ahead = off) => { const pt = PORT[r.id], ro = RO[r.id] || {}, hw = H.ht[r.id] || [], rc = REC[r.id], yrNext = Math.min(5, ahead ? h.yr + 1 : h.yr);
     return { id: r.id, nm: r.nm, pos: r.pos, posFull: ro.posFull || "", tm, from: tm !== r.tm ? r.tm : null, portal: pt ? { to: pt.destination ? pt.destination.id : null, toName: pt.destination ? pt.destination.name : null, el: pt.eligibility || null } : null,
       cls: CLS[Math.min(4, yrNext - 1)], yr: yrNext, ht: hw[0] || null, wt: hw[1] || null, home: ro.home || "", jersey: ro.jersey || "",
       rec: rc ? { r: r3(rc[2]), st: rc[3], rk: rc[4] } : null,
@@ -452,7 +456,12 @@ export async function main() {
      played them, incoming freshmen graded from their recruiting rank, anyone else listed with no grade yet */
   let ESPN = { rosters: {} }; try { ESPN = await fetchRosters({ teams: teamsRaw.filter(t => D1.has(t.id)), log }) } catch (e) { log("ESPN rosters: " + e.message) }
   const useEspn = Object.keys(ESPN.rosters).length >= .8 * D1.size;   /* most of Division I answered */
-  const rowByName = {}; for (const r of rowsS) (rowByName[normName(r.nm)] = rowByName[normName(r.nm)] || []).push(r);
+  /* the first weeks of a season (Oct 13 opening-night check — this path had never run live): a player is graded on last season's numbers
+     until he has EARLY minutes this season; a freshman keeps his recruiting grade until then. Without it, one game decided the board and
+     nearly everyone under 100 minutes had no grade at all */
+  const EARLY = 150, prevRow = {}, H_P = {};
+  if (inSeason) { for (const r of (ALL[S - 1] || [])) if (!prevRow[r.id] || r.min > prevRow[r.id].min) prevRow[r.id] = r; for (const h of hist) if (h.r.s === S - 1) H_P[h.r.id + "|" + h.r.tm] = h }
+  const rowByName = {}; for (const r of [...rowsS, ...(inSeason ? Object.values(prevRow) : [])]) (rowByName[normName(r.nm)] = rowByName[normName(r.nm)] || []).push(r);
   const recByName = {}; for (const rc of recFresh) recByName[normName(rc.name)] = rc;
   const usedRec = new Set();
   if (useEspn) { const USED = new Set();
@@ -463,9 +472,13 @@ export async function main() {
            one Trent Perry's stats on another) */
         if (!r) { const c = (rowByName[normName(a.nm)] || []).filter(x => x.tm === tid || (PORT[x.id] && PORT[x.id].destination && PORT[x.id].destination.id === tid)); if (c.length === 1) { r = lastRow[c[0].id] || c[0]; cid = r.id } }
         if (r && USED.has(r.id)) r = null; if (r) USED.add(r.id);
+        const pid = r ? r.id : cid; if (r && r.s !== S) r = lastRow[r.id] || null;   /* a name match on last season's row */
         const h = r ? H_S[r.id + "|" + r.tm] : null;
         const espn = { cls: a.cls || undefined, jersey: a.jersey || undefined, inj: a.inj || undefined, eid: a.eid };
-        if (r && h && r.min >= 20) { const e = statEntry(r, h, tid, {}); /* class: ours (seasons played) — ESPN's preseason lists still carry last season's class */ if (a.jersey) e.jersey = a.jersey; if (a.inj) e.inj = a.inj; if (a.ht && !e.ht) e.ht = a.ht; if (a.wt && !e.wt) e.wt = a.wt; e.eid = a.eid; board.push(e); continue }
+        if (inSeason && !(r && h && r.min >= EARLY)) { const pr = pid ? prevRow[pid] : null, ph = pr ? H_P[pr.id + "|" + pr.tm] : null;
+          if (pr && ph && pr.min >= 150) { const e = statEntry(pr, ph, tid, { prev: S - 1, now: r ? { g: r.g, min: r.min, pts: r.pts, reb: r.reb, ast: r.ast } : null }, true);
+            if (a.jersey) e.jersey = a.jersey; if (a.inj) e.inj = a.inj; if (a.ht && !e.ht) e.ht = a.ht; if (a.wt && !e.wt) e.wt = a.wt; e.eid = a.eid; board.push(e); continue } }
+        if (r && h && r.min >= 20 && !(inSeason && r.min < EARLY && recByName[normName(a.nm)])) { const e = statEntry(r, h, tid, {}); /* class: ours (seasons played) — ESPN's preseason lists still carry last season's class */ if (a.jersey) e.jersey = a.jersey; if (a.inj) e.inj = a.inj; if (a.ht && !e.ht) e.ht = a.ht; if (a.wt && !e.wt) e.wt = a.wt; e.eid = a.eid; board.push(e); continue }
         const rc = recByName[normName(a.nm)];
         if (rc && RW && !usedRec.has(rc.id) && ((rc.committedTo || {}).id === tid || !a.cls || a.cls === "FR")) { usedRec.add(rc.id);   /* the recruit must be headed here (two Marcus Johnsons shared one recruit id) */
           board.push({ id: "r" + rc.id, eid: a.eid, nm: a.nm, pos: posGroup(rc.position || a.pos), posFull: rc.position || a.pos || "", tm: tid, from: (rc.committedTo || {}).id && rc.committedTo.id !== tid ? rc.committedTo.id : null, fr: 1, cls: a.cls || "FR", yr: 1,
@@ -565,7 +578,9 @@ export async function main() {
   const shotSeasons = (full ? Array.from({ length: S - SHOT_FROM + 1 }, (_, i) => SHOT_FROM + i) : [S - 1]).filter(y => y !== S);
   for (const y of shotSeasons) {
     let P = full ? null : await getPack(`p${y}_cbb-shots`).catch(() => null);
-    if (P && P.done) { log(`shots ${y}: complete`); continue }
+    /* a season the play-by-play engine charted (fromPbp) is final once the next one starts — re-reading it here added every shot a second
+       time on top (gameIds is empty in those packs; Oct 13 opening-night check, would have hit 2025–26 on the first in-season run) */
+    if (P && (P.done || P.fromPbp)) { log(`shots ${y}: complete`); continue }
     if (!P) P = { season: y, zones: ZONES, players: {}, teams: {}, gameIds: [], done: false };
     const have = new Set(P.gameIds);
     const yGames = y === S ? G.filter(g => g.season === y) : null;

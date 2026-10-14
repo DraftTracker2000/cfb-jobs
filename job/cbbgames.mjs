@@ -170,7 +170,15 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     { const Wp = await getPack("p2000_cbb-wiki").catch(() => null), nm0 = Object.fromEntries((teamList || []).map(t => [t.id, t.school]));
       const n = repairLateHires(CI, Wp && Wp.c, nm0); if (n) { log(`coaches: ${n} season(s) given back to the coach before a late hire`); await putPack("p2000_cbb-coachids", CI) } }
     const split = await (async () => { try { const R0 = await getPack("p2000_cbb-wikirec"); const sp = midseasonSplits({ C: { ...CI, seasons: dedupeCoachSeasons(CI.seasons) }, seasons: { ...GH.seasons, [S]: curRows }, R: R0, names: Object.fromEntries((teamList || []).map(t => [t.id, t.school])) }); log(`coaches: ${Object.keys(sp).length} midseason coaching changes split`); return sp } catch (e) { log("midseason splits: " + e.message); return {} } })();
-    CO = coachRecords({ C: CI, seasons: { ...GH.seasons, [S]: curRows }, lines: { ...GH.lines, [S]: curLines }, adj, S, split });
+    /* AP polls by week for every season of game data (finished seasons read once, p2000_cbb-polls) — for "against ranked teams" */
+    const PL = await (async () => { let P = await getPack("p2000_cbb-polls").catch(() => null); if (!P || !P.s) P = { s: {} }; let got = 0;
+      for (const y of [...Object.keys(GH.seasons).map(Number), S]) { if (y < 2009 || (P.s[y] && y < S)) continue;
+        const R = (await cb("/rankings", { season: y }).catch(() => [])).filter(p => /ap/i.test(p.pollType || "")); if (!R.length) continue;
+        const W = {}; for (const p of R) { const d = (p.pollDate || "").slice(0, 10); if (d && p.ranking <= 25) (W[d] = W[d] || {})[p.teamId] = p.ranking } P.s[y] = W; got++ }
+      if (got) await putPack("p2000_cbb-polls", P); return P })().catch(e => { log("polls: " + e.message); return { s: {} } });
+    const PD = {}; for (const [y, W] of Object.entries(PL.s)) PD[y] = Object.keys(W).sort();
+    const rankAtY = (y, team, date) => { const D = PD[y]; if (!D || !D.length) return null; let k = null; for (const d of D) if (d <= date) k = d; k = k || D[0]; return PL.s[y][k][team] || null };
+    CO = coachRecords({ C: CI, seasons: { ...GH.seasons, [S]: curRows }, lines: { ...GH.lines, [S]: curLines }, adj, S, split, rankAt: rankAtY });
     try { await interimNames({ getPack, putPack, log, itm: CO.interim, names: Object.fromEntries((teamList || []).map(t => [t.id, t.school])), coachNames: CI.names || {} }) } catch (e) { log("interims: " + e.message) }
     /* style by season: adj O / D, pace, 3-point rate, turnovers forced, eFG for and against, offensive rebounding — with each season's D-I rank for pace */
     const TH = await buildTeamHist({ cb, getPack, putPack, log, S, full }).catch(e => { log("team history: " + e.message); return null });
@@ -264,5 +272,5 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   if (LG && !LG.names) { const st = await cb("/stats/player/season", { season: S }).catch(() => []); LG.names = Object.fromEntries(st.filter(r => r.name).map(r => [r.athleteId, r.name])); await putPack(`p${S}_cbb-logs`, LG); log(`logs: ${Object.keys(LG.names).length} names added`) }
   await putPack(`p${S}_cbb-games`, { season: S, next: NEXT, off, pick: { ...PK, test }, games, splits: SPL });
   log(`games: ${games.length} (${games.filter(g => g.ln).length} with a line, ${games.filter(g => g.tv).length} with TV)`);
-  return { test, n: games.length };
+  return { test, n: games.length, CO, CI };
 }

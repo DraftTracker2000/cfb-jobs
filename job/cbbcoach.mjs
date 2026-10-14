@@ -109,27 +109,37 @@ export function midseasonSplits({ C, seasons, R, names }) {
       const B = rb[0], nB = rb[1][2] + rb[1][3];
       out[y + "|" + tid] = prev[tid] === B ? [[B, nB], [A, 999]] : [[A, nA], [B, 999]] } }
   return out }
-export function coachRecords({ C, seasons, lines, adj, S, split }) {
+export function coachRecords({ C, seasons, lines, adj, S, split, rankAt }) {
   const out = {}, cur = {}, itm = {}, played = {}; C = { ...C, seasons: dedupeCoachSeasons(C.seasons) }; split = split || {};
   for (const [y, rows0] of Object.entries(seasons)) {
     const map = C.seasons[y]; if (!map) continue; const rows = [...rows0].sort((a, b) => String(a[1]).localeCompare(String(b[1]))), seen = {};
     for (const r of rows) if (r[4] != null && r[5] != null) for (const t of [r[2], r[3]]) if (split[y + "|" + t]) played[y + "|" + t] = (played[y + "|" + t] || 0) + 1;
-    for (const r of rows) for (const side of ["h", "a"]) {
-      const tid = side === "h" ? r[2] : r[3]; let cid = map[tid]; if (!cid) continue;
-      const sp = split[y + "|" + tid]; if (sp && r[4] != null && r[5] != null) { const i = seen[tid] = (seen[tid] || 0) + 1; let acc = 0; for (const [c, n] of sp) { acc += n; if (i <= acc) { cid = c; break } }
+    /* pass 1: who coached each side of each game (a split season hands its games out in date order) */
+    const who = rows.map(r => ["h", "a"].map(side => {
+      const tid = side === "h" ? r[2] : r[3]; let cid = map[tid]; if (!cid) return null;
+      const sp = split[y + "|" + tid]; if (sp && r[4] != null && r[5] != null) { const i = seen[tid] = (seen[tid] || 0) + 1; let acc = 0; cid = null; for (const [c, n] of sp) { acc += n; if (i <= acc) { cid = c; break } }
         /* games of an interim we have no record for (Oct 13 — Sam: "putting an asterisk on those seasons and calling out the interim in the
            pop-up"): kept per team-season with the coach(es) around them; the name comes from Wikipedia (interimNames) */
         if (!cid) { const my = side === "h" ? r[4] : r[5], th = side === "h" ? r[5] : r[4], I = itm[y + "|" + tid] = itm[y + "|" + tid] || { w: 0, l: 0, by: sp.map(([c]) => c).filter(Boolean), first: null };
-          if (I.first == null) I.first = i === 1; I.lastAt = i; my > th ? I.w++ : I.l++; continue } }
+          if (I.first == null) I.first = i === 1; I.lastAt = i; my > th ? I.w++ : I.l++; return null } }
+      return cid }));
+    /* pass 2: the tallies — Oct 13 (Sam: "do all 6 of the basketball coaches stuff"): home / road / neutral, against AP-ranked teams, and
+       head to head against the other coach */
+    rows.forEach((r, gi) => { for (const [si, side] of [[0, "h"], [1, "a"]]) {
+      const cid = who[gi][si]; if (!cid) continue; const tid = side === "h" ? r[2] : r[3], opp = side === "h" ? r[3] : r[2], oc = who[gi][1 - si];
       const my = side === "h" ? r[4] : r[5], th = side === "h" ? r[5] : r[4]; if (my == null || th == null) continue;
       const X = out[cid] = out[cid] || { nm: C.names[cid] || "Coach " + cid, seasons: {} };
-      const s = X.seasons[y] = X.seasons[y] || { tm: tid, w: 0, l: 0, cw: 0, cl: 0, nw: 0, nl: 0, aw: 0, al: 0, ap: 0, close: [0, 0], fav: [0, 0], dog: [0, 0] };
-      const won = my > th; won ? s.w++ : s.l++; if (r[7]) won ? s.cw++ : s.cl++;
+      const s = X.seasons[y] = X.seasons[y] || { tm: tid, w: 0, l: 0, cw: 0, cl: 0, nw: 0, nl: 0, aw: 0, al: 0, ap: 0, close: [0, 0], fav: [0, 0], dog: [0, 0], hm: [0, 0], rd: [0, 0], nu: [0, 0], rk: [0, 0] };
+      const won = my > th, k = won ? 0 : 1; won ? s.w++ : s.l++; if (r[7]) won ? s.cw++ : s.cl++;
       if (/NCAA/i.test(r[11] || "")) won ? s.nw++ : s.nl++;
-      if (Math.abs(my - th) <= 5) s.close[won ? 0 : 1]++;
+      if (Math.abs(my - th) <= 5) s.close[k]++;
+      (r[6] ? s.nu : side === "h" ? s.hm : s.rd)[k]++;
+      if (rankAt && rankAt(+y, opp, r[1])) s.rk[k]++;
+      if (oc && oc !== cid) { const h = (X.h2h = X.h2h || {})[oc] = (X.h2h || {})[oc] || [0, 0]; h[k]++ }
       const L = (lines[y] || {})[r[0]]; if (L && L[0] != null && L[0] !== 0) { const sp = side === "h" ? L[0] : -L[0], v = my - th + sp; if (v > 0) s.aw++; else if (v < 0) s.al++; else s.ap++; (sp < 0 ? s.fav : s.dog)[won ? 0 : 1]++ }
-    }
+    } });
   }
+  for (const X of Object.values(out)) if (X.h2h) for (const [k, v] of Object.entries(X.h2h)) if (v[0] + v[1] < 2) delete X.h2h[k];   /* head to head: coaches he met twice or more */
   for (const [y, map] of Object.entries(C.seasons)) if (+y >= S) for (const [tid, cid] of Object.entries(map)) { cur[tid] = cid; if (!out[cid]) out[cid] = { nm: C.names[cid] || "Coach " + cid, seasons: {} } }   /* new hires: named, no record yet */
   /* CoachScore (0–100): percentiles among coaches with 3+ seasons, of his teams' average adjusted net rating (50%), win share (20%),
      NCAA tournament wins per season (20%) and covers (10%) */

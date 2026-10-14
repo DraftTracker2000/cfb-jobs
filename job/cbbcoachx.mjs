@@ -1,0 +1,83 @@
+/* Basketball coach extras (Oct 13 — Sam: "yes do all 6 of the basketball coaches stuff and expand their style tabs").
+
+   Built in the everyday basketball run from data the job already holds, plus the transfer portal by year (one CBBD call a season, finished
+   seasons cached in p2000_cbb-portal). Every season is credited to the coach of that team that season (p{S}_cbb-coaches bySeason):
+
+   - rc   recruiting classes he brought in: a class of year Y plays from season Y+1, so it is credited to the coach of season Y+1. Per class:
+          [season, team, commits, top-100, five-stars, four-stars, average rating, national class rank (by total rating that year),
+          became NBA draft picks, best three [name, national rank, stars]].
+   - pin  transfers in (portal year Y → playing season Y+1 at his school), with how each played there: [season, team, [[name, from team,
+          games, points a game, win shares]] …]; pout the ones who left after season Y: [season, team, [[name, to team, next season's
+          points a game, win shares]] …].
+   - dev  player development: players who played two straight seasons at his school under him (200+ minutes both years). His players'
+          jump in win shares per 40 and points per 40, minus the jump every Division I player of the same class made that year — how much
+          more (or less) his players improved than everyone else's. { n, ws, pts, top: best five improvers }.
+   - sh   shot diet by team-season (2020–21 on, from the shot charts): share of shots at the rim, other paint, mid-range, corner 3 and
+          above-the-break 3, for his offense and against his defense; shAvg is the Division I average each season.
+
+   Pack p{S}_cbb-coachx. */
+const SH_FROM = 2021;
+
+export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTED, normName, bySeason, D1 }) {
+  const coachOf = (tid, y) => (bySeason[y] || {})[tid] || null;
+  const out = { v: 1, S, rc: {}, pin: {}, pout: {}, dev: {}, sh: {}, shAvg: {} };
+  const push = (k, cid, v) => { (out[k][cid] = out[k][cid] || []).push(v) };
+  const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10, r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
+
+  /* ---- recruiting classes ---- */
+  for (const [Y, list] of Object.entries(H.rec || {})) {
+    const byT = {}; for (const r of list) if (r[1] != null) (byT[r[1]] = byT[r[1]] || []).push(r);
+    const order = Object.entries(byT).map(([t, L]) => [t, L.reduce((a, r) => a + (r[2] || 0), 0)]).sort((a, b) => b[1] - a[1]);
+    const rank = Object.fromEntries(order.map(([t], i) => [t, i + 1]));
+    for (const [t, L] of Object.entries(byT)) { const cid = coachOf(t, +Y + 1); if (!cid) continue;
+      const rated = L.filter(r => r[2]), best = [...L].sort((a, b) => (a[4] || 999) - (b[4] || 999)).slice(0, 3);
+      push("rc", cid, [+Y + 1, +t, L.length, L.filter(r => r[4] && r[4] <= 100).length, L.filter(r => r[3] === 5).length, L.filter(r => r[3] === 4).length,
+        rated.length ? r3(rated.reduce((a, r) => a + r[2], 0) / rated.length) : null, rank[t], L.filter(r => r[6] != null && DRAFTED[r[6]]).length, best.map(r => [r[0], r[4] || null, r[3] || null])]) } }
+
+  /* the rows we look players up in */
+  const rowOf = {}; for (const [y, rows] of Object.entries(ALL)) for (const r of rows) { const k = r.id + "|" + y; if (!rowOf[k] || r.min > rowOf[k].min) rowOf[k] = r }
+  const byNT = {}; for (const [y, rows] of Object.entries(ALL)) for (const r of rows) (byNT[normName(r.nm) + "|" + r.tm] = byNT[normName(r.nm) + "|" + r.tm] || new Set()).add(r.id);
+  const pg = r => r && r.g ? r1(r.pts / r.g) : null;
+
+  /* ---- transfer portal ---- */
+  let P = await getPack("p2000_cbb-portal").catch(() => null); if (!P || !P.y) P = { y: {} }; let calls = 0;
+  for (let y = 2021; y <= S; y++) { if (P.y[y] && y < S) continue;
+    const R = await cb("/recruiting/portal", { year: y }).catch(() => null); calls++; if (!R || !R.length) continue;
+    P.y[y] = R.map(p => [`${p.firstName || ""} ${p.lastName || ""}`.trim(), (p.origin || {}).id ?? null, (p.destination || {}).id ?? null, p.stars ?? null, p.rating ?? null]) }
+  if (calls) await putPack("p2000_cbb-portal", P);
+  const inn = {}, outn = {};
+  for (const [Y, rows] of Object.entries(P.y)) { const y = +Y;
+    for (const [nm, from, to] of rows) {
+      const ids = byNT[normName(nm) + "|" + from], pid = ids && ids.size === 1 ? [...ids][0] : null;
+      const after = pid && to != null ? rowOf[pid + "|" + (y + 1)] : null;
+      if (to != null) { const c = coachOf(to, y + 1); if (c) { const k = c + "|" + (y + 1) + "|" + to; (inn[k] = inn[k] || []).push([nm, from, after && after.tm === to ? after.g : null, after && after.tm === to ? pg(after) : null, after && after.tm === to ? r1(after.ws) : null]) } }
+      if (from != null) { const c = coachOf(from, y); if (c) { const k = c + "|" + y + "|" + from, before = pid ? rowOf[pid + "|" + y] : null; (outn[k] = outn[k] || []).push([nm, to, after ? pg(after) : null, after ? r1(after.ws) : null, before ? pg(before) : null]) } } } }
+  const byWs = (a, b) => (b[4] ?? b[3] ?? -1) - (a[4] ?? a[3] ?? -1);
+  for (const [k, L] of Object.entries(inn)) { const [c, y, t] = k.split("|"); push("pin", c, [+y, +t, L.sort((a, b) => (b[4] ?? -1) - (a[4] ?? -1)).slice(0, 12)]) }
+  for (const [k, L] of Object.entries(outn)) { const [c, y, t] = k.split("|"); push("pout", c, [+y, +t, L.sort((a, b) => (b[3] ?? -1) - (a[3] ?? -1)).slice(0, 12)]) }
+
+  /* ---- player development ---- */
+  const yrOf = {}; for (const y of Object.keys(ALL).sort()) for (const r of ALL[y]) if (r.min > 0) { const k = r.id; yrOf[k + "|" + y] = (yrOf[k + "|last"] || 0) + 1; yrOf[k + "|last"] = yrOf[k + "|" + y] }
+  const pairs = [];
+  for (const [y, rows] of Object.entries(ALL)) { const y2 = +y + 1; if (!ALL[y2]) continue;
+    for (const r of rows) { if (r.min < 200 || r.ws40 == null) continue; const n = rowOf[r.id + "|" + y2]; if (!n || n.tm !== r.tm || n.min < 200 || n.ws40 == null) continue;
+      if (rowOf[r.id + "|" + y] !== r) continue;
+      pairs.push({ id: r.id, nm: n.nm, tm: r.tm, y: y2, cls: Math.min(4, yrOf[r.id + "|" + y] || 1), dws: n.ws40 - r.ws40, dpts: 40 * n.pts / n.min - 40 * r.pts / r.min, a: r, b: n, c: coachOf(r.tm, y2), c0: coachOf(r.tm, +y) }) } }
+  const base = {}; for (const p of pairs) { const k = p.y + "|" + p.cls, b = base[k] = base[k] || [0, 0, 0]; b[0] += p.dws; b[1] += p.dpts; b[2]++ }
+  const byC = {}; for (const p of pairs) { if (!p.c || p.c !== p.c0) continue; const b = base[p.y + "|" + p.cls]; const ex = { ...p, xws: p.dws - b[0] / b[2], xpts: p.dpts - b[1] / b[2] }; (byC[p.c] = byC[p.c] || []).push(ex) }
+  for (const [c, L] of Object.entries(byC)) { const n = L.length;
+    out.dev[c] = { n, ws: r3(L.reduce((a, p) => a + p.xws, 0) / n), pts: r1(L.reduce((a, p) => a + p.xpts, 0) / n), up: L.filter(p => p.xws > 0).length,
+      top: [...L].sort((a, b) => b.xws - a.xws).slice(0, 5).map(p => [p.nm, p.y, p.tm, pg(p.a), pg(p.b), r3(p.a.ws40), r3(p.b.ws40)]) } }
+
+  /* ---- shot diet ---- */
+  const share = z => { const a = z.map(v => v[1]), t = a.reduce((x, v) => x + v, 0); if (t < 200) return null;
+    return [a[0] / t, a[1] / t, (a[2] + a[3] + a[4] + a[5] + a[6]) / t, (a[7] + a[11]) / t, (a[8] + a[9] + a[10]) / t].map(r3) };
+  for (let y = SH_FROM; y <= S; y++) { const SP = await getPack(`p${y}_cbb-shots`).catch(() => null); if (!SP || !SP.teams) continue; const acc = [0, 0, 0, 0, 0]; let n = 0;
+    for (const [t, T] of Object.entries(SP.teams)) { if (D1 && !D1.has(+t)) continue; const o = T.o && share(T.o.z), d = T.d && share(T.d.z); if (!o && !d) continue;
+      out.sh[y + "|" + t] = [o, d]; if (o) { o.forEach((v, i) => acc[i] += v); n++ } }
+    if (n) out.shAvg[y] = acc.map(v => r3(v / n)) }
+
+  await putPack(`p${S}_cbb-coachx`, out);
+  log(`coach extras: ${Object.keys(out.rc).length} with classes, ${Object.keys(out.pin).length} with transfers in, ${Object.keys(out.dev).length} with development (${pairs.length} player pairs), ${Object.keys(out.sh).length} team shot diets · ${calls} portal calls`);
+  return out;
+}

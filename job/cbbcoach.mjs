@@ -75,15 +75,28 @@ export function dedupeCoachSeasons(seasons) {
    Jake Diebler had all of Ohio State's 2023–24 (Chris Holtmann coached 25 of those games). When the credited coach's Wikipedia record
    for that season has fewer games than the team played, and another coach's record has that team-season with the rest of the games,
    the season is split in date order: whoever coached the team the season before takes the first games. Returns { "y|tid": [[cid, n], [cid2, 999]] }. */
+/* Wikipedia's school names next to ours — the same list as the coach page's (public/cbb/index.html). Exact match only: "Texas" must not
+   land on Texas Tech (Oct 13: Beard's 2022–23 split went to Mark Adams that way). */
+export const WIKI_SCH = { appalachianstate: "appstate", texasamcommerce: "easttexasam", southeasternlouisiana: "selouisiana", ipfw: "purduefortwayne", fortwayne: "purduefortwayne",
+  dixiestate: "utahtech", texasarlington: "utarlington", umass: "massachusetts", arkansaslittlerock: "littlerock", ualr: "littlerock", collegeofcharleston: "charleston",
+  nichollsstate: "nicholls", mcneesestate: "mcneese", texasriograndevalley: "utriograndevalley", utpa: "utriograndevalley", texaspanamerican: "utriograndevalley",
+  missourikansascity: "kansascity", umkc: "kansascity", nebraskaomaha: "omaha", houstonbaptist: "houstonchristian",
+  southcarolinaupstate: "uscupstate", louisianalafayette: "louisiana", louisianamonroe: "ulmonroe",
+  miamioh: "miamioh", miamiohio: "miamioh", wisconsinmilwaukee: "milwaukee", wisconsingreenbay: "greenbay",
+  illinoischicago: "uic", northcarolinastate: "ncstate", longislanduniversity: "longisland", liu: "longisland", connecticut: "uconn", mississippi: "olemiss", miamiohio: "miamioh", stjohnsny: "stjohns", saintmarysca: "saintmarys", hawaii: "hawaii",
+  albany: "ualbany", seattle: "seattleu", oklahomasooners: "oklahoma", penn: "pennsylvania", samhoustonstate: "samhouston", stthomas: "stthomasminnesota",
+  queens: "queensuniversity", american: "americanuniversity", gramblingstate: "grambling" };
+export const wikiSchoolKey = s => { const a = String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&/g, "").replace(/[^a-z0-9]/g, ""); return WIKI_SCH[a] || a };
 export function midseasonSplits({ C, seasons, R, names }) {
-  const k = s => String(s || "").toLowerCase().replace(/&amp;/g, "&").replace(/[^a-z0-9]/g, "").replace(/university|college|of|the/g, "");
+  const k = s => wikiSchoolKey(String(s || "").replace(/&amp;/g, "&"));
   const out = {}; if (!R || !R.c) return out; const recBy = {};
   for (const [cid, x] of Object.entries(R.c)) for (const r of x.r) (recBy[r[0]] = recBy[r[0]] || []).push([cid, r]);
   for (const [y, rows] of Object.entries(seasons)) { const map = C.seasons[y]; if (!map) continue; const N = {};
     for (const r of rows) { if (r[4] == null || r[5] == null) continue; N[r[2]] = (N[r[2]] || 0) + 1; N[r[3]] = (N[r[3]] || 0) + 1 }
-    for (const [tid, A] of Object.entries(map)) { const tn = k(names[tid]); if (!tn || !N[tid]) continue; const same = r => { const a = k(r[1]); return a && (a === tn || a.includes(tn) || tn.includes(a)) };
+    for (const [tid, A] of Object.entries(map)) { const tn = k(names[tid]); if (!tn || !N[tid]) continue; const same = r => k(r[1]) === tn;
       const ra = (recBy[y] || []).find(([cid, r]) => cid === A && same(r)); if (!ra) continue; const nA = ra[1][2] + ra[1][3]; if (N[tid] - nA <= 2 || nA < 1) continue;
-      const rb = (recBy[y] || []).find(([cid, r]) => cid !== A && same(r) && Math.abs(nA + r[2] + r[3] - N[tid]) <= 3), prev = C.seasons[y - 1] || {};
+      const busy = new Set(Object.entries(map).filter(([t]) => t !== tid).map(([, c]) => c));   /* a coach with his own team that season can't take these games */
+      const rb = (recBy[y] || []).find(([cid, r]) => cid !== A && !busy.has(cid) && same(r) && Math.abs(nA + r[2] + r[3] - N[tid]) <= 3), prev = C.seasons[y - 1] || {};
       if (!rb) { /* the other coach has no Wikipedia record here (an interim, or a coach gone before 2014): only when the losses are short too —
           equal losses mean vacated wins or a few games missed (Self 2017–18, 2022–23), not a change — and then the rest go to no one, or to last year's coach */
         const lA = ra[1][3], my = rows.filter(r => r[4] != null && r[5] != null && (r[2] == tid || r[3] == tid)), lost = my.filter(r => r[2] == tid ? r[4] < r[5] : r[5] < r[4]).length;

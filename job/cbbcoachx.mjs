@@ -24,6 +24,8 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
   const push = (k, cid, v) => { (out[k][cid] = out[k][cid] || []).push(v) };
   const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10, r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 
+  /* a recruit's display name: his college rows (the recruiting list keeps names squeezed for matching) */
+  const nmOf = {}; for (const rows of Object.values(ALL)) for (const r of rows) if (r.nm) nmOf[r.id] = r.nm;
   /* ---- recruiting classes ---- */
   for (const [Y, list] of Object.entries(H.rec || {})) {
     const byT = {}; for (const r of list) if (r[1] != null) (byT[r[1]] = byT[r[1]] || []).push(r);
@@ -32,7 +34,7 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
     for (const [t, L] of Object.entries(byT)) { const cid = coachOf(t, +Y + 1); if (!cid) continue;
       const rated = L.filter(r => r[2]), best = [...L].sort((a, b) => (a[4] || 999) - (b[4] || 999)).slice(0, 3);
       push("rc", cid, [+Y + 1, +t, L.length, L.filter(r => r[4] && r[4] <= 100).length, L.filter(r => r[3] === 5).length, L.filter(r => r[3] === 4).length,
-        rated.length ? r3(rated.reduce((a, r) => a + r[2], 0) / rated.length) : null, rank[t], L.filter(r => r[6] != null && DRAFTED[r[6]]).length, best.map(r => [r[0], r[4] || null, r[3] || null])]) } }
+        rated.length ? r3(rated.reduce((a, r) => a + r[2], 0) / rated.length) : null, rank[t], L.filter(r => r[6] != null && DRAFTED[r[6]]).length, best.map(r => [(r[6] != null && nmOf[r[6]]) || null, r[4] || null, r[3] || null])]) } }
 
   /* the rows we look players up in */
   const rowOf = {}; for (const [y, rows] of Object.entries(ALL)) for (const r of rows) { const k = r.id + "|" + y; if (!rowOf[k] || r.min > rowOf[k].min) rowOf[k] = r }

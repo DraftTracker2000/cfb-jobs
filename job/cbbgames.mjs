@@ -158,6 +158,12 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   const pollWeeks = {}; for (const p of polls) { const k = (p.pollDate || "").slice(0, 10); (pollWeeks[k] = pollWeeks[k] || {})[p.teamId] = p.ranking }
   const pollDates = Object.keys(pollWeeks).filter(Boolean).sort();
   const rankAt = (team, date) => { let k = null; for (const d of pollDates) if (d <= date) k = d; return k ? pollWeeks[k][team] || null : null };
+  /* next season's games (off-season, and the first days before this season's stats arrive) carry next season's poll — the preseason AP
+     poll first (Oct 13 opening-night check: they had no ranks at all) */
+  const pollsN = off ? (await cb("/rankings", { season: NEXT }).catch(() => [])).filter(p => /ap/i.test(p.pollType || "")) : [];
+  const pwN = {}; for (const p of pollsN) { const k = (p.pollDate || "").slice(0, 10) || "0000"; (pwN[k] = pwN[k] || {})[p.teamId] = p.ranking }
+  const pdN = Object.keys(pwN).sort();
+  const rankAtN = (team, date) => { let k = pdN[0] || null; for (const d of pdN) if (d <= date) k = d; return k ? pwN[k][team] || null : null };
   /* ---- head coaches (ESPN staff lists; records from our results — job/cbbcoach.mjs) ---- */
   let CO = { coaches: {}, current: {} }, CI = null;
   try { CI = await buildCoachIds({ getPack, putPack, log, teams: teamList, to: NEXT, full });
@@ -196,7 +202,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
     return { id: g.id, sid: g.sourceId ? String(g.sourceId) : undefined, s: g.season, d: g.startDate, tbd: g.startTimeTbd ? 1 : 0, h: g.homeTeamId, a: g.awayTeamId, hs: g.homePoints ?? null, as: g.awayPoints ?? null, st: g.status, n: g.neutralSite ? 1 : 0, c: g.conferenceGame ? 1 : 0,
       t: g.tournament || null, note: g.gameNotes || null, hh: Array.isArray(g.homePeriodPoints) && Array.isArray(g.awayPeriodPoints) && g.homePeriodPoints.length >= 2 ? [g.homePeriodPoints[0], g.homePeriodPoints[1], g.awayPeriodPoints[0], g.awayPeriodPoints[1]] : undefined, post: g.seasonType === "postseason" ? 1 : 0, hSeed: g.homeSeed ?? null, aSeed: g.awaySeed ?? null, venue: g.venue || null, city: [g.city, g.state].filter(Boolean).join(", "),
       tv: TV[g.id] || null, rest: REST[g.id] || null, ln: LINES[g.id] || null, p: r3(p), m: r1(m), elo: [he != null ? Math.round(he) : null, ae != null ? Math.round(ae) : null],
-      hr: g.season === S ? rankAt(g.homeTeamId, g.startDate.slice(0, 10)) : null, ar: g.season === S ? rankAt(g.awayTeamId, g.startDate.slice(0, 10)) : null,
+      hr: (g.season === S ? rankAt : rankAtN)(g.homeTeamId, g.startDate.slice(0, 10)), ar: (g.season === S ? rankAt : rankAtN)(g.awayTeamId, g.startDate.slice(0, 10)),
       ser: seriesFor(g.homeTeamId, g.awayTeamId, g.startDate.slice(0, 10)), exc: r1(g.excitement), pm, co: [coachOf(g.homeTeamId, g.season), coachOf(g.awayTeamId, g.season)] };
   });
   /* ---- each team's record and ATS entering every game of season S (finals show where the teams stood that day) ---- */

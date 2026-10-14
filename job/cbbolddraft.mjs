@@ -24,8 +24,11 @@ export async function buildOldDraft({ getPack, putPack, log, teams, schoolKey })
   let P = await getPack("p2000_cbb-olddraft").catch(() => null); if (!P || !P.y) P = { y: {} };
   let calls = 0;
   for (let y = FROM; y <= TO; y++) { if (P.y[y] && P.y[y].length >= 40) continue;
-    try { const j = await (await fetch(`https://en.wikipedia.org/w/api.php?action=parse&prop=wikitext&format=json&formatversion=2&redirects=1&page=${y}_NBA_draft`, { headers: UA })).json(); calls++;
-      const rows = parseDraftTable((j.parse || {}).wikitext || ""); if (rows.length >= 40) P.y[y] = rows } catch (e) { await new Promise(r => setTimeout(r, 4000)) }
+    for (let a = 0; a < 4 && !P.y[y]; a++) {   /* Wikipedia turns away bursts from the shared runners (1990–97 missed on the first run): wait and retry */
+      try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=parse&prop=wikitext&format=json&formatversion=2&redirects=1&page=${y}_NBA_draft`, { headers: UA }); calls++;
+        if (r.ok) { const j = await r.json(); const rows = parseDraftTable((j.parse || {}).wikitext || ""); if (rows.length >= 40) P.y[y] = rows; break }
+        if (r.status !== 429 && r.status < 500) break } catch (e) { break }
+      await new Promise(r => setTimeout(r, 6000 * (a + 1))) }
     await new Promise(r => setTimeout(r, 1200)) }
   const idOf = {}; for (const t of teams || []) idOf[schoolKey(t.school)] = t.id;
   P.picks = []; for (const [y, rows] of Object.entries(P.y)) for (const [pk, rd, nm, sch] of rows) { const col = idOf[schoolKey(sch)]; if (col != null) P.picks.push({ y: +y, pk, rd, nm, col }) }

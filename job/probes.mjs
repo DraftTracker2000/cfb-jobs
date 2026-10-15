@@ -112,7 +112,7 @@ export const PROBES = [
     const md=document.getElementById("md");o.overflow=md.scrollWidth>md.clientWidth+2;closeP();
     let pid=null,pn=null;outer:for(const t of teams)for(const p of C.t[t].p){for(const [id,q] of Object.entries(D.pool||{}))if(q&&q.team===t&&coNm(q.name)===coNm(p[0])){pid=id;pn=q.name+" ("+t+") "+p[3];break outer}}
     o.player=pn;if(pid){await profile(pid);await w(1500);const c=document.querySelector("#md .cavp");o.profile=c?c.innerText:"(no line)";closeP()}
-    o.ok=/Availability/.test(o.teamPage)&&(!pid||!/no line/.test(o.profile));return o` },
+    o.ok=/availability/i.test(o.teamPage)&&(!pid||!/no line/.test(o.profile));return o` },
   /* one game of the Sun Belt JSON in full, to read the player format */
   { name: "avail-sbc", node: `const t=await (await fetch("https://sbcautostorage.blob.core.windows.net/availability-reports/sunbelt-football/prod/report.json?ts="+Date.now())).text();const j=JSON.parse(t);const g=(j.games||[]).find(g=>JSON.stringify(g).length>900)||(j.games||[])[0];return {ok:true,keys:Object.keys(j),n:(j.games||[]).length,game:JSON.stringify(g).slice(0,3500)}` },
   { name: "net-b1g", url: "https://bigten.org/sports/football/availability-report" },

@@ -98,6 +98,13 @@ export const PROBES = [
   /* Oct 15: the ACC and Big 12 pages read app.hdintelligence.com/api/get-publish-public — the call and its format */
   { name: "cap-acc", url: "https://theacc.com/sports/2025/8/28/availability-reporting-football.aspx", cap: "hdintelligence\\.com/api/get-publish-public", capN: 2, settle: 12000 },
   { name: "cap-big12", url: "https://big12sports.com/sports/2025/8/14/FBreporting.aspx", cap: "hdintelligence\\.com/api/get-publish-public", capN: 2, settle: 12000 },
+  /* which conferences publish through hdintelligence, and what the statuses look like once posted */
+  { name: "hd-orgs", node: `const o={ok:true};const H={method:"POST",headers:{"content-type":"application/json","accept":"application/json","referer":"https://app.hdintelligence.com/","user-agent":"Mozilla/5.0 (mycfbbigboard.com data job)"}};
+    for(const c of ["ACC","B12","SEC","B1G","BIG10","BIGTEN","AAC","AMERICAN","MWC","MW","CUSA","MAC","SBC","SUNBELT","PAC12","P12","IND"]){try{const r=await fetch("https://app.hdintelligence.com/api/get-publish-public",{...H,body:JSON.stringify({sport:"Football",organization:c,conference:c})});const t=await r.text();let j=null;try{j=JSON.parse(t)}catch(e){}
+     if(!j||typeof j!=="object"||!Object.keys(j).length){o[c]=r.status+" "+t.slice(0,80);continue}
+     const G=Object.values(j),st={},ex=[];let order=null;for(const g of G){order=order||g.statusReportOrder;for(const tm of g.games||[])for(const r2 of tm.rows||[]){st[r2.status]=(st[r2.status]||0)+1;if(r2.status!=="Available"&&ex.length<6)ex.push(tm.teamName+": "+JSON.stringify(r2))}}
+     o[c]={games:G.length,types:[...new Set(G.map(g=>g.ReportType))],dates:[...new Set(G.map(g=>g.footer&&g.footer.date))],teams:G.flatMap(g=>(g.games||[]).map(t=>t.teamName)).join(", "),order,st,ex,keys:Object.keys(G[0]).filter(k=>!/Image|Font|Color/.test(k)).join(",")}}catch(e){o[c]="ERR "+e.message}}return o` },
+  { name: "cap-sec", url: "https://www.secsports.com/fbreports", cap: "secsports\\.com/api/(?!sports|menus|schedule-events|search)", capN: 3, settle: 12000 },
   /* one game of the Sun Belt JSON in full, to read the player format */
   { name: "avail-sbc", node: `const t=await (await fetch("https://sbcautostorage.blob.core.windows.net/availability-reports/sunbelt-football/prod/report.json?ts="+Date.now())).text();const j=JSON.parse(t);const g=(j.games||[]).find(g=>JSON.stringify(g).length>900)||(j.games||[])[0];return {ok:true,keys:Object.keys(j),n:(j.games||[]).length,game:JSON.stringify(g).slice(0,3500)}` },
   { name: "net-b1g", url: "https://bigten.org/sports/football/availability-report" },

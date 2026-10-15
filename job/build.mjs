@@ -43,20 +43,21 @@
 import { gzipSync } from "node:zlib";
 import { refreshRefs } from "./refs.mjs";
 import { buildAvailability, uploadAvailability } from "./avail.mjs";
+import { buildCollegeAvail, uploadCollegeAvail } from "./cavail.mjs";
 import { buildNfl } from "./nfl.mjs";
 import { buildStaff } from "./staff.mjs";
 
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest"];
+const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest"];   // these write packs only; the shared data version is unchanged
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, nfl: 30, nflhistory: 120, nfldraft: 60 }[MODE];
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, nfl: 30, nflhistory: 120, nfldraft: 60 }[MODE];
 const PAGE = ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 const started = Date.now();
 
@@ -98,6 +99,14 @@ async function main() {
       if (r.held && r.held.length) console.log("nfl: held back (much smaller than last time): " + r.held.join(", "));
       if (MODE !== "weekly") { await report(!(r.held && r.held.length), `NFL · ${r.packs} packs · ${r.mb.toFixed(1)} MB · seasons ${r.seasons[0]}–${r.seasons[r.seasons.length - 1]}${r.held && r.held.length ? ` · HELD BACK (under 40% of last size): ${r.held.join(", ")}` : ""}`); return }
     } catch (e) { if (MODE !== "weekly") throw e; console.log("nfl: " + e.message) }
+  }
+  /* college availability reports (job/cavail.mjs): its own quick run Wednesday night to Saturday morning, and the start of every live run */
+  if (MODE === "cavail" || MODE === "live") {
+    const now = new Date(), season = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+    try { const data = await buildCollegeAvail({}); const up = await uploadCollegeAvail({ api, season, data });
+      const n = Object.values(data.t).reduce((a, x) => a + x.p.length, 0), msg = `college availability · ${Object.keys(data.t).length} teams · ${n} players listed · ${Object.entries(data.src).map(([k, v]) => k + " " + v).join(", ")} · ${(up.bytes / 1024).toFixed(0)} KB`;
+      console.log(msg); if (MODE === "cavail") { await report(!Object.values(data.src).every(v => /^error/.test(v)), msg); return } }
+    catch (e) { if (MODE === "cavail") throw e; console.log("college availability: " + e.message) }
   }
   /* NFL availability (weekly roster status) — its own quick run, and part of weekly / history runs */
   if (MODE === "avail" || MODE === "weekly" || MODE === "history" || MODE === "coaches") {

@@ -10,7 +10,7 @@ on:
         description: "live · catchup · weekly · look · qb · views · avail · coaches · cdef · nfl · nflhistory · nfldraft · history · full"
         default: live
         type: choice
-        options: [live, look, probe, extras, honors, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, nfl, nflhistory, nfldraft, history, full]
+        options: [live, cavail, look, probe, extras, honors, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, nfl, nflhistory, nfldraft, history, full]
       page:
         description: "Which version of the site runs the build: / (live) or /lab/"
         default: "/"
@@ -68,7 +68,7 @@ jobs:
           node-version: 24
 
       - name: Install the headless browser
-        if: steps.mode.outputs.skip != '1'
+        if: steps.mode.outputs.skip != '1' && steps.mode.outputs.mode != 'cavail'
         run: |
           npm install --no-save playwright@1
           npx playwright install --with-deps chromium

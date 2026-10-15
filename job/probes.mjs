@@ -105,6 +105,14 @@ export const PROBES = [
      const G=Object.values(j),st={},ex=[];let order=null;for(const g of G){order=order||g.statusReportOrder;for(const tm of g.games||[])for(const r2 of tm.rows||[]){st[r2.status]=(st[r2.status]||0)+1;if(r2.status!=="Available"&&ex.length<6)ex.push(tm.teamName+": "+JSON.stringify(r2))}}
      o[c]={games:G.length,types:[...new Set(G.map(g=>g.ReportType))],dates:[...new Set(G.map(g=>g.footer&&g.footer.date))],teams:G.flatMap(g=>(g.games||[]).map(t=>t.teamName)).join(", "),order,st,ex,keys:Object.keys(G[0]).filter(k=>!/Image|Font|Color/.test(k)).join(",")}}catch(e){o[c]="ERR "+e.message}}return o` },
   { name: "cap-sec", url: "https://www.secsports.com/fbreports", cap: "secsports\\.com/api/(?!sports|menus|schedule-events|search)", capN: 3, settle: 12000 },
+  /* the college availability views (Oct 15): a team page, a listed player's profile, and a Full matchup card */
+  { name: "cavail-look", page: "/lab/", widths: [390, 1280], run: `const o={ok:false};const C=await cavLoad();const teams=Object.keys(C.t||{});o.teams=teams.length;
+    const T=teams.find(t=>(C.t[t].p||[]).length>=3)||teams[0];if(!T)return {ok:false,why:"no pack"};o.team=T;
+    await teamProfile(T);for(let i=0;i<40&&!document.querySelector("#tmCav .cavw");i++)await w(500);const tc=document.querySelector("#tmCav");o.teamPage=tc?tc.innerText.replace(/\\s+/g," ").slice(0,500):"(none)";
+    const md=document.getElementById("md");o.overflow=md.scrollWidth>md.clientWidth+2;closeP();
+    let pid=null,pn=null;outer:for(const t of teams)for(const p of C.t[t].p){for(const [id,q] of Object.entries(D.pool||{}))if(q&&q.team===t&&coNm(q.name)===coNm(p[0])){pid=id;pn=q.name+" ("+t+") "+p[3];break outer}}
+    o.player=pn;if(pid){await profile(pid);await w(1500);const c=document.querySelector("#md .cavp");o.profile=c?c.innerText:"(no line)";closeP()}
+    o.ok=/Availability/.test(o.teamPage)&&(!pid||!/no line/.test(o.profile));return o` },
   /* one game of the Sun Belt JSON in full, to read the player format */
   { name: "avail-sbc", node: `const t=await (await fetch("https://sbcautostorage.blob.core.windows.net/availability-reports/sunbelt-football/prod/report.json?ts="+Date.now())).text();const j=JSON.parse(t);const g=(j.games||[]).find(g=>JSON.stringify(g).length>900)||(j.games||[])[0];return {ok:true,keys:Object.keys(j),n:(j.games||[]).length,game:JSON.stringify(g).slice(0,3500)}` },
   { name: "net-b1g", url: "https://bigten.org/sports/football/availability-report" },

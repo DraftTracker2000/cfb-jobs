@@ -105,7 +105,7 @@ async function main() {
     const now = new Date(), season = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
     try { const data = await buildCollegeAvail({}); const up = await uploadCollegeAvail({ api, season, data });
       const n = Object.values(data.t).reduce((a, x) => a + x.p.length, 0), msg = `college availability · ${Object.keys(data.t).length} teams · ${n} players listed · ${Object.entries(data.src).map(([k, v]) => k + " " + v).join(", ")} · ${(up.bytes / 1024).toFixed(0)} KB`;
-      console.log(msg); if (MODE === "cavail") { await report(!Object.values(data.src).every(v => /^error/.test(v)), msg); return } }
+      console.log(`::notice title=college availability::${msg} · ${Object.entries(data.t).slice(0, 4).map(([t, x]) => `${t} ${x.type} ${x.d} vs ${x.opp}: ${x.p.slice(0, 3).map(p => p[0] + " " + p[3]).join(", ")}`).join(" | ")}`); if (MODE === "cavail") { await report(!Object.values(data.src).every(v => /^error/.test(v)), msg); return } }
     catch (e) { if (MODE === "cavail") throw e; console.log("college availability: " + e.message) }
   }
   /* NFL availability (weekly roster status) — its own quick run, and part of weekly / history runs */

@@ -94,7 +94,12 @@ export const PROBES = [
      try{const r=await fetch(u+"?ts="+Date.now());const t=await r.text();o[c]=r.status+" "+t.length+"B "+(r.ok?t.slice(0,500):"")}catch(e){o[c]="ERR "+e.message}}return o` },
   { name: "net-acc", url: "https://theacc.com/sports/2025/8/28/availability-reporting-football.aspx" },
   { name: "net-big12", url: "https://big12sports.com/sports/2025/8/14/FBreporting.aspx" },
-  { name: "net-sec", url: "https://www.secsports.com/availability-report" },
+  { name: "net-sec", url: "https://www.secsports.com/fbreports" },
+  /* Oct 15: the ACC and Big 12 pages read app.hdintelligence.com/api/get-publish-public — the call and its format */
+  { name: "cap-acc", url: "https://theacc.com/sports/2025/8/28/availability-reporting-football.aspx", cap: "hdintelligence\\.com/api/get-publish-public", capN: 2, settle: 12000 },
+  { name: "cap-big12", url: "https://big12sports.com/sports/2025/8/14/FBreporting.aspx", cap: "hdintelligence\\.com/api/get-publish-public", capN: 2, settle: 12000 },
+  /* one game of the Sun Belt JSON in full, to read the player format */
+  { name: "avail-sbc", node: `const t=await (await fetch("https://sbcautostorage.blob.core.windows.net/availability-reports/sunbelt-football/prod/report.json?ts="+Date.now())).text();const j=JSON.parse(t);const g=(j.games||[]).find(g=>JSON.stringify(g).length>900)||(j.games||[])[0];return {ok:true,keys:Object.keys(j),n:(j.games||[]).length,game:JSON.stringify(g).slice(0,3500)}` },
   { name: "net-b1g", url: "https://bigten.org/sports/football/availability-report" },
   { name: "wpfit", mod: "wpfit" },
   { name: "cbbtest", mod: "cbbtest" },

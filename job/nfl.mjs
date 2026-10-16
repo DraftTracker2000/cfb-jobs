@@ -770,7 +770,9 @@ export async function depth(S, log) {
     for (const id in I0) { const a = I0[id]; if (bad(a[0]) && !I1[id] && W[lw] && W[lw][a[2]] && W[lw][a[2]][id] && W[lw][a[2]][id].status === "ACT") C(a[2]).inj.push([id, a[3], (a[4] || "").toUpperCase(), "cleared", null, a[0]]) } }
   /* everyone on a team this week, any status but cut/retired (Oct 7: Be the GM's free agents were "not on a depth chart", which listed
      Lane Johnson, hurt and off the Eagles' chart, and practice-squad players as free agents) */
-  const onRoster = [...new Set(RR.filter(o => +o.week === lw && o.gsis_id && !/^(CUT|RET)$/.test(o.status || "")).map(o => o.gsis_id))];
+  /* each team's own latest week (Oct 16: teams on a bye in the newest week — DET, CIN, MIN, MIA — were left out, so every one of their
+     players read as a free agent, and Tyreek Hill, really released, couldn't be told apart from them) */
+  const onRoster = [...new Set(RR.filter(o => +o.week === (tlw[o.team] || lw) && o.gsis_id && !/^(CUT|RET)$/.test(o.status || "")).map(o => o.gsis_id))];
   return { s: S, at: Date.now(), week: lw, dt, onRoster, cols: ["gsis", "name", "rank", "slot"], teams: byTeam, injCols: ["week", "status", "injury", "practice", "team"], resCols: ["gsis", "name", "pos", "code", "since", "dtr"], inj, reserve: res, rookie,
     chg, chgCols: { moves: ["gsis", "name", "pos", "move", "team"], dc: ["slot", "in gsis", "in", "out gsis", "out"], inj: ["gsis", "name", "pos", "status", "injury", "was"] }, chgSince: before, chgInjWeek };
 }

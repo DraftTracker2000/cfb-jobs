@@ -773,7 +773,11 @@ export async function depth(S, log) {
   /* each team's own latest week (Oct 16: teams on a bye in the newest week — DET, CIN, MIN, MIA — were left out, so every one of their
      players read as a free agent, and Tyreek Hill, really released, couldn't be told apart from them) */
   const onRoster = [...new Set(RR.filter(o => +o.week === (tlw[o.team] || lw) && o.gsis_id && !/^(CUT|RET)$/.test(o.status || "")).map(o => o.gsis_id))];
-  return { s: S, at: Date.now(), week: lw, dt, onRoster, cols: ["gsis", "name", "rank", "slot"], teams: byTeam, injCols: ["week", "status", "injury", "practice", "team"], resCols: ["gsis", "name", "pos", "code", "since", "dtr"], inj, reserve: res, rookie,
+  /* each team's practice squad this week (Oct 16 — Sam: a practice squad dropdown on the depth charts): status DEV on the weekly roster */
+  const ps = {}; for (const o of RR) { if (+o.week !== (tlw[o.team] || lw) || o.status !== "DEV" || !o.gsis_id) continue; const pos = (o.position || "").toUpperCase();
+    (ps[o.team] = ps[o.team] || []).push([o.gsis_id, o.full_name, pos === "HB" || pos === "FB" ? "RB" : pos]) }
+  for (const t in ps) ps[t].sort((a, b) => a[2].localeCompare(b[2]) || a[1].localeCompare(b[1]));
+  return { s: S, at: Date.now(), week: lw, dt, onRoster, ps, psCols: ["gsis", "name", "pos"], cols: ["gsis", "name", "rank", "slot"], teams: byTeam, injCols: ["week", "status", "injury", "practice", "team"], resCols: ["gsis", "name", "pos", "code", "since", "dtr"], inj, reserve: res, rookie,
     chg, chgCols: { moves: ["gsis", "name", "pos", "move", "team"], dc: ["slot", "in gsis", "in", "out gsis", "out"], inj: ["gsis", "name", "pos", "status", "injury", "was"] }, chgSince: before, chgInjWeek };
 }
 

@@ -210,6 +210,7 @@ const line = () => [0, 0, 0, 0, 0, 0, 0, 0, 0];
 function addPass(L, o) { if (o.sack) { L[5]++; L[2] += o.yds; if (o.fl) L[6]++; L[7] += o.epa; return } L[0]++; if (o.cmp) { L[1]++; L[2] += o.yds } if (o.td) L[3]++; if (o.int) L[4]++; if (o.fl) L[6]++; L[7] += o.epa; if (o.fd) L[8]++ }
 async function pbp(S, log) {
   const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null;
+  const LGD = {}, LYH = {};
   const P = {}, R = {}, U = {}, T = {}, G = {}, WX = {}, DRV = {}, FS = {}, DF = {}, OPQ = {}, INJ = {}, BON = {};
   /* who was thrown at on each side (Sam, Sept 30: "Detroit's best side" means nothing if Detroit gets torn apart everywhere): each
      receiver's targets and yards by side, and against each defense by side — so a side can be judged against who was thrown at */
@@ -363,6 +364,9 @@ async function pbp(S, log) {
         if (k && k.length === 2 || k === "M") { const tO = T[o.posteam] = T[o.posteam] || { off: {}, def: {} }, tD = T[o.defteam] = T[o.defteam] || { off: {}, def: {} };
           tO.gapO = tO.gapO || {}; tD.gapD = tD.gapD || {}; const x1 = tO.gapO[k] = tO.gapO[k] || [0, 0, 0, 0], x2 = tD.gapD[k] = tD.gapD[k] || [0, 0, 0, 0];
           for (const x of [x1, x2]) { x[0]++; x[1] += yds; x[2] += epa; if (o.success === "1") x[3]++ }
+          /* the league at each gap on designed runs only (Oct 16): QB scrambles average far more than a handoff and were lifting the
+             league line from 4.1 to 4.4 a carry, so every back's "vs the league" read about 0.3 too low */
+          if (o.qb_scramble !== "1") { const lg = LGD[k] = LGD[k] || [0, 0]; lg[0]++; lg[1] += yds }
           /* the same, game by game, for the offense — the line's lift (Sam, Sept 30: this year's starters vs how that spot ran last year) */
           const gg = (tO.gapG = tO.gapG || {})[g] = tO.gapG[g] || {}, x3 = gg[k] = gg[k] || [0, 0, 0, 0]; x3[0]++; x3[1] += yds; x3[2] += epa; if (o.success === "1") x3[3]++
           /* the ball carrier's own gaps (Sam, Sept 30: the run chart — his yards a carry at each gap against his own average) */
@@ -372,6 +376,12 @@ async function pbp(S, log) {
       const add = A => { A[0]++; A[1] += yds; if (td) A[2]++; A[3] += epa };
       add(u.all); if (late) add(u.late); if (rz) add(u.rz); const d = LOC[o.run_location] || "M"; add(u.dir[d] = u.dir[d] || [0, 0, 0, 0]);
       if (third) { u.third[0]++; if (o.third_down_converted === "1") u.third[1]++ }
+      /* how his carries go (Oct 16 — Sam on Jeanty: "that jeanty one is eye opening"): every designed carry's yards, counted by yard
+         (yards → carries), for the back, the offense, the defense facing it and the league, so the site can split carries into stuffed
+         (0 or less) / short (1–3) / good (4–9) / big (10+), find the typical carry, and take out his longest runs. Scrambles left out. */
+      if (o.qb_scramble !== "1" && o.yards_gained !== "" && o.yards_gained !== "NA") { const yk = String(Math.round(yds)), inc = H => { H[yk] = (H[yk] || 0) + 1 };
+        inc(u.yh = u.yh || {}); inc(LYH);
+        if (o.posteam && o.defteam) { const tO = T[o.posteam] = T[o.posteam] || { off: {}, def: {} }, tD = T[o.defteam] = T[o.defteam] || { off: {}, def: {} }; inc(tO.yhO = tO.yhO || {}); inc(tD.yhD = tD.yhD || {}) } }
     }
   });
   /* comebacks and game-winning drives, credited to the QB who threw most on the drive (Pro Football Reference's idea, built
@@ -422,7 +432,7 @@ async function pbp(S, log) {
   for (const t in T) if (T[t].sit) for (const side of ["o", "d"]) { const z = T[t].sit[side], v = Object.values(z.rzd); z.rz = [v.length, v.filter(Boolean).length]; delete z.rzd }
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
-    gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], pass: P, rec: R, rush: U, team: T, game: G, wx: WX, opq: OPQ, inj: INJ, bon: BON,
+    gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, bon: BON,
     dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF };
 }
 /* rain or snow at kickoff, from the play-by-play's weather line ("Light Rain Temp: 45° F, …"): 0 clear or dry, 1 rain, 2 snow,

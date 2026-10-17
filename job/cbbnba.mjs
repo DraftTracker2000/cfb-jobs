@@ -274,7 +274,13 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
   { const all = {}; for (const [y, P] of Object.entries((NH && NH.seasons) || {})) for (const [id, r] of Object.entries(P)) { if (allp[id]) continue; const X = all[id] = all[id] || { nm: r[0], tm: r[1], s: [] }; X.s.push([+y, r[1], ...r.slice(2, 17), r[17] ? r[17].slice(0, 3).concat([r[17][3]]) : null]); X.tm = r[1] }
     for (const [id, X] of Object.entries(all)) { X.s.sort((a, b) => a[0] - b[0]); X.tag = tagOf(id, X.s) }
     await putPack(`p${S}_cbb-nbaall`, { p: all }); log(`nba: ${Object.keys(all).length} more NBA players with pages`) }
-  await putPack(`p${S}_cbb-nbagames`, { season: curNba, zSeason: Z ? zSeason : null, zAvg: Z ? Z.avg : null, pz, allp, series, seriesCols: ["season", "date", "home", "away", "hs", "as"], teams: T, games, cols: ["id", "date", "home", "away", "hs", "as", "state", "tv", "pHome", "ourMargin", "playoffs"], rosCols: ["espnId", "name", "pos", "ht", "exp", "collegeCbbdId", "ppgLast", "outcome", "gamesLast"] });
+  /* the five positions (Oct 17 — Sam: "why … when those are all pretty common positions to know"): ESPN's NBA feed only says G, F or C,
+     so the PG / SG / SF / PF / C come from ESPN's fantasy basketball player list (same player ids), one call per run */
+  const p5 = {}; for (const yy of [curNba + 1, curNba]) { try { const r = await fetch(`https://lm-api-reads.fantasy.espn.com/apis/v3/games/fba/seasons/${yy}/players?view=players_wl`, { headers: { "x-fantasy-filter": JSON.stringify({ filterActive: { value: true } }), accept: "application/json" } });
+      if (!r.ok) continue; const L = await r.json(); if (!Array.isArray(L) || L.length < 300) continue; const PN = ["", "PG", "SG", "SF", "PF", "C"];
+      for (const x of L) { const k = PN[x.defaultPositionId]; if (k) p5[String(x.id)] = k } log(`nba positions (ESPN fantasy ${yy}): ${Object.keys(p5).length}`); break } catch (e) { log("nba positions: " + e.message) } }
+  for (const [id, X] of Object.entries(allp)) if (p5[id]) X.p5 = p5[id];
+  await putPack(`p${S}_cbb-nbagames`, { season: curNba, zSeason: Z ? zSeason : null, zAvg: Z ? Z.avg : null, pz, allp, p5, series, seriesCols: ["season", "date", "home", "away", "hs", "as"], teams: T, games, cols: ["id", "date", "home", "away", "hs", "as", "state", "tv", "pHome", "ourMargin", "playoffs"], rosCols: ["espnId", "name", "pos", "ht", "exp", "collegeCbbdId", "ppgLast", "outcome", "gamesLast"] });
   log(`nba games: ${games.length} games, ${Object.keys(T).length} teams`);
   return true;
 }

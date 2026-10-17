@@ -527,7 +527,17 @@ export async function main() {
   for (const y of off ? [S, S + 1] : [S]) for (const [a, b] of ranges(y, 31)) games.push(...await cb("/games", { season: y, startDateRange: a, endDateRange: b }));   /* CBBD answers at most 3,000 rows: a month at a time */
   const seen = new Set(), G = games.filter(g => !seen.has(g.id) && seen.add(g.id));
   const isAP = p => /ap/i.test(p.pollType || "");
-  const polls = (await cb("/rankings", { season: NEXT }).catch(() => [])).filter(isAP);
+  const pollsAll = await cb("/rankings", { season: NEXT }).catch(() => []), polls = pollsAll.filter(isAP);
+  /* the full AP and Coaches polls for the Polls page (Oct 17 — basketball catching up to football's AP / Coaches page): the latest week of each,
+     every ranked team with rank, first-place votes and points, and its rank the week before (movement) */
+  /* before the new season's first poll, last season's final polls stand in (marked with their season) */
+  const pollSrc = pollsAll.length ? [NEXT, pollsAll] : off ? [S, await cb("/rankings", { season: S }).catch(() => [])] : [NEXT, []];
+  const pollPack = (() => { const out = { season: pollSrc[0] }; for (const [k, re] of [["ap", /ap/i], ["coaches", /coach/i]]) { const P = pollSrc[1].filter(p => re.test(p.pollType || ""));
+      if (!P.length) continue; const wkOf = p => (p.seasonType === "postseason" ? 100 : 0) + (p.week || 0), wks = [...new Set(P.map(wkOf))].sort((a, b) => a - b), w = wks[wks.length - 1], pw = wks[wks.length - 2];
+      const prev = Object.fromEntries(P.filter(p => wkOf(p) === pw).map(p => [p.teamId, p.ranking]));
+      const cur = P.filter(p => wkOf(p) === w).sort((a, b) => (a.ranking || 99) - (b.ranking || 99));
+      out[k] = { week: w >= 100 ? "final" : w, date: (cur[0] && cur[0].pollDate) || null, name: (cur[0] && cur[0].pollType) || k, rows: cur.map(p => [p.teamId, p.ranking, p.firstPlaceVotes || 0, p.points || 0, prev[p.teamId] ?? null]) } }
+    return out })();
   const pollsLast = off ? (await cb("/rankings", { season: S }).catch(() => [])).filter(isAP) : [];
   const latestPoll = arr => { if (!arr.length) return {}; const wk = Math.max(...arr.map(p => (p.seasonType === "postseason" ? 100 : 0) + (p.week || 0))); return Object.fromEntries(arr.filter(p => (p.seasonType === "postseason" ? 100 : 0) + (p.week || 0) === wk).map(p => [p.teamId, p.ranking])) };
   const AP = latestPoll(polls), APlast = latestPoll(pollsLast);
@@ -645,7 +655,7 @@ export async function main() {
   const meta = { built: Date.now(), season: S, next: NEXT, off, test, pickTest: GM.test, trainSeasons: `${TRAIN_FROM}–${KNOWN_TO}`, nTrain: train.length, recTrain: recRows.length, calls: CALLS, feats: FEATS };
   await putPack(`p${S}_cbb-core`, { meta, players: board, bands, qs: QS, bandStats: BAND_STATS, teamNames: Object.fromEntries(Object.entries(TEAM).map(([id, t]) => [id, [t.school, t.abbreviation, t.primaryColor]])) });
   await putPack(`p${S}_cbb-careers`, careers);
-  await putPack(`p${S}_cbb-teams`, { season: S, next: NEXT, teams });
+  await putPack(`p${S}_cbb-teams`, { season: S, next: NEXT, teams, polls: pollPack });
   await putPack(`p${S}_cbb-draft`, { picks: draftOut.map(d => ({ ...d, tag: d.id && NBA_BY_CID[d.id] ? NBA_BY_CID[d.id].tag.t : null })), test });
   await putPack(`p${S}_cbb-nba`, { curNba, players: NBA, cols: ["season", "team", "gp", "gs", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "playoffs[gp,gs,min,pts]"], carCols: ["season", "team", "g", "gs", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "ws40"] });
   try { await finSave() } catch (e) { log("finished-season cache: " + e.message) }

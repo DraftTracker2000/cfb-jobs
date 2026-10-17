@@ -211,9 +211,14 @@ async function nbaPbpSeason(y, log) {
 export const rosExtra = r => [parseInt(r.weight) || null, r.jersey != null && r.jersey !== "" && r.jersey !== "NA" ? String(r.jersey) : null,
   [r.birth_place_city, r.birth_place_country && r.birth_place_country !== "USA" ? r.birth_place_country : r.birth_place_state].filter(x => x && x !== "NA").join(", ") || null, r.position_name && r.position_name !== "NA" ? r.position_name : null];
 export async function buildNbaGames({ getPack, putPack, log, S, curNba, players, colOfEspn = () => null }) {
-  const sched = await getCsv(REL("espn_nba_schedules", `nba_schedule_${curNba}.csv`)), box = await getCsv(REL("espn_nba_team_boxscores", `team_box_${curNba - 1}.csv`)), ros = await getCsv(REL("espn_nba_rosters", `rosters_${curNba}.csv`));
-  if (!sched || !box) { log("nba games: files not out yet"); return null }
-  const T = nbaTeamRatings(rowsOf(box));
+  /* last season is finished, so its team ratings are worked out once and kept (Oct 17 — Sam: "calling the information only once and keeping
+     the stagnant information on site"); only this season's files are read each run */
+  const sched = await getCsv(REL("espn_nba_schedules", `nba_schedule_${curNba}.csv`)), ros = await getCsv(REL("espn_nba_rosters", `rosters_${curNba}.csv`));
+  const LT = await getPack("p2000_cbb-nbalastteams").catch(() => null); let T;
+  if (LT && LT.season === curNba - 1 && LT.T && Object.keys(LT.T).length >= 30) { T = LT.T; log(`nba: ${curNba - 1} team ratings kept`) }
+  else { const box = await getCsv(REL("espn_nba_team_boxscores", `team_box_${curNba - 1}.csv`)); if (!box) { log("nba games: files not out yet"); return null }
+    T = nbaTeamRatings(rowsOf(box)); await putPack("p2000_cbb-nbalastteams", { season: curNba - 1, T: JSON.parse(JSON.stringify(T)) }) }
+  if (!sched) { log("nba games: files not out yet"); return null }
   /* this season, once it starts (Oct 10 — "ready to start populating with the new season?"): this season's box scores blend into the
      rating behind our pick, game by game (15 games = half each), and each team's record this season rides along */
   const curBox = await getCsv(REL("espn_nba_team_boxscores", `team_box_${curNba}.csv`)).catch(() => null), TC = curBox ? nbaTeamRatings(rowsOf(curBox), 1) : {};
@@ -244,7 +249,9 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
   /* players' zones, assists and clutch lines from the same season as the team zones (20+ shots, or any clutch shot) */
   const pz = {}; if (Z && Z.players) for (const [id, P] of Object.entries(Z.players)) { const n = P.z.reduce((a, z) => a + z[1], 0); if (n >= 20 || P.cl[2] + P.cl[4] > 0 || (P.dz && P.dz.reduce((a, z) => a + z[1], 0) >= 300)) pz[id] = P }
   /* game logs (this season once it has games, else last season): [date, team, opp, home 1/0, min, pts, reb, ast, stl, blk, tov, fgm, fga, tpm, tpa, ftm, fta, +/-, started] */
-  try { for (const y of [curNba, curNba - 1]) { const txt = await getCsv(REL("espn_nba_player_boxscores", `player_box_${y}.csv`)); if (!txt) continue; const R = rowsOf(txt).filter(r => +r.season_type === 2 && +r.minutes > 0); if (R.length < 500) continue;
+  try { const LG0 = await getPack(`p${S}_cbb-nbalogs`).catch(() => null);
+    for (const y of [curNba, curNba - 1]) { if (y < curNba && LG0 && LG0.season === y && LG0.p) { log(`nba logs ${y}: kept (season finished)`); break }   /* a finished season's logs never change (Oct 17) */
+      const txt = await getCsv(REL("espn_nba_player_boxscores", `player_box_${y}.csv`)); if (!txt) continue; const R = rowsOf(txt).filter(r => +r.season_type === 2 && +r.minutes > 0); if (R.length < 500) continue;
       const P = {}; for (const r of R) (P[r.athlete_id] = P[r.athlete_id] || []).push([String(r.game_date || "").slice(0, 10), r.team_abbreviation, r.opponent_team_abbreviation, /home/i.test(r.home_away) ? 1 : 0, Math.round(+r.minutes), +r.points || 0, +r.rebounds || 0, +r.assists || 0, +r.steals || 0, +r.blocks || 0, +r.turnovers || 0, +r.field_goals_made || 0, +r.field_goals_attempted || 0, +r.three_point_field_goals_made || 0, +r.three_point_field_goals_attempted || 0, +r.free_throws_made || 0, +r.free_throws_attempted || 0, r.plus_minus === "" || r.plus_minus == null ? null : +r.plus_minus, /true/i.test(r.starter) ? 1 : 0]);
       for (const k in P) P[k].sort((a, b) => a[0].localeCompare(b[0]));
       await putPack(`p${S}_cbb-nbalogs`, { season: y, cols: ["date", "team", "opp", "home", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "pm", "start"], p: P });

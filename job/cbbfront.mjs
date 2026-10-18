@@ -22,17 +22,19 @@ export function parseNbaGMs(wt, nameToAb) {
 async function pool(items, n, fn) { const out = []; let i = 0; await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]).catch(() => null) } })); return out }
 export async function buildNbaFront({ getPack, putPack, log, S, curNba }) {
   const old = await getPack(`p${S}_cbb-nbafront`).catch(() => null);
-  if (old && old.at && Date.now() - old.at < 6 * 864e5 && old.season === curNba) { log("nba front offices: kept (under a week old)"); return old }
+  if (old && old.at && Date.now() - old.at < 6 * 864e5 && old.season === curNba && old.v === 2) { log("nba front offices: kept (under a week old)"); return old }
   const G = await getPack(`p${S}_cbb-nbagames`).catch(() => null); if (!G || !G.teams) { log("nba front offices: no team list yet"); return null }
   const nameToAb = {}; for (const [ab, t] of Object.entries(G.teams)) if (t.nm) nameToAb[t.nm] = ab; nameToAb["LA Clippers"] = nameToAb["LA Clippers"] || "LAC"; nameToAb["Los Angeles Clippers"] = "LAC";
   let gms = (old && old.gms) || {};
   try { const r = await fetch("https://en.wikipedia.org/w/api.php?action=parse&page=List_of_NBA_general_managers&prop=wikitext&format=json&formatversion=2&redirects=1", { headers: UA });
     const j = await r.json(); const got = parseNbaGMs(j.parse.wikitext, nameToAb); if (Object.keys(got).length >= 25) gms = got; log(`nba GMs: ${Object.keys(got).length} from Wikipedia`) } catch (e) { log("nba GMs: " + e.message) }
+  /* the team is the one ESPN has the contract with this season (v2, Oct 17 — rosters can lag a trade) */
+  const abOfId = {}; for (const [ab, t] of Object.entries(G.teams)) if (t.id != null) abOfId[String(t.id)] = ab;
   const ids = Object.entries(G.allp || {}).filter(([, a]) => a.tm).map(([id, a]) => [id, a.tm]);
   const con = {}; let ok = 0;
   await pool(ids, 6, async ([id, tm]) => { const r = await fetch(`https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/athletes/${id}/contracts/${curNba}`); if (!r.ok) return;
-    const c = await r.json(); if (!c || c.salary == null) return; con[id] = [c.salary, c.yearsRemaining ?? null, c.optionType ?? 0, c.birdStatus ?? null, c.minimumSalaryException ? 1 : 0, tm]; ok++ });
+    const c = await r.json(); if (!c || c.salary == null) return; const tid = ((c.team && c.team.$ref) || "").match(/teams\/(\d+)/); con[id] = [c.salary, c.yearsRemaining ?? null, c.optionType ?? 0, c.birdStatus ?? null, c.minimumSalaryException ? 1 : 0, (tid && abOfId[tid[1]]) || tm]; ok++ });
   log(`nba contracts: ${ok} of ${ids.length} players (ESPN, ${curNba - 1}–${String(curNba).slice(2)})`);
-  const out = { at: Date.now(), season: curNba, gms, con: ok >= 200 ? con : (old && old.con) || con };
+  const out = { v: 2, at: Date.now(), season: curNba, gms, con: ok >= 200 ? con : (old && old.con) || con };
   await putPack(`p${S}_cbb-nbafront`, out); return out;
 }

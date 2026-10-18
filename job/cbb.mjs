@@ -31,6 +31,7 @@ import { buildCoachX } from "./cbbcoachx.mjs";
 import { buildOldDraft } from "./cbbolddraft.mjs";
 import { wikiSchoolKey } from "./cbbcoach.mjs";
 import { buildNba, buildNbaGames, refreshNbaOnCourt } from "./cbbnba.mjs";
+import { buildNbaFront } from "./cbbfront.mjs";
 import { fetchRosters, fetchSummary } from "./cbbespn.mjs";
 
 let SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
@@ -314,6 +315,7 @@ export async function main() {
   const lastColOf = {}; for (const y of Object.keys(ALL).sort()) for (const r of ALL[y]) { const c = lastColOf[r.id]; if (!c || c[1] < +y || (r.g || 0) > c[2]) lastColOf[r.id] = [r.tm, +y, r.g || 0] }
   const colOfEspn = eid => { const cid = (NBA[eid] && NBA[eid].cid) || sidToCbbd[eid]; const c = cid && lastColOf[cid]; return c ? c[0] : null };
   try { await buildNbaGames({ getPack, putPack, log, S, curNba: M >= 7 ? Yr + 1 : Yr, players: NBA, colOfEspn }) } catch (e) { log("nba games: " + e.message) }
+  try { await buildNbaFront({ getPack, putPack, log, S, curNba: M >= 7 ? Yr + 1 : Yr }) } catch (e) { log("nba front offices: " + e.message) }   /* GMs and contracts, weekly (Phase 6, Oct 17) */
   /* an old NBA ESPN id can be a different person's college ESPN id (Tony Parker's 1015 matched a 2009 college player): the surnames must agree */
   { const nmOf = {}; for (const rows of Object.values(ALL)) for (const r of rows) if (r.sid) nmOf[r.sid] = r.nm;
     const sur = n => String(n || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\s+/).map(w => w.replace(/[^a-z]/g, "")).filter(w => w && !/^(jr|sr|ii|iii|iv|v)$/.test(w)).pop() || "";

@@ -24,6 +24,8 @@
      look     the look check only (job/look.mjs) on PAGE_PATH → notice on the run
      cdef     the college defense chart (every FBS team's defenders, from the charted plays) → packs only
      dgtest   defender draft-grade test (Lab): refits and blind-scores the grade → pYYYY_dgtest, packs only
+     grtest   grade test (Lab, PAGE_PATH=/lab/): held-out draft accuracy of the lab grade vs the old one, and every player's BoardScore
+              next to the live one → pYYYY_grtest, packs only
      oltest   the OL draft chance: every FBS lineman, refit and graded → pYYYY_oltest + pYYYY_olgrade, packs only (weekly, Wednesday)
      avail    NFL availability only (weekly roster status 2016 on → weeks active / injured / away), a few minutes; also runs with weekly and history
 
@@ -50,14 +52,14 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest"];
+const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
-const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest"];   // these write packs only; the shared data version is unchanged
+const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest"];   // these write packs only; the shared data version is unchanged
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, nfl: 30, nflhistory: 120, nfldraft: 60 }[MODE];
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflhistory: 120, nfldraft: 60 }[MODE];
 const PAGE = ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 const started = Date.now();
 

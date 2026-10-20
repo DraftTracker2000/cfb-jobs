@@ -24,6 +24,7 @@ import { fixCoaches } from "./staff.mjs";
 import { pickPack } from "./picks.mjs";
 import { contractPack } from "./contracts.mjs";
 import { classify, notHurt } from "./avail.mjs";
+import { dynFeatures } from "./dyn.mjs";
 
 const NF = "https://github.com/nflverse/nflverse-data/releases/download/";
 const SKILL = new Set(["QB", "RB", "FB", "WR", "TE", "HB"]);
@@ -580,17 +581,28 @@ export async function starts(S, G, log) {
    kicks in wind (15+ mph, outdoors), cold (40° or under) and rain or snow, makes over what the league's kickers make from those
    distances that season, kickoffs (touchbacks, depth); punts: gross and net, inside the 20 / 10 / 5, touchbacks, returns, blocks. ── */
 export const K_COLS = ["name", "team", "fgM", "fgA", "u40M", "u40A", "40M", "40A", "50M", "50A", "55M", "55A", "60M", "60A", "long", "xpM", "xpA",
-  "windM", "windA", "coldM", "coldA", "wetM", "wetA", "overExp", "ko", "koTB", "koDist", "games", "koRet", "koRetYds", "wideR", "wideL", "short", "blocked", "post"];
-export const P_COLS = ["name", "team", "punts", "gross", "net", "in20", "in10", "in5", "tb", "blocked", "fairCatch", "retYds", "long", "games", "returned"];
+  "windM", "windA", "coldM", "coldA", "wetM", "wetA", "overExp", "ko", "koTB", "koDist", "games", "koRet", "koRetYds", "wideR", "wideL", "short", "blocked", "post",
+  "q4M", "q4A", "cluM", "cluA", "gwM", "gwA", "iceM", "iceA",
+  "h1M", "h1A", "h2M", "h2A", "inM", "inA", "outM", "outA", "lxpM", "lxpA", "onsA", "onsRec"];
+export const P_COLS = ["name", "team", "punts", "gross", "net", "in20", "in10", "in5", "tb", "blocked", "fairCatch", "retYds", "long", "games", "returned",
+  "lPunts", "lGross", "lNet", "lIn20", "lTb", "lRet", "lRetYds"];
 export async function kicking(S, log) {
   const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null;
-  const FG = [], K = {}, P = {}, DST = {}, KG = {};
+  const FG = [], K = {}, P = {}, DST = {}, KG = {}, PREV = {};
   rows(t, ["game_id", "season_type", "posteam", "yardline_100", "field_goal_attempt", "field_goal_result", "kick_distance", "extra_point_attempt", "extra_point_result",
     "kickoff_attempt", "touchback", "punt_attempt", "punt_blocked", "punt_fair_catch", "return_yards", "kicker_player_id", "kicker_player_name", "punter_player_id",
     "punter_player_name", "weather", "roof", "temp", "wind", "desc", "kickoff_out_of_bounds", "kickoff_fair_catch", "punt_out_of_bounds", "punt_downed",
     "defteam", "play_type", "yards_gained", "sack", "interception", "fumble_lost", "fumble_forced", "fumble_recovery_1_team", "safety", "touchdown", "td_team",
-    "tackled_for_loss", "pass_defense_1_player_id", "pass_defense_2_player_id", "two_point_attempt"], o => {
+    "tackled_for_loss", "pass_defense_1_player_id", "pass_defense_2_player_id", "two_point_attempt", "qtr", "game_seconds_remaining", "score_differential",
+    "timeout", "timeout_team", "own_kickoff_recovery"], o => {
+    /* late and pressure kicks (Oct 18 — Sam: "kicking splits like when they make their kicks and if they are clutch in the 4th"): 4th quarter
+       and OT; a tying or go-ahead kick there (down 0–3 before it); the final 2:00 of the 4th or OT; and "iced" — the defense called a
+       timeout on the play right before the kick */
+    const iced = PREV.g === o.game_id && PREV.to && PREV.tt === o.defteam;
+    PREV.g = o.game_id; PREV.to = o.timeout === "1"; PREV.tt = o.timeout_team;
     if (o.season_type !== "REG") return;
+    const qt = num(o.qtr) || 0, late = qt >= 4, sd = num(o.score_differential), gsr = num(o.game_seconds_remaining);
+    const clutch = late && sd != null && sd >= -3 && sd <= 0, gw = clutch && (qt >= 5 || (gsr != null && gsr <= 120));
     /* fantasy D/ST, game by game (Sam, Oct 2: ESPN scores yards allowed, passes defended, TFLs): for each defense — yards allowed, sacks,
        INTs, fumbles recovered and forced, safeties, blocked kicks, defensive TDs, return TDs, TFLs, passes defended */
     { const g = o.game_id, pt = o.play_type, D = o.defteam, box = t => { const x = (DST[g] = DST[g] || {})[t] = DST[g][t] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; return x };
@@ -613,26 +625,36 @@ export async function kicking(S, log) {
     /* how a miss missed (Sam, Oct 1: "do we know if kickers miss right or left?"): the play description says wide right / left, short,
        off the upright or crossbar, or blocked */
     const how = o.field_goal_result === "made" ? null : o.field_goal_result === "blocked" || /blocked/i.test(o.desc || "") ? "blocked" : /upright|cross ?bar|doink/i.test(o.desc || "") ? "post" : /wide right/i.test(o.desc || "") ? "wideR" : /wide left/i.test(o.desc || "") ? "wideL" : /short/i.test(o.desc || "") ? "short" : null;
-    if (o.field_goal_attempt === "1" && o.kicker_player_id) { const d = num(o.kick_distance); if (d == null) return; FG.push([o.kicker_player_id, o.kicker_player_name, o.posteam, d, o.field_goal_result === "made" ? 1 : 0, wind, cold, wet, o.game_id, how]); return }
-    const k = id => K[id] = K[id] || { name: null, team: {}, xpM: 0, xpA: 0, ko: 0, koTB: 0, koDist: 0, koRet: 0, koRetYds: 0, g: new Set() };
-    if (o.extra_point_attempt === "1" && o.kicker_player_id) { const x = k(o.kicker_player_id); x.name = o.kicker_player_name; x.xpA++; if (o.extra_point_result === "good") x.xpM++; x.g.add(o.game_id); return }
+    if (o.field_goal_attempt === "1" && o.kicker_player_id) { const d = num(o.kick_distance); if (d == null) return; FG.push([o.kicker_player_id, o.kicker_player_name, o.posteam, d, o.field_goal_result === "made" ? 1 : 0, wind, cold, wet, o.game_id, how, late, clutch, gw, iced, qt <= 2, o.roof === "dome" || o.roof === "closed"]); return }
+    const k = id => K[id] = K[id] || { name: null, team: {}, xpM: 0, xpA: 0, ko: 0, koTB: 0, koDist: 0, koRet: 0, koRetYds: 0, g: new Set(), lxp: [0, 0], ons: [0, 0] };
+    /* (Oct 18 — Sam, "might as well"): extra points in the 4th quarter and OT, and onside kicks tried and recovered (the play
+       description says "onside"; nflverse never says "squib", so squib kicks can't be told apart) */
+    if (o.extra_point_attempt === "1" && o.kicker_player_id) { const x = k(o.kicker_player_id); x.name = o.kicker_player_name; x.xpA++; if (o.extra_point_result === "good") x.xpM++; x.g.add(o.game_id);
+      if (late) { x.lxp[1]++; if (o.extra_point_result === "good") x.lxp[0]++ } return }
     if (o.kickoff_attempt === "1" && o.kicker_player_id) { const x = k(o.kicker_player_id); x.name = x.name || o.kicker_player_name; x.ko++; if (o.touchback === "1") x.koTB++; x.koDist += num(o.kick_distance) || 0;
+      if (/onside/i.test(o.desc || "")) { x.ons[0]++; if (o.own_kickoff_recovery === "1") x.ons[1]++ }
       /* returned kickoffs (not touchbacks, fair catches or out of bounds) and the yards they went for */
       if (o.touchback !== "1" && o.kickoff_fair_catch !== "1" && o.kickoff_out_of_bounds !== "1" && num(o.return_yards) != null) { x.koRet++; x.koRetYds += num(o.return_yards) } return }
-    if (o.punt_attempt === "1" && o.punter_player_id) { const x = P[o.punter_player_id] = P[o.punter_player_id] || { name: o.punter_player_name, team: {}, n: 0, gross: 0, net: 0, in20: 0, in10: 0, in5: 0, tb: 0, bl: 0, fc: 0, ret: 0, rn: 0, long: 0, g: new Set() };
+    if (o.punt_attempt === "1" && o.punter_player_id) { const x = P[o.punter_player_id] = P[o.punter_player_id] || { name: o.punter_player_name, team: {}, n: 0, gross: 0, net: 0, in20: 0, in10: 0, in5: 0, tb: 0, bl: 0, fc: 0, ret: 0, rn: 0, long: 0, g: new Set(), L: [0, 0, 0, 0, 0, 0, 0] };
       x.team[o.posteam] = (x.team[o.posteam] || 0) + 1; x.g.add(o.game_id); x.n++;
       if (o.punt_blocked === "1") { x.bl++; return }
       const d = num(o.kick_distance) || 0, r = num(o.return_yards) || 0, tb = o.touchback === "1", y = num(o.yardline_100);
       x.gross += d; x.long = Math.max(x.long, d); x.ret += r; if (tb) x.tb++; if (o.punt_fair_catch === "1") x.fc++;
       if (!tb && o.punt_fair_catch !== "1" && o.punt_out_of_bounds !== "1" && o.punt_downed !== "1") x.rn++;
       x.net += d - r - (tb ? 20 : 0);
-      if (!tb && y != null) { const spot = y - d + r; if (spot <= 20) x.in20++; if (spot <= 10) x.in10++; if (spot <= 5) x.in5++ } } });
+      const rn = !tb && o.punt_fair_catch !== "1" && o.punt_out_of_bounds !== "1" && o.punt_downed !== "1";
+      let i20 = false; if (!tb && y != null) { const spot = y - d + r; if (spot <= 20) { x.in20++; i20 = true } if (spot <= 10) x.in10++; if (spot <= 5) x.in5++ }
+      /* late punts (4th quarter and OT): count, gross, net, inside the 20, touchbacks, returned ones and their yards */
+      if (late) { const Lp = x.L; Lp[0]++; Lp[1] += d; Lp[2] += d - r - (tb ? 20 : 0); if (i20) Lp[3]++; if (tb) Lp[4]++; if (rn) { Lp[5]++; Lp[6] += r } } } });
   /* the league's make rate by distance this season (smoothed over ±2 yards) — what a kick from there is expected to be worth */
   const by = {}; for (const f of FG) { const b = by[f[3]] = by[f[3]] || [0, 0]; b[0] += f[4]; b[1]++ }
   const exp = d => { let m = 0, n = 0; for (let x = d - 2; x <= d + 2; x++) if (by[x]) { m += by[x][0]; n += by[x][1] } return n ? m / n : .5 };
-  for (const f of FG) { const [id, nm, tm, d, made, wind, cold, wet, g, how] = f; const x = K[id] = K[id] || { name: null, team: {}, xpM: 0, xpA: 0, ko: 0, koTB: 0, koDist: 0, koRet: 0, koRetYds: 0, g: new Set() };
+  for (const f of FG) { const [id, nm, tm, d, made, wind, cold, wet, g, how] = f; const x = K[id] = K[id] || { name: null, team: {}, xpM: 0, xpA: 0, ko: 0, koTB: 0, koDist: 0, koRet: 0, koRetYds: 0, g: new Set(), lxp: [0, 0], ons: [0, 0] };
     x.name = x.name || nm; x.team[tm] = (x.team[tm] || 0) + 1; x.g.add(g);
-    const B = x.fg = x.fg || { m: 0, a: 0, b: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], long: 0, w: [0, 0], c: [0, 0], r: [0, 0], oe: 0, miss: { wideR: 0, wideL: 0, short: 0, blocked: 0, post: 0 } };
+    const B = x.fg = x.fg || { m: 0, a: 0, b: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], long: 0, w: [0, 0], c: [0, 0], r: [0, 0], oe: 0, miss: { wideR: 0, wideL: 0, short: 0, blocked: 0, post: 0 }, q4: [0, 0], cl: [0, 0], gw: [0, 0], ic: [0, 0], h: [0, 0, 0, 0], io: [0, 0, 0, 0] };
+    { const [, , , , , , , , , , lt, cl, gw, ic, h1, ind] = f; if (lt) { B.q4[1]++; B.q4[0] += made } if (cl) { B.cl[1]++; B.cl[0] += made } if (gw) { B.gw[1]++; B.gw[0] += made } if (ic) { B.ic[1]++; B.ic[0] += made }
+      /* first half vs second half and OT; indoors (dome or closed roof) vs outdoors (open roofs count as outdoors) */
+      const hi = h1 ? 0 : 2; B.h[hi + 1]++; B.h[hi] += made; const ii = ind ? 0 : 2; B.io[ii + 1]++; B.io[ii] += made }
     if (how) B.miss[how]++;
     B.a++; B.m += made; const i = d < 40 ? 0 : d < 50 ? 1 : d < 55 ? 2 : d < 60 ? 3 : 4; B.b[i][1]++; B.b[i][0] += made; if (made) B.long = Math.max(B.long, d);
     if (wind) { B.w[1]++; B.w[0] += made } if (cold) { B.c[1]++; B.c[0] += made } if (wet) { B.r[1]++; B.r[0] += made } B.oe += made - exp(d) }
@@ -640,8 +662,9 @@ export async function kicking(S, log) {
   const KO = {}; for (const id in K) { const x = K[id], B = x.fg || { m: 0, a: 0, b: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], long: 0, w: [0, 0], c: [0, 0], r: [0, 0], oe: 0 }; if (!B.a && !x.xpA) continue;
     const MS = B.miss || { wideR: 0, wideL: 0, short: 0, blocked: 0, post: 0 };
     KO[id] = [x.name, team(x.team), B.m, B.a, ...B.b.flat(), B.long, x.xpM, x.xpA, ...B.w, ...B.c, ...B.r, Math.round(B.oe * 100) / 100, x.ko, x.koTB, x.ko ? Math.round(x.koDist / x.ko * 10) / 10 : null, x.g.size,
-      x.koRet, x.koRetYds, MS.wideR, MS.wideL, MS.short, MS.blocked, MS.post] }
-  const PO = {}; for (const id in P) { const x = P[id]; if (x.n < 5) continue; PO[id] = [x.name, team(x.team), x.n, x.gross, x.net, x.in20, x.in10, x.in5, x.tb, x.bl, x.fc, x.ret, x.long, x.g.size, x.rn] }
+      x.koRet, x.koRetYds, MS.wideR, MS.wideL, MS.short, MS.blocked, MS.post, ...(B.q4 || [0, 0]), ...(B.cl || [0, 0]), ...(B.gw || [0, 0]), ...(B.ic || [0, 0]),
+      ...(B.h || [0, 0, 0, 0]), ...(B.io || [0, 0, 0, 0]), ...x.lxp, ...x.ons] }
+  const PO = {}; for (const id in P) { const x = P[id]; if (x.n < 5) continue; PO[id] = [x.name, team(x.team), x.n, x.gross, x.net, x.in20, x.in10, x.in5, x.tb, x.bl, x.fc, x.ret, x.long, x.g.size, x.rn, ...x.L] }
   return { K: KO, P: PO, DST, KG };
 }
 export const DST_COLS = ["yds", "sk", "int", "fr", "ff", "saf", "blk", "dtd", "sttd", "tfl", "pd"], KG_COLS = ["u40M", "u40A", "40M", "40A", "50M", "50A", "60M", "60A", "xpM", "xpA"];
@@ -823,8 +846,8 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   { const hc = {}; for (const [t, v] of Object.entries(staff || {})) if (v.hc) hc[t] = { hc: v.hc, since: v.hcSince, interim: v.hcInterim }; fixCoaches(G, Y, hc, log) }
   await put(P("games"), G);
   const POS = {}, PLN = {};
-  let DRAFTED = [], ESPN = {}, KP = {};
-  { const PL = await players(log), DP = PL.def; DRAFTED = PL.drafted; ESPN = PL.espn; KP = PL.kp; delete PL.def; delete PL.drafted; delete PL.espn; delete PL.kp; for (const id in PL.p) { POS[id] = PL.p[id][1]; PLN[id] = PL.p[id][0] } await put(P("players"), PL); await put(P("dplayers"), { cols: PLAYER_COLS.slice(1), p: DP }) }
+  let DRAFTED = [], ESPN = {}, KP = {}, PLP = {};
+  { const PL = await players(log), DP = PL.def; DRAFTED = PL.drafted; ESPN = PL.espn; KP = PL.kp; delete PL.def; delete PL.drafted; delete PL.espn; delete PL.kp; PLP = PL.p; for (const id in PL.p) { POS[id] = PL.p[id][1]; PLN[id] = PL.p[id][0] } await put(P("players"), PL); await put(P("dplayers"), { cols: PLAYER_COLS.slice(1), p: DP }) }
   const lastPlayed = Math.max(...G.g.filter(g => g[7] != null).map(g => g[1]));
   /* first run under a new year prefix (the calendar rolls over in March): write every season again so the page's p<Y> set is complete */
   if (!all && getPack) { let have = null; try { have = await getPack(P("logs-" + FIRST)) } catch { } if (!have) { all = true; log(`nfl: no ${P("logs-" + FIRST)} yet: writing every season`) } }
@@ -861,6 +884,9 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
         await put(P("opp-" + s), { s, cols: OPQ_COLS, p: O, inj, injNote: "inj[gsis][game] = quarter he was hurt (play-by-play 'was injured during the play')" }) } await put(P("pbp-" + s), B) }
   }
   for (const s of seasons) if (s < lastPlayed && LOGS[s]) DONE.s[s] = NFL_DONE_V; await put(P("done"), DONE);
+  /* dynasty inputs (Oct 20, job/dyn.mjs): each player's last 18 league weeks and the windows before, for the page's dynasty model */
+  if (!startsOnly) try { const DY = await dynFeatures({ G, PLp: PLP, log, logsOf: async s => LOGS[s] || (getPack ? await getPack(P("logs-" + s)).catch(() => null) : null) });
+    if (DY && Object.keys(DY.p).length >= 300) await put(P("dyn"), DY); else log("nfl: dyn: too few players, not written") } catch (e) { log("nfl: dyn: " + e.message) }
   /* kickers and punters by season (this run's seasons over the last run's) */
   if (Object.keys(KICK).length) { let KX = null; try { KX = getPack ? (await getPack(P("kick"))) || (await getPack(`p${Y - 1}_nfl-kick`)) : null } catch { }
     if (!KX || !KX.s) KX = { s: {} }; for (const s in KICK) KX.s[s] = KICK[s]; KX.kCols = K_COLS; KX.pCols = P_COLS; KX.dstCols = DST_COLS; KX.kgCols = KG_COLS; KX.who = KP; KX.whoCols = ["name", "pos", "born", "college", "last", "team"]; await put(P("kick"), KX) }

@@ -13,7 +13,7 @@ export async function runProbes({ browser, site, token, only = "", log = console
     if (P.mod) { let r; try { if (P.env) Object.assign(process.env, P.env); const m = await import(`./${P.mod}.mjs`); r = await m.run({ site, token, log }) } catch (e) { r = { ok: false, error: String(e.message || e).slice(0, 300) } }
       out.push({ name: P.name, ...r }); log(`::${r && r.ok === false ? "warning" : "notice"} title=probe ${P.name}::${JSON.stringify(r).replace(/[\r\n]+/g, " ").slice(0, 6000)}`); continue }
     /* a probe with `url` opens an outside page in the browser and lists the data it loads (to find where a page gets its numbers) */
-    if (P.url) { const ctx = await browser.newContext({ userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36 mycfbbigboard-data-job" }); const p = await ctx.newPage();
+    if (P.url) { const ctx = await browser.newContext({ userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36 mycfbbigboard-data-job", extraHTTPHeaders: { "x-site-check": "1" } }); const p = await ctx.newPage();
       /* data first: every fetch/XHR answer (with the start of its body), then page scripts — libraries and CDN bundles left out (Oct 15) */
       const LIB = /google|facebook|doubleclick|onetrust|cookielaw|rlcdn|adsrvr|chartbeat|newrelic|sentry|twitter|tiktok|adobe|demdex|scorecard|segment|jquery|bootstrap|polyfill|cdnjs|jsdelivr|unpkg|cloudflareinsights|recaptcha|gstatic|vendor|runtime|chunk-vendors|lodash|moment|swiper|slick|modernizr|cdn\.sidearmsports\.com\/(?:common|responsive)|sidearm\.sites\/(?:common|js\/common)|ads?[./]|analytics|gtm|pixel|beacon|consent|taboola|outbrain|quantserve|krxd|amazon-adsystem|criteo|braze|optimizely/i;
       const data = [], scripts = [];
@@ -30,7 +30,7 @@ export async function runProbes({ browser, site, token, only = "", log = console
     if (P.node) { let r; try { r = await (new Function("fetch", "SITE", "TOKEN", `return (async () => { ${P.node} })()`))(fetch, site, token) } catch (e) { r = { ok: false, error: String(e.message || e).slice(0, 300) } }
       out.push({ name: P.name, ...r }); log(`::${r && r.ok === false ? "warning" : "notice"} title=probe ${P.name}::${JSON.stringify(r).replace(/[\r\n]+/g, " ").slice(0, 3500)}`); continue }
     for (const W of P.widths || [390, 1280]) {
-      const ctx = await browser.newContext({ viewport: { width: W, height: W < 800 ? 844 : 900 }, isMobile: W < 800, hasTouch: W < 800 });
+      const ctx = await browser.newContext({ viewport: { width: W, height: W < 800 ? 844 : 900 }, isMobile: W < 800, hasTouch: W < 800, extraHTTPHeaders: { "x-site-check": "1" } });
       const p = await ctx.newPage(); const errs = [];
       p.on("pageerror", e => errs.push(e.message));
       const nav = []; p.on("framenavigated", f => { if (f === p.mainFrame()) nav.push(f.url().replace(site, "")) }); p.on("request", q => { if (q.isNavigationRequest() && q.frame() === p.mainFrame()) nav.push("req " + q.url().replace(site, "") + (q.redirectedFrom() ? " from " + q.redirectedFrom().url().replace(site, "") : "") + " ref=" + (q.headers().referer || "").replace(site, "")) });

@@ -9,7 +9,7 @@ const VIEWS = [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [
 export async function lookCheck({ browser, site, token, page = "/", log = console.log }) {
   const problems = []; let views = 0, firstRows = null, fullLoad = null;
   for (const W of [375, 1280]) {
-    const ctx = await browser.newContext({ viewport: { width: W, height: W < 800 ? 812 : 900 }, isMobile: W < 800, hasTouch: W < 800 });
+    const ctx = await browser.newContext({ viewport: { width: W, height: W < 800 ? 812 : 900 }, isMobile: W < 800, hasTouch: W < 800, extraHTTPHeaders: { "x-site-check": "1" } });
     const p = await ctx.newPage(); const errs = [];
     /* the phone pass runs on a typical 4G connection (9 Mbit/s down, 150 ms round trip), so the first-visit times mean something */
     if (W < 800) { try { const cdp = await ctx.newCDPSession(p); await cdp.send("Network.enable"); await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 150, downloadThroughput: 9e6 / 8, uploadThroughput: 3e6 / 8 }) } catch (e) { } }
@@ -28,9 +28,12 @@ export async function lookCheck({ browser, site, token, page = "/", log = consol
       for (let k = 0; k < 3 && new URL(p.url()).pathname !== page; k++) { await p.waitForTimeout(2500); await p.goto(`${site}${page}?ro=1`, { waitUntil: "domcontentloaded", timeout: 60000 }) }
       if (new URL(p.url()).pathname !== page) throw new Error(`asked for ${page}, landed on ${p.url()}`);
       /* Oct 11: every look since Oct 9 timed out here with nothing saying why — say what the page was showing */
-      try { await p.waitForSelector(".tabs button", { timeout: 60000 }) } catch (e) {
-        const seen = await p.evaluate(() => ({ url: location.href, title: document.title, tabs: document.querySelectorAll(".tabs button").length, body: (document.body ? document.body.innerText : "").replace(/\s+/g, " ").slice(0, 200) })).catch(() => null);
-        throw new Error(`no tabs after 60 s · ${seen ? `${seen.url} · "${seen.title}" · ${seen.tabs} tab buttons · page says: ${seen.body}` : "page unreadable"}${errs.length ? ` · script errors: ${errs.slice(0, 2).join(" | ")}` : ""}`) }
+      try { await p.waitForFunction(() => [...document.querySelectorAll(".tabs button")].some(b => b.offsetParent), null, { timeout: 60000 }) }   /* Oct 19: on a phone the first tab button can be hidden, so "the first one visible" never came */ catch (e) {
+        const seen = await p.evaluate(() => { const tb = document.querySelector(".tabs"), L = document.getElementById("load"), cs = e => e ? getComputedStyle(e) : null;
+          return { url: location.href, title: document.title, tabs: document.querySelectorAll(".tabs button").length, body: (document.body ? document.body.innerText : "").replace(/\s+/g, " ").slice(0, 200),
+            /* Oct 19: the phone pass reported tab buttons but an empty page — say why */
+            why: `tabs ${tb ? cs(tb).display + "/" + cs(tb).visibility + " " + Math.round(tb.getBoundingClientRect().height) + "px" : "none"} · body ${cs(document.body).display}/${cs(document.body).visibility}/${cs(document.body).opacity} · load ${L ? cs(L).display + " '" + (L.textContent || "").trim().slice(0, 60) + "'" : "none"} · rows ${typeof D !== "undefined" && D.pool ? Object.keys(D.pool).length : "?"} · html ${document.body ? document.body.innerHTML.length : 0}` } }).catch(e => ({ why: "unreadable: " + e.message }));
+        throw new Error(`no tabs after 60 s · ${seen ? `${seen.url} · "${seen.title}" · ${seen.tabs} tab buttons · ${seen.why} · page says: ${seen.body}` : "page unreadable"}${errs.length ? ` · script errors: ${errs.slice(0, 2).join(" | ")}` : ""}`) }
       /* a first visit on a phone (a fresh browser has nothing saved): how long until the board shows players, and until the
          history files (past rosters, recruiting classes) have also landed */
       if (W < 800) { try { await p.waitForFunction(() => typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100, null, { timeout: 90000 }); firstRows = +((Date.now() - t0) / 1000).toFixed(1);
@@ -55,7 +58,7 @@ export async function lookCheck({ browser, site, token, page = "/", log = consol
         if (!r) continue; views++;
         for (const o of r.out) problems.push(`${W}px · ${r.name}: ${o}`);
       }
-    } catch (e) { problems.push(`${W}px: couldn't finish (${e.message.slice(0, 120)})`) }
+    } catch (e) { problems.push(`${W}px: couldn't finish (${e.message.slice(0, 600)})`) }
     for (const e of [...new Set(errs)].slice(0, 5)) problems.push(`${W}px · script error: ${e.slice(0, 160)}`);
     await ctx.close();
   }

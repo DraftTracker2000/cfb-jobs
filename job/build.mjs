@@ -82,6 +82,9 @@ const cfbdLeft = async () => { if (!CFTOK) return null; try { const r = await fe
 /* the run signs in again before reporting (a later sign-in, like the pack-index read, ends the first session) */
 const report = async (ok, message, detail) => { if (CF0 != null) { try { CFTOK = (await api("POST", "/api/job/session")).token } catch { } }
   const left = CF0 != null ? await cfbdLeft() : null, used = left != null ? CF0 - left : null;
+  /* Oct 20 (weekly check: "the football runs don't log their CFBD call counts"): the same numbers as a GitHub notice, next to the
+     basketball job's. CFBD and CBBD share one monthly pool (Tier 3, 75,000, resets on the 1st), so both counters fall together. */
+  if (used != null) console.log(`::notice title=CFBD::${MODE} run used ${used.toLocaleString()} CFBD calls · ${left.toLocaleString()} left this month (pool shared with CBBD)`);
   return api("POST", "/api/job/report", { body: { kind: MODE, ok, message: (message + (used != null ? ` · ${used.toLocaleString()} CFBD calls during the run (${left.toLocaleString()} left this month)` : CFERR ? ` · CFBD counter: ${CFERR}` : "") + stageLine()).slice(0, 1200), detail: { ...(detail || {}), cfbd: used != null ? { used, left } : undefined, stages: Object.fromEntries(Object.entries(STAGES).map(([k, v]) => [k, Math.round(v / 1000)])) }, started } }).catch(e => console.error("report failed:", e.message)) };
 
 async function main() {

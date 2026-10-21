@@ -550,7 +550,7 @@ export async function main() {
   /* our own ratings (Oct 21, job/cbbrate.mjs): offense, defense, net and tempo per 100 possessions, adjusted for opponent and home court;
      the lab shows them and the lab's pick uses them (live keeps CBBD's until Sam promotes it). Worked out once, after the games step has
      its results cache (a first run fills every finished season; after that only this season is read) */
-  let OWN_P = null; const ownOnce = () => OWN_P || (OWN_P = import("./cbbrate.mjs").then(m => m.ownRatings({ cb, getPack, putPack, log, NEXT, G })).catch(e => { log("own ratings: " + e.message); return null }));
+  let OWN_P = null; const ownOnce = () => OWN_P || (OWN_P = import("./cbbrate.mjs").then(m => m.ownRatings({ cb, getPack, putPack, log, NEXT, G, D1 })).catch(e => { log("own ratings: " + e.message); return null }));
   const teams = {};
   for (const id of D1) {
     const t = TEAM[id] || {}, a = ADJ[id] || {}, ts = TST[id] || {};

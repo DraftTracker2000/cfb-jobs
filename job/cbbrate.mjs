@@ -96,7 +96,7 @@ export async function run({ site, token, log = console.log }) {
   const SETS = { base: r => r.x, own: r => [1, r.own / 10, r.x[4]], both: r => [...r.x, r.own / 10] };
   const out = {};
   for (const [name, X] of Object.entries(SETS)) { const P = fitPick(train.map(r => [X(r), r.won, r.m]));
-    out[name] = Object.fromEntries(TEST.map(y => [y, score(P, rows.filter(r => r.y === y), X)])) }
+    out[name] = { w: P.w.map(v => +v.toFixed(4)), mw: P.mw.map(v => +v.toFixed(4)), ...Object.fromEntries(TEST.map(y => [y, score(P, rows.filter(r => r.y === y), X)])) } }
   /* raw: our margin, and the closing line, straight against the result (games with a line) */
   const raw = {}; for (const y of TEST) { const R = rows.filter(r => r.y === y && r.ln && r.ln[0] != null); let a = 0, b = 0; for (const r of R) { a += Math.abs(r.own - r.m); b += Math.abs(-r.ln[0] - r.m) }
     raw[y] = { games: R.length, oursMiss: +(a / R.length).toFixed(2), lineMiss: +(b / R.length).toFixed(2) } }

@@ -15,7 +15,7 @@
 import { configure, cb, getPack } from "./cbb.mjs";
 import { pickX, seasonFrac, fitPick, pickP, pickM, ranges, pickLine, homeCover } from "./cbbgames.mjs";
 
-const K = +(process.env.RATE_K || 6), PULL = +(process.env.RATE_PULL || .6);
+let K = 6, PULL = .6;   /* read again in run(): a probe module is imported once, so env set for a later probe must be read at run time */
 
 /* solve O, D, pace for every team from a list of team-games; prior: { tid: [o, d, pace] } (already pulled to average) */
 function solve(games, prior, k) {
@@ -46,14 +46,20 @@ const margin = (R, h, a, home) => { const A = R.T.get(h), B = R.T.get(a); if (!A
   const pace = R.lp + A.p + B.p, net = (A.o - B.d) - (B.o - A.d) + (home ? R.h : 0); return net * pace / 100 };
 
 export async function run({ site, token, log = console.log }) {
+  K = +(process.env.RATE_K || 6); PULL = +(process.env.RATE_PULL || .6);
   configure({ site, token: process.env.JOB_TOKEN || token, mode: "cbb" });
   const GH = await getPack("p2000_cbb-ghist"), HI = await getPack("p2000_cbb-hist");
   if (!GH || !HI) return { ok: false, error: "history packs missing" };
   const S = 2026, Y0 = 2016;
   const adj = HI.adj;
+  /* last winter's games and lines aren't in the history pack yet (it holds finished seasons up to the one before): read them here, like cbbtest */
+  if (!GH.seasons[S]) { const rows = []; for (const [a, b] of ranges(S, 31)) for (const g of await cb("/games", { season: S, startDateRange: a, endDateRange: b })) if (g.status === "final")
+    rows.push([g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, g.homeTeamEloStart ?? null, g.awayTeamEloStart ?? null]);
+    const seen = new Set(); GH.seasons[S] = rows.filter(r => !seen.has(r[0]) && seen.add(r[0])) }
+  if (!GH.lines[S]) { GH.lines[S] = {}; for (const [a, b] of ranges(S, 31)) for (const l of await cb("/lines", { season: S, startDateRange: a, endDateRange: b })) { const L = pickLine(l.lines); if (L && L.sp != null) GH.lines[S][l.gameId] = [L.sp, L.ou] } }
   /* box scores: possessions and points by game and team */
-  const BOX = {}; let sample = null;
-  for (let y = Y0; y <= S; y++) { BOX[y] = {}; for (const [a, b] of ranges(y, 14)) for (const t of await cb("/games/teams", { season: y, startDateRange: a, endDateRange: b })) {
+  const BOX = globalThis.__CBBRATE_BOX || (globalThis.__CBBRATE_BOX = {}); let sample = null;
+  for (let y = Y0; y <= S; y++) { if (BOX[y]) continue; BOX[y] = {}; for (const [a, b] of ranges(y, 14)) for (const t of await cb("/games/teams", { season: y, startDateRange: a, endDateRange: b })) {
     const u = t.teamStats || {}; if (!sample) sample = Object.keys(u).join(",");
     const fga = (u.fieldGoals || {}).attempted, orb = (u.rebounds || {}).offensive, tov = (u.turnovers || {}).total ?? u.turnovers, fta = (u.freeThrows || {}).attempted;
     const est = fga != null && fta != null ? fga - (orb || 0) + (typeof tov === "number" ? tov : 0) + .475 * fta : null;

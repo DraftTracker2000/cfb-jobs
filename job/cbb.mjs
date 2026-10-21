@@ -579,6 +579,8 @@ export async function main() {
     if (OWNR) for (const id of Object.keys(teams)) { teams[id].own = (SH || {})[id] || null; if (off) teams[id].ownNext = OWNR.by[id] || null } }
   /* coach extras: recruiting classes, transfers in and out, player development, shot diet (job/cbbcoachx.mjs) */
   try { await buildOldDraft({ getPack, putPack, log, teams: teamsRaw, schoolKey: wikiSchoolKey }) } catch (e) { log("old drafts: " + e.message) }
+  /* referees, college and NBA (Oct 21; job/cbbrefs.mjs): ESPN's officials for every finished game of last season and this one */
+  try { const { buildBbRefs } = await import("./cbbrefs.mjs"); await buildBbRefs({ getPack, putPack, log, S: NEXT }) } catch (e) { log("refs: " + e.message) }
   try { if (GM && GM.CI) await buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTED, normName, bySeason: GM.CI.seasons, D1, teams: teamsRaw, schoolKey: wikiSchoolKey }) } catch (e) { log("coach extras: " + e.message) }
   /* NCAA tournament runs since 2008, for the "Name the run" game (job/cbbncaa.mjs) */
   let NCAA = null; try { NCAA = await buildNcaaRuns({ cb, getPack, putPack, log, S, full }) } catch (e) { log("ncaa runs: " + e.message) }

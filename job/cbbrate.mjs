@@ -119,7 +119,7 @@ const teamGames = (rows, B) => { const past = [];
     const home = neu ? 0 : 1; past.push({ t: h, opp: a, pf: hs, pa: as, poss, home }, { t: a, opp: h, pf: as, pa: hs, poss, home: -home }) } return past };
 /* every finished season's final ratings are worked out once and kept (p2000_cbb-own); this season's are solved each run from its games so far,
    starting from last season's × 0.8. Returns { by: { teamId: [off, def, net, tempo, rank, offRank, defRank, games] }, pick(h, a, home) } */
-export async function ownRatings({ cb, getPack, putPack, log, NEXT, G }) {
+export async function ownRatings({ cb, getPack, putPack, log, NEXT, G, D1 = null }) {
   let C = await getPack("p2000_cbb-own").catch(() => null); if (!C || C.v !== 2 || C.K !== OWN.K || C.PULL !== OWN.PULL) C = { v: 2, K: OWN.K, PULL: OWN.PULL, fin: {}, base: {} };
   const GH = await getPack("p2000_cbb-ghist").catch(() => null), Y0 = 2015;
   const rowsOf = y => (GH && GH.seasons && GH.seasons[y]) || G.filter(g => g.season === y && g.status === "final").map(g => [g.id, String(g.startDate).slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0]);
@@ -134,9 +134,13 @@ export async function ownRatings({ cb, getPack, putPack, log, NEXT, G }) {
   const prior = priorOf(NEXT); const R = solve(past, prior, OWN.K);
   for (const t of Object.keys(prior)) if (!R.T.has(+t) && !R.T.has(t)) { const q = prior[t]; R.T.set(+t, { o: q[0], d: q[1], p: q[2], g: [] }) }
   const lg = past.length ? R.lg : 104, lp = past.length ? R.lp : 68;
-  const show = (T, lg, lp) => { const ent = [...T.entries()], rk = f => { const s = ent.map(([t, q]) => [t, f(q)]).sort((a, b) => b[1] - a[1]); return Object.fromEntries(s.map(([t], i) => [t, i + 1])) };
+  /* shown on a Division I scale (Oct 21: centred over every team in the games, the non-D-I opponents included, the average D-I team read
+     +16.8): offense and defense measured from the average D-I team, so D-I averages a net of 0, and ranked among D-I only */
+  const show = (T, lg, lp) => { const ent = [...T.entries()].filter(([t]) => !D1 || D1.has(+t)); if (!ent.length) return {};
+    const mo = ent.reduce((a, [, q]) => a + q.o, 0) / ent.length, md = ent.reduce((a, [, q]) => a + q.d, 0) / ent.length, mp = ent.reduce((a, [, q]) => a + q.p, 0) / ent.length;
+    const rk = f => { const s = ent.map(([t, q]) => [t, f(q)]).sort((a, b) => b[1] - a[1]); return Object.fromEntries(s.map(([t], i) => [t, i + 1])) };
     const rN = rk(q => q.o + q.d), rO = rk(q => q.o), rD = rk(q => q.d), r1 = v => Math.round(v * 10) / 10;
-    return Object.fromEntries(ent.map(([t, q]) => [t, [r1(lg + q.o), r1(lg - q.d), r1(q.o + q.d), r1(lp + q.p), rN[t], rO[t], rD[t], q.g.length ?? q.n ?? 0]])) };
+    return Object.fromEntries(ent.map(([t, q]) => [t, [r1(lg + q.o - mo), r1(lg - (q.d - md)), r1(q.o - mo + q.d - md), r1(lp + q.p - mp), rN[t], rO[t], rD[t], q.g.length ?? q.n ?? 0]])) };
   /* a finished season's final ratings, the same shape (the off-season site shows last season) */
   const finBy = y => { const f = C.fin[y], b = C.base[y]; if (!f || !b) return null; return show(new Map(Object.entries(f).map(([t, q]) => [+t, { o: q[0], d: q[1], p: q[2], g: { length: q[3] || 0 } }])), b[0], b[1]) };
   const by = show(R.T, lg, lp);

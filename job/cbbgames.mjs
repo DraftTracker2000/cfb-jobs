@@ -85,7 +85,7 @@ async function shootingCache({ cb, getPack, putPack, log, S, full, off }) {
   log(`shooting cache: ${Object.keys(SH.s).length} seasons`); return SH;
 }
 
-export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList, adj }) {
+export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList, adj, own }) {
   /* ---- past seasons: results + lines (cached) ---- */
   let GH = full ? null : await getPack("p2000_cbb-ghist").catch(() => null);
   if (!GH || GH.through < S - 1 || GH.v !== 2) {
@@ -200,6 +200,7 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
   /* rest: days since each team's previous game (Sam: travel and rest) */
   const lastBy = {}, REST = {}; for (const g of G.slice().sort((x, y) => x.startDate.localeCompare(y.startDate))) { const d = Date.parse(g.startDate.slice(0, 10));
     REST[g.id] = [g.homeTeamId, g.awayTeamId].map(t => { const l = lastBy[t]; return l != null && d - l < 15 * 864e5 ? Math.round((d - l) / 864e5) : null }); lastBy[g.homeTeamId] = d; lastBy[g.awayTeamId] = d }
+  const OWNR = typeof own === "function" ? await own() : own || null;
   const games = G.filter(g => D1.has(g.homeTeamId) || D1.has(g.awayTeamId)).map(g => {
     const he = g.homeTeamEloStart ?? null, ae = g.awayTeamEloStart ?? null, home = g.neutralSite ? 0 : 1;
     const x = [...xOf(he, ae, g.homeTeamId, g.awayTeamId, home, g.startDate.slice(0, 10), g.season), ...((g.season === S ? exFor(S, curRowsAll) : exFor(g.season, nextRowsAll))[g.id] || [0, 0, 0, 0, 0])];
@@ -212,7 +213,9 @@ export async function buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D
       t: g.tournament || null, note: g.gameNotes || null, hh: Array.isArray(g.homePeriodPoints) && Array.isArray(g.awayPeriodPoints) && g.homePeriodPoints.length >= 2 ? [g.homePeriodPoints[0], g.homePeriodPoints[1], g.awayPeriodPoints[0], g.awayPeriodPoints[1]] : undefined, post: g.seasonType === "postseason" ? 1 : 0, hSeed: g.homeSeed ?? null, aSeed: g.awaySeed ?? null, venue: g.venue || null, city: [g.city, g.state].filter(Boolean).join(", "),
       tv: TV[g.id] || null, rest: REST[g.id] || null, ln: LINES[g.id] || null, p: r3(p), m: r1(m), elo: [he != null ? Math.round(he) : null, ae != null ? Math.round(ae) : null],
       hr: (g.season === S ? rankAt : rankAtN)(g.homeTeamId, g.startDate.slice(0, 10)), ar: (g.season === S ? rankAt : rankAtN)(g.awayTeamId, g.startDate.slice(0, 10)),
-      ser: seriesFor(g.homeTeamId, g.awayTeamId, g.startDate.slice(0, 10)), exc: r1(g.excitement), pm, co: [coachOf(g.homeTeamId, g.season), coachOf(g.awayTeamId, g.season)] };
+      ser: seriesFor(g.homeTeamId, g.awayTeamId, g.startDate.slice(0, 10)), exc: r1(g.excitement), pm,
+      /* our own ratings' pick for a game not yet played (Oct 21; job/cbbrate.mjs) — the lab shows it */
+      ...(OWNR && g.season === NEXT && g.status !== "final" ? (q => q ? { po: r3(q.p), mo: r1(q.m) } : {})(OWNR.pick(g.homeTeamId, g.awayTeamId, g.neutralSite ? 0 : 1)) : {}), co: [coachOf(g.homeTeamId, g.season), coachOf(g.awayTeamId, g.season)] };
   });
   /* ---- each team's record and ATS entering every game of season S (finals show where the teams stood that day) ---- */
   { const rec = {}; for (const g of games.filter(g => g.s === S).sort((a, b) => a.d.localeCompare(b.d))) {

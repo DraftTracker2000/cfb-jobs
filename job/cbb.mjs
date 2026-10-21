@@ -547,6 +547,10 @@ export async function main() {
   const TST = Object.fromEntries(tstats.map(t => [t.teamId, t]));
   /* conference-tournament games, so conference records are the regular season only */
   const TOURN = confTourneyIds(G.filter(g => g.season === S).map(g => [g.id, String(g.startDate).slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0]), id => (TEAM[id] || {}).conference || (ADJ[id] || {}).conference);
+  /* our own ratings (Oct 21, job/cbbrate.mjs): offense, defense, net and tempo per 100 possessions, adjusted for opponent and home court;
+     the lab shows them and the lab's pick uses them (live keeps CBBD's until Sam promotes it). Worked out once, after the games step has
+     its results cache (a first run fills every finished season; after that only this season is read) */
+  let OWN_P = null; const ownOnce = () => OWN_P || (OWN_P = import("./cbbrate.mjs").then(m => m.ownRatings({ cb, getPack, putPack, log, NEXT, G })).catch(e => { log("own ratings: " + e.message); return null }));
   const teams = {};
   for (const id of D1) {
     const t = TEAM[id] || {}, a = ADJ[id] || {}, ts = TST[id] || {};
@@ -557,6 +561,7 @@ export async function main() {
     const next = G.filter(g => g.season === NEXT && NEXT !== S && (g.homeTeamId === id || g.awayTeamId === id)).sort((p, q) => new Date(p.startDate) - new Date(q.startDate)).map(g => { const home = g.homeTeamId === id; return [g.startDate.slice(0, 16), home ? g.awayTeamId : g.homeTeamId, g.neutralSite ? 0 : home ? 1 : -1, g.status, home ? g.homePoints : g.awayPoints, home ? g.awayPoints : g.homePoints] });
     const u = ts.teamStats || {}, o = ts.opponentStats || {};
     teams[id] = { id, sid: t.sourceId ? String(t.sourceId) : undefined, nm: t.school, mascot: t.mascot, ab: t.abbreviation, c1: t.primaryColor, c2: t.secondaryColor, conf: t.conference || a.conference, venue: t.currentVenue, city: [t.currentCity, t.currentState].filter(Boolean).join(", "),
+      /* our ratings for the season this pack shows (S: last season's final in the off-season), and next season's starting point */
       adj: a.offensiveRating ? { o: r1(a.offensiveRating), d: r1(a.defensiveRating), n: r1(a.netRating), ro: (a.rankings || {}).offense, rd: (a.rankings || {}).defense, rn: (a.rankings || {}).net } : null, srs: r1(SRS[id]),
       rec: [w, l, cw, cl], ap: AP[id] || null, apLast: APlast[id] || null, pace: r1(ts.pace),
       ff: u.fourFactors ? { efg: r1(u.fourFactors.effectiveFieldGoalPct), tov: r1(pctOf(u.fourFactors.turnoverRatio)), orb: r1(u.fourFactors.offensiveReboundPct), ftr: r1(u.fourFactors.freeThrowRate), oefg: r1((o.fourFactors || {}).effectiveFieldGoalPct), otov: r1(pctOf((o.fourFactors || {}).turnoverRatio)), oorb: r1((o.fourFactors || {}).offensiveReboundPct), oftr: r1((o.fourFactors || {}).freeThrowRate) } : null,
@@ -569,7 +574,9 @@ export async function main() {
   log(`teams: ${Object.keys(teams).length} Division I`);
 
   /* ---------- games: lines, TV, our pick, series, splits, game logs (job/cbbgames.mjs) ---------- */
-  const GM = await buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList: teamsRaw.filter(t => D1.has(t.id)), adj: H.adj });
+  const GM = await buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList: teamsRaw.filter(t => D1.has(t.id)), adj: H.adj, own: ownOnce });
+  { const OWNR = await ownOnce(), SH = OWNR ? (off ? OWNR.finBy(S) : OWNR.by) : null;   /* [off, def, net, tempo, rank, off rank, def rank, games] */
+    if (OWNR) for (const id of Object.keys(teams)) { teams[id].own = (SH || {})[id] || null; if (off) teams[id].ownNext = OWNR.by[id] || null } }
   /* coach extras: recruiting classes, transfers in and out, player development, shot diet (job/cbbcoachx.mjs) */
   try { await buildOldDraft({ getPack, putPack, log, teams: teamsRaw, schoolKey: wikiSchoolKey }) } catch (e) { log("old drafts: " + e.message) }
   try { if (GM && GM.CI) await buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTED, normName, bySeason: GM.CI.seasons, D1, teams: teamsRaw, schoolKey: wikiSchoolKey }) } catch (e) { log("coach extras: " + e.message) }

@@ -103,3 +103,43 @@ export async function run({ site, token, log = console.log }) {
   const better = ["own", "both"].filter(k => TEST.every(y => out[k][y].ll < out.base[y].ll));
   return { ok: true, K, PULL, train: `2017–23 (${train.length} games)`, out, raw, betterEverySeason: better };
 }
+
+/* ---------- the site's own ratings (Oct 21 — Sam: "ok but seems it went well"), the setting that tested best: K 3, last season × 0.8 ----------
+   Blind test (train 2017–23): log loss 2024 .5636 → .5363, 2025 .5343 → .5220, 2026 .5477 → .5279; margin miss 10.3/10.1/10.4 → 9.4/9.4/9.5.
+   The win chance and margin come from the fit on our predicted margin (own/10) and home: */
+export const OWN = { K: 3, PULL: .8, w: [0.1007, 1.4493, -0.2938], mw: [0.1853, 10.3654, -1.6053] };
+export const ownPick = (marginRaw, home) => { const x = [1, marginRaw / 10, home ? 1 : 0]; let z = 0, m = 0; for (let i = 0; i < 3; i++) { z += OWN.w[i] * x[i]; m += OWN.mw[i] * x[i] } return { p: 1 / (1 + Math.exp(-z)), m } };
+const possOf = u => { const fga = (u.fieldGoals || {}).attempted, orb = (u.rebounds || {}).offensive, tov = (u.turnovers || {}).total ?? u.turnovers, fta = (u.freeThrows || {}).attempted;
+  const est = fga != null && fta != null ? fga - (orb || 0) + (typeof tov === "number" ? tov : 0) + .475 * fta : null;
+  return typeof u.possessions === "number" && u.possessions > 40 ? u.possessions : est };
+async function possFor(cb, y, until) { const B = {}; for (const [a, b] of ranges(y, 14)) { if (until && Date.parse(a) > until) break;
+  for (const t of await cb("/games/teams", { season: y, startDateRange: a, endDateRange: b })) (B[t.gameId] = B[t.gameId] || {})[t.teamId] = possOf(t.teamStats || {}) } return B }
+const teamGames = (rows, B) => { const past = [];
+  for (const [gid, , h, a, hs, as, neu] of rows) { if (hs == null || as == null) continue; const q = B[gid] || {}, ph = q[h], pa = q[a], poss = ph && pa ? (ph + pa) / 2 : ph || pa; if (!(poss > 40 && poss < 110)) continue;
+    const home = neu ? 0 : 1; past.push({ t: h, opp: a, pf: hs, pa: as, poss, home }, { t: a, opp: h, pf: as, pa: hs, poss, home: -home }) } return past };
+/* every finished season's final ratings are worked out once and kept (p2000_cbb-own); this season's are solved each run from its games so far,
+   starting from last season's × 0.8. Returns { by: { teamId: [off, def, net, tempo, rank, offRank, defRank, games] }, pick(h, a, home) } */
+export async function ownRatings({ cb, getPack, putPack, log, NEXT, G }) {
+  let C = await getPack("p2000_cbb-own").catch(() => null); if (!C || C.v !== 2 || C.K !== OWN.K || C.PULL !== OWN.PULL) C = { v: 2, K: OWN.K, PULL: OWN.PULL, fin: {}, base: {} };
+  const GH = await getPack("p2000_cbb-ghist").catch(() => null), Y0 = 2015;
+  const rowsOf = y => (GH && GH.seasons && GH.seasons[y]) || G.filter(g => g.season === y && g.status === "final").map(g => [g.id, String(g.startDate).slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0]);
+  const priorOf = y => { const f = C.fin[y - 1]; const p = {}; if (f) for (const [t, q] of Object.entries(f)) p[t] = [q[0] * OWN.PULL, q[1] * OWN.PULL, q[2] * OWN.PULL]; return p };
+  let changed = 0;
+  for (let y = Y0; y < NEXT; y++) { if (C.fin[y]) continue; const rows = rowsOf(y); if (!rows.length) continue;
+    const R = solve(teamGames(rows, await possFor(cb, y)), priorOf(y), OWN.K);
+    C.fin[y] = Object.fromEntries([...R.T.entries()].map(([t, q]) => [t, [+q.o.toFixed(2), +q.d.toFixed(2), +q.p.toFixed(2), q.g.length]])); C.base[y] = [+R.lg.toFixed(2), +R.lp.toFixed(2)]; changed++; log(`own ratings: ${y} kept (${rows.length} games)`) }
+  if (changed) await putPack("p2000_cbb-own", C);
+  const cur = G.filter(g => g.season === NEXT && g.status === "final").map(g => [g.id, String(g.startDate).slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0]);
+  const past = cur.length ? teamGames(cur, await possFor(cb, NEXT, Date.now())) : [];
+  const prior = priorOf(NEXT); const R = solve(past, prior, OWN.K);
+  for (const t of Object.keys(prior)) if (!R.T.has(+t) && !R.T.has(t)) { const q = prior[t]; R.T.set(+t, { o: q[0], d: q[1], p: q[2], g: [] }) }
+  const lg = past.length ? R.lg : 104, lp = past.length ? R.lp : 68;
+  const show = (T, lg, lp) => { const ent = [...T.entries()], rk = f => { const s = ent.map(([t, q]) => [t, f(q)]).sort((a, b) => b[1] - a[1]); return Object.fromEntries(s.map(([t], i) => [t, i + 1])) };
+    const rN = rk(q => q.o + q.d), rO = rk(q => q.o), rD = rk(q => q.d), r1 = v => Math.round(v * 10) / 10;
+    return Object.fromEntries(ent.map(([t, q]) => [t, [r1(lg + q.o), r1(lg - q.d), r1(q.o + q.d), r1(lp + q.p), rN[t], rO[t], rD[t], q.g.length ?? q.n ?? 0]])) };
+  /* a finished season's final ratings, the same shape (the off-season site shows last season) */
+  const finBy = y => { const f = C.fin[y], b = C.base[y]; if (!f || !b) return null; return show(new Map(Object.entries(f).map(([t, q]) => [+t, { o: q[0], d: q[1], p: q[2], g: { length: q[3] || 0 } }])), b[0], b[1]) };
+  const by = show(R.T, lg, lp);
+  log(`own ratings: ${NEXT} from ${cur.length} games · home edge ${R.h.toFixed(2)}/100 · #1 ${Object.entries(by).find(([, v]) => v[4] === 1)?.[0]}`);
+  return { by, finBy, h: past.length ? R.h : 3, pick: (h, a, home) => { const m = margin(past.length ? R : { ...R, h: 3, lp }, h, a, home); return m == null ? null : ownPick(m, home) } };
+}

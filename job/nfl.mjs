@@ -831,6 +831,38 @@ async function weeklyOut(S, log) {
   for (const k of out) { const [g, wk] = k.split("|"); if (!(w[wk] && w[wk][g])) (w[wk] = w[wk] || {})[g] = ["O", null] }
   return { s: S, at: Date.now(), lastWeek: maxW, w, wCols: ["code IR|O", "team that week"], ids, idCols: ["espn", "sleeper", "name"] };
 }
+/* ── referees (Oct 21 — Sam OK'd it: "just do the espn"): every regular-season and playoff game since 2015 with its referee (the crew chief —
+   NFL crews stay together all season, so the referee names the crew), the score, the closing spread and total, and each team's penalties
+   and penalty yards. Crews: nflverse's officials file (it fills in after the season starts, so this season is mostly missing), and for a
+   finished game of this season it doesn't have yet, ESPN's game summary (its officials list), read once and kept. Penalties: nflverse's
+   team-week stats. Finished seasons are built once and kept in the pack; only this season is redone each run. The page adds them up. ── */
+const REF_COLS = ["id", "season", "type", "week", "ref", "away", "home", "awayScore", "homeScore", "spread", "total", "awayPen", "homePen", "awayPenYds", "homePenYds"];
+export async function refsPack(Y, log, prev) {
+  const keep = prev && prev.v === 1 && prev.cols && prev.cols.join() === REF_COLS.join() ? prev : null, done = new Set(keep ? keep.done || [] : []);
+  const old = keep ? keep.g.filter(r => done.has(r[1])) : [];
+  const OF = await get0("officials/officials.csv", log); if (!OF) return keep;
+  const refOld = {}; rows(OF, ["game_id", "position", "official_name"], o => { if (o.position === "Referee" && o.game_id) refOld[o.game_id] = o.official_name });
+  const SC = (await get0("schedules/games.csv.gz", log)) || (await get0("schedules/games.csv", log)); if (!SC) return keep;
+  const espnCrew = keep && keep.espn ? keep.espn : {}; let espnNew = 0;
+  const out = [...old], need = [];
+  rows(SC, ["game_id", "old_game_id", "espn", "season", "game_type", "week", "away_team", "home_team", "away_score", "home_score", "spread_line", "total_line"], o => {
+    const s = +o.season; if (!(s >= 2015) || s > Y || done.has(s)) return; const r = [o.game_id, s, o.game_type, +o.week, refOld[o.old_game_id] || null, o.away_team, o.home_team, num(o.away_score), num(o.home_score), num(o.spread_line), num(o.total_line), null, null, null, null];
+    if (r[7] == null) return; out.push(r); if (!r[4]) need.push([r, o.espn]) });
+  /* this season's crews nflverse doesn't have yet: ESPN, once per game */
+  for (const [r, e] of need) { if (!e) continue; if (espnCrew[e] === undefined && r[1] === Y && espnNew < 120) { espnNew++;
+      try { const j = await (await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${e}`, { headers: { "User-Agent": "mycfbbigboard.com data job" } })).json();
+        const o = ((j.gameInfo || {}).officials || []).find(x => /^referee$/i.test((x.position && (x.position.displayName || x.position.name)) || "")); espnCrew[e] = o ? o.displayName || o.fullName : null } catch (x) { } }
+    if (espnCrew[e]) r[4] = espnCrew[e] }
+  /* penalties: team-week stats, per season (finished seasons only once) */
+  const bySeason = {}; for (const r of out) if (r[11] == null) (bySeason[r[1]] = bySeason[r[1]] || []).push(r);
+  for (const s of Object.keys(bySeason)) { const T = await get0(`stats_team/stats_team_week_${s}.csv`, log); if (!T) continue; const P = {};
+    rows(T, ["game_id", "team", "penalties", "penalty_yards"], o => { if (o.game_id) P[o.game_id + "|" + o.team] = [num(o.penalties), num(o.penalty_yards)] });
+    for (const r of bySeason[s]) { const a = P[r[0] + "|" + r[5]], h = P[r[0] + "|" + r[6]]; if (a) { r[11] = a[0]; r[13] = a[1] } if (h) { r[12] = h[0]; r[14] = h[1] } } }
+  /* a season counts as done once a later one has started and its games have penalties and (nearly all) crews */
+  const seasons = [...new Set(out.map(r => r[1]))]; for (const s of seasons) { const L = out.filter(r => r[1] === s); if (s < Y && L.every(r => r[11] != null) && L.filter(r => r[4]).length >= .97 * L.length) done.add(s) }   /* a handful of old games never had a crew listed */
+  log(`nfl: refs ${out.length} games · ${out.filter(r => r[4]).length} with a referee · ESPN read ${espnNew}`);
+  return { v: 1, at: Date.now(), cols: REF_COLS, g: out, done: [...done], espn: espnCrew };
+}
 /* what a good copy of each outside-source pack has to contain; a name not listed passes */
 export function packProblem(name, o) {
   if (/_nfl-depth$/.test(name)) {
@@ -927,6 +959,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   await put(P("teams"), TT);
   try { await put(P("depth"), await depth(Y, log)) } catch (e) { log("nfl: depth charts: " + e.message) }
   try { const WO = await weeklyOut(Y, log); if (WO && Object.keys(WO.w).length) await put(P("wkout"), WO) } catch (e) { log("nfl: weekly out: " + e.message) }
+  try { let prev = null; try { prev = getPack ? await getPack(P("refs")) : null } catch { } const RF = await refsPack(Y, log, prev); if (RF && RF.g && RF.g.length > 1000) await put(P("refs"), RF) } catch (e) { log("nfl: refs: " + e.message) }
   try { const FA = await freeAgents(Y, DRAFTED, log, ESPN); if (FA && FA.p.length >= 200) await put(P("fa"), FA) } catch (e) { log("nfl: free agents: " + e.message) }
   /* who owns each of the next three drafts' picks, from the trades in ESPN's transaction feed (Sam, Oct 1) */
   try { const PP = await pickPack(Y, log, getPack ? { get: () => getPack(P("txcache")), put: v => put(P("txcache"), v) } : null); if (PP) await put(P("picks"), PP) } catch (e) { log("nfl: picks: " + e.message) }

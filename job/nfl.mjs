@@ -814,6 +814,23 @@ export async function depth(S, log) {
     chg, chgCols: { moves: ["gsis", "name", "pos", "move", "team"], dc: ["slot", "in gsis", "in", "out gsis", "out"], inj: ["gsis", "name", "pos", "status", "injury", "was"] }, chgSince: before, chgInjWeek };
 }
 
+/* ── who was out each week, this season (Oct 21 — Sam: "a counter for how many total games players have missed on your team for being
+   declared out or on IR prior to the game … a season counter"): for every week a player's team played, "IR" = on a reserve list for an
+   injury (injured reserve, designated to return, PUP, non-football injury; avail.mjs classify 1) and "O" = ruled Out on the week's injury
+   report for a real injury, or a game-day inactive listed as hurt (classify 2). Only players with at least one such week are kept, with
+   their ESPN and Sleeper ids so the fantasy page can match its rosters. ── */
+async function weeklyOut(S, log) {
+  const RW = await get0(`weekly_rosters/roster_weekly_${S}.csv`, log), IJ = await get0(`injuries/injuries_${S}.csv`, log); if (!RW) return null;
+  const out = new Set(); if (IJ) rows(IJ, ["gsis_id", "week", "game_type", "report_status", "report_primary_injury"], o => { if (o.gsis_id && (o.game_type || "REG") === "REG" && o.report_status === "Out" && !notHurt(o.report_primary_injury || "")) out.add(o.gsis_id + "|" + +o.week) });
+  const w = {}, ids = {}, seen = new Set(); let maxW = 0;
+  rows(RW, ["gsis_id", "week", "game_type", "status", "status_description_abbr", "espn_id", "sleeper_id", "full_name", "team"], o => {
+    if (!o.gsis_id || (o.game_type || "REG") !== "REG") return; const wk = +o.week, k = o.gsis_id + "|" + wk; if (seen.has(k)) return; seen.add(k); if (wk > maxW) maxW = wk;
+    const c = classify(o.status, o.status_description_abbr || ""), code = c === 1 ? "IR" : (c === 2 || out.has(k)) ? "O" : null; if (!code) return;
+    (w[wk] = w[wk] || {})[o.gsis_id] = [code, o.team || null]; if (!ids[o.gsis_id]) ids[o.gsis_id] = [o.espn_id || null, o.sleeper_id || null, o.full_name || ""] });
+  /* someone ruled Out who isn't on that week's roster file yet (a late report) still counts */
+  for (const k of out) { const [g, wk] = k.split("|"); if (!(w[wk] && w[wk][g])) (w[wk] = w[wk] || {})[g] = ["O", null] }
+  return { s: S, at: Date.now(), lastWeek: maxW, w, wCols: ["code IR|O", "team that week"], ids, idCols: ["espn", "sleeper", "name"] };
+}
 /* what a good copy of each outside-source pack has to contain; a name not listed passes */
 export function packProblem(name, o) {
   if (/_nfl-depth$/.test(name)) {
@@ -909,6 +926,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   const TT = teamsFrom(G, LOGS); if (prev) TT.s = { ...prev.s, ...TT.s };
   await put(P("teams"), TT);
   try { await put(P("depth"), await depth(Y, log)) } catch (e) { log("nfl: depth charts: " + e.message) }
+  try { const WO = await weeklyOut(Y, log); if (WO && Object.keys(WO.w).length) await put(P("wkout"), WO) } catch (e) { log("nfl: weekly out: " + e.message) }
   try { const FA = await freeAgents(Y, DRAFTED, log, ESPN); if (FA && FA.p.length >= 200) await put(P("fa"), FA) } catch (e) { log("nfl: free agents: " + e.message) }
   /* who owns each of the next three drafts' picks, from the trades in ESPN's transaction feed (Sam, Oct 1) */
   try { const PP = await pickPack(Y, log, getPack ? { get: () => getPack(P("txcache")), put: v => put(P("txcache"), v) } : null); if (PP) await put(P("picks"), PP) } catch (e) { log("nfl: picks: " + e.message) }

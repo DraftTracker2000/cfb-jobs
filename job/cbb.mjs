@@ -579,6 +579,9 @@ export async function main() {
     if (OWNR) for (const id of Object.keys(teams)) { teams[id].own = (SH || {})[id] || null; if (off) teams[id].ownNext = OWNR.by[id] || null } }
   /* coach extras: recruiting classes, transfers in and out, player development, shot diet (job/cbbcoachx.mjs) */
   try { await buildOldDraft({ getPack, putPack, log, teams: teamsRaw, schoolKey: wikiSchoolKey }) } catch (e) { log("old drafts: " + e.message) }
+  /* where games are played (Oct 21; job/cbbgeo.mjs): home cities and game cities, for the rest-and-travel box on game pages */
+  try { const { buildGeo } = await import("./cbbgeo.mjs"); const C = new Set(teamsRaw.filter(t => D1.has(t.id)).map(t => [t.currentCity, t.currentState].filter(Boolean).join(", ")));
+    for (const g of G) { const c = [g.city, g.state].filter(Boolean).join(", "); if (c) C.add(c) } await buildGeo({ getPack, putPack, log, cities: [...C] }) } catch (e) { log("geo: " + e.message) }
   /* referees, college and NBA (Oct 21; job/cbbrefs.mjs): ESPN's officials for every finished game of last season and this one */
   try { const { buildBbRefs } = await import("./cbbrefs.mjs"); await buildBbRefs({ getPack, putPack, log, S: NEXT }) } catch (e) { log("refs: " + e.message) }
   try { if (GM && GM.CI) await buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTED, normName, bySeason: GM.CI.seasons, D1, teams: teamsRaw, schoolKey: wikiSchoolKey }) } catch (e) { log("coach extras: " + e.message) }

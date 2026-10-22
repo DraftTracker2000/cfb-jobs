@@ -135,7 +135,9 @@ export function processGame(plays, P, T, opts = {}) {
         const opp = s === "h" ? away : home;
         for (const id of floor[s]) { const Q = pl(id); Q.min += dt / 60; seen.add(id); Q._team = tid; X.mins[id] = (X.mins[id] || 0) + dt / 60; if (clutchNow) Q.c.min += dt / 60; Q.vs[opp] = (Q.vs[opp] || 0) + dt / 60 }
         for (let x = 0; x < 5; x++) for (let y = x + 1; y < 5; y++) { const a = floor[s][x], b = floor[s][y], k = a < b ? a + "|" + b : b + "|" + a; X.pairs[k] = (X.pairs[k] || 0) + dt / 60 }
-        const key = floor[s].slice().sort((x, y) => x - y).join("-"); const U = X.units[key] = X.units[key] || [0, 0, 0]; U[0] += dt / 60 }
+        /* Oct 22 (Sam: "when those rotations are on the court together"): minutes by stretch — each half's first and last 10, overtime — and clutch */
+        const key = floor[s].slice().sort((x, y) => x - y).join("-"); const U = X.units[key] = X.units[key] || [0, 0, 0, 0, 0, 0, 0, 0, 0]; U[0] += dt / 60;
+        U[3 + (p.period <= 2 ? (p.period - 1) * 2 + ((p.secondsRemaining || 0) > 600 ? 0 : 1) : 4)] += dt / 60; if (clutchNow) U[8] += dt / 60 }
     }
     /* scoring: the score after this play vs before */
     const nh = p.homeScore ?? hs, na = p.awayScore ?? as, dh = nh - hs, da = na - as;
@@ -143,7 +145,7 @@ export function processGame(plays, P, T, opts = {}) {
       for (const s of ["h", "a"]) { const mine = s === "h" ? dh - da : da - dh; const tid = s === "h" ? home : away, X = tm(tid);
         for (const id of floor[s]) { const Q = pl(id); Q.pm += mine; Q.onF += s === "h" ? dh : da; Q.onA += s === "h" ? da : dh; if (clutchNow) Q.c.pm += mine }
         if (clutchNow) X.c.pm += mine;
-        if (floor[s].length === 5) { const key = floor[s].slice().sort((x, y) => x - y).join("-"); const U = X.units[key] = X.units[key] || [0, 0, 0]; U[1] += s === "h" ? dh : da; U[2] += s === "h" ? da : dh }
+        if (floor[s].length === 5) { const key = floor[s].slice().sort((x, y) => x - y).join("-"); const U = X.units[key] = X.units[key] || [0, 0, 0, 0, 0, 0, 0, 0, 0]; U[1] += s === "h" ? dh : da; U[2] += s === "h" ? da : dh }
         if (floor.h.length === 5 && floor.a.length === 5) { X._f = (X._f || 0) + (s === "h" ? dh : da); X._a = (X._a || 0) + (s === "h" ? da : dh) } }
       /* runs */
       const scorer = dh > 0 ? "h" : "a", pts = dh > 0 ? dh : da;
@@ -279,7 +281,7 @@ export function finishPbp(P, T, ctx = {}) {
   for (const [id, X] of Object.entries(T)) {
     const G = X.games;
     const rec = f => { const g = G.filter(f); return [g.filter(x => x[3] > 0).length, g.filter(x => x[3] < 0).length] };
-    const units = Object.entries(X.units).sort((a, b) => b[1][0] - a[1][0]).slice(0, 12).map(([k, u]) => [k.split("-").map(Number), r1(u[0]), u[1], u[2]]);
+    const units = Object.entries(X.units).sort((a, b) => b[1][0] - a[1][0]).slice(0, 12).map(([k, u]) => [k.split("-").map(Number), r1(u[0]), u[1], u[2], u.slice(3, 8).map(r1), r1(u[8] || 0)]);
     const totMin = Object.values(X.mins).reduce((a, b) => a + b, 0) / 5;
     teams[id] = { n: G.length, close: rec(g => Math.abs(g[3]) <= 5 || g[10]), clutch: rec(g => g[11]), ot: rec(g => g[10]), comeback10: G.filter(g => g[3] > 0 && g[5] >= 10).length, blown10: G.filter(g => g[3] < 0 && g[4] >= 10).length,
       trailHalf: rec(g => g[6] != null && g[6] < 0), leadHalf: rec(g => g[6] != null && g[6] > 0), bigComeback: Math.max(0, ...G.filter(g => g[3] > 0).map(g => g[5])), bigBlown: Math.max(0, ...G.filter(g => g[3] < 0).map(g => g[4])),

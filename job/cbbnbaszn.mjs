@@ -38,24 +38,36 @@ export function lineupsOf(bx, pb) {
       for (const t of [home, away]) for (const [id] of cand[t].sort((x, y) => y[1] - x[1]).slice(0, 5)) on[t].add(id);
       /* someone who played the whole period without a stat: carry him over from the end of the last period */
       for (const t of [home, away]) if (on[t].size < 5 && prevEnd) for (const id of prevEnd[t]) { if (on[t].size >= 5) break; if (firstIn[id] == null && !on[t].has(id)) on[t].add(id) } }
-    for (const t of [home, away]) if (on[t].size !== 5) { bad.push(per + t + on[t].size); if (!lineupsOf.dbg) lineupsOf.dbg = { gid: g.gameId, per, t, on: [...on[t]], acts: PA.slice(0, 40).filter(a => a.personId).map(a => [a.clock, a.actionType, a.subType || "", a.personId, roster[a.personId] || "", a.actionNumber]) } }
-    let last = len;   /* seconds left at the start of the open segment */
-    const close = (tLeft) => { const d = last - tLeft; if (d <= 0) return;
-      for (const t of [home, away]) { if (on[t].size !== 5) continue; const k = [...on[t]].sort((x, y) => x - y).join(","), seg = { team: t, five: k, secs: d, pf: 0, pa: 0, b: Array(9).fill(0), cl: 0 };
-        /* buckets: quarter halves (6 minutes each), overtime last */
-        if (per > 4) seg.b[8] = d; else { const mid = 360; const a1 = Math.max(0, Math.min(last, len) - Math.max(tLeft, mid)), a2 = d - a1; seg.b[(per - 1) * 2] += a1; seg.b[(per - 1) * 2 + 1] += a2 }
-        if (per >= 4 && Math.abs(sH - sA) <= 5) seg.cl = Math.max(0, Math.min(last, 300) - tLeft);
-        out.push(seg) } last = tLeft };
-    for (const a of PA) {
-      const tLeft = secOf(a.clock);
-      if (a.actionType === "substitution") { close(tLeft); const t = roster[a.personId]; if (t) { if (a.subType === "out") on[t].delete(a.personId); else on[t].add(a.personId) } continue }
-      /* points from made shots and free throws (the running score fields can skip) */
-      const pts = a.shotResult === "Made" ? (a.actionType === "3pt" ? 3 : a.actionType === "2pt" ? 2 : a.actionType === "freethrow" ? 1 : 0) : 0, st = a.teamTricode;
-      if (pts && (st === home || st === away)) {
-        close(tLeft); const dh = st === home ? pts : 0, da = st === away ? pts : 0; sH += dh; sA += da;
-        for (const t of [home, away]) { if (on[t].size !== 5) continue; const k = [...on[t]].sort((x, y) => x - y).join(","); out.push({ team: t, five: k, secs: 0, pf: t === home ? dh : da, pa: t === home ? da : dh, b: Array(9).fill(0), cl: 0 }) } }
+    /* Oct 22 (Sam: "there should be other ways to clean this out"): play the period through; if a player who isn't on the floor by our
+       count goes out or does something (a shot, a foul, a rebound) before any sub-in, he must have started the period — put him in the
+       starting five in place of the starter seen latest, and play the period again (up to 8 times). stats.nba.com's official rotation would
+       settle it outright, but it doesn't answer GitHub's runners (checked Oct 22) */
+    const evid = {}; for (const a of PA) { const id = a.personId; if (!id || !roster[id] || evid[id] != null) continue; if (a.actionType === "substitution" && a.subType === "in") { evid[id] = -1; continue } if (NOT_ON.test(a.subType || "") || NOT_ON.test(a.actionType || "")) continue; evid[id] = secOf(a.clock) }
+    let res = null;
+    for (let tries = 0; tries < 8; tries++) {
+      const cur = { [home]: new Set(on[home]), [away]: new Set(on[away]) }, segs = []; let h = sH, w = sA, last = len, conflict = null;
+      const close = (tLeft) => { const d = last - tLeft; if (d <= 0) return;
+        for (const t of [home, away]) { if (cur[t].size !== 5) continue; const k = [...cur[t]].sort((x, y) => x - y).join(","), seg = { team: t, five: k, secs: d, pf: 0, pa: 0, b: Array(9).fill(0), cl: 0 };
+          if (per > 4) seg.b[8] = d; else { const a1 = Math.max(0, last - Math.max(tLeft, 360)), a2 = d - a1; seg.b[(per - 1) * 2] += a1; seg.b[(per - 1) * 2 + 1] += a2 }
+          if (per >= 4 && Math.abs(h - w) <= 5) seg.cl = Math.max(0, Math.min(last, 300) - tLeft);
+          segs.push(seg) } last = tLeft };
+      const seenIn = new Set();
+      for (const a of PA) { const tLeft = secOf(a.clock), id = a.personId, t = roster[id];
+        if (a.actionType === "substitution") { close(tLeft); if (!t) continue;
+          if (a.subType === "out") { if (!cur[t].has(id) && !seenIn.has(id) && !conflict) conflict = { t, id }; cur[t].delete(id) } else { seenIn.add(id); cur[t].add(id) } continue }
+        if (t && id && !cur[t].has(id) && !seenIn.has(id) && !conflict && !NOT_ON.test(a.subType || "") && !NOT_ON.test(a.actionType || "")) conflict = { t, id };
+        const pts = a.shotResult === "Made" ? (a.actionType === "3pt" ? 3 : a.actionType === "2pt" ? 2 : a.actionType === "freethrow" ? 1 : 0) : 0, st = a.teamTricode;
+        if (pts && (st === home || st === away)) { close(tLeft); const dh = st === home ? pts : 0, da = st === away ? pts : 0; h += dh; w += da;
+          for (const tt of [home, away]) { if (cur[tt].size !== 5) continue; const k = [...cur[tt]].sort((x, y) => x - y).join(","); segs.push({ team: tt, five: k, secs: 0, pf: tt === home ? dh : da, pa: tt === home ? da : dh, b: Array(9).fill(0), cl: 0 }) } } }
+      close(0);
+      res = { segs, h, w, end: cur };
+      if (!conflict) break;
+      /* repair the starting five and go again */
+      const S = on[conflict.t]; S.add(conflict.id);
+      if (S.size > 5) { const drop = [...S].filter(x => x !== conflict.id).sort((x, y) => (evid[x] ?? -2) - (evid[y] ?? -2))[0]; S.delete(drop) }
     }
-    close(0); prevEnd = { [home]: new Set(on[home]), [away]: new Set(on[away]) }
+    for (const t of [home, away]) if (on[t].size !== 5) bad.push(per + t + on[t].size);
+    out.push(...res.segs); sH = res.h; sA = res.w; prevEnd = { [home]: new Set(res.end[home]), [away]: new Set(res.end[away]) }
   }
   return { out, bad };
 }
@@ -67,7 +79,7 @@ export async function nbaFinalIds(code) { const S = await j("https://cdn.nba.com
 export async function buildNbaSzn({ getPack, putPack, log = console.log, curNba, CAP = 400 }) {
   const S = curNba, name = `p${S}_cbb-nbaszn`;
   let P = await getPack(name).catch(() => null);
-  if (!P || P.v !== 3 || P.season !== S) P = { v: 3, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
+  if (!P || P.v !== 4 || P.season !== S) P = { v: 4, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
   const code = "002" + String(S - 1).slice(2); let read = 0, gap = 0; const IDS = await nbaFinalIds(code);
   const ids = IDS || Array.from({ length: 1230 }, (_, i) => code + String(i + 1).padStart(5, "0"));
   for (const gid of ids) { if (read >= CAP || (!IDS && gap >= 12)) break; if (P.done[gid]) { gap = 0; continue }
@@ -82,6 +94,8 @@ export async function buildNbaSzn({ getPack, putPack, log = console.log, curNba,
     try { const { out, bad } = lineupsOf(bx, pb); if (bad.length) P.bad++;
       /* check: each team's units should add up to the game's length and its final score */
       const len = 2880 + 300 * Math.max(0, g.period - 4); for (const [t, sc] of [[home, +g.homeTeam.score], [away, +g.awayTeam.score]]) { const U = out.filter(x => x.team === t), ss = U.reduce((a, x) => a + x.secs, 0), pf = U.reduce((a, x) => a + x.pf, 0);
+        /* and each player's seconds should match his box-score minutes */
+        { const sec = {}; for (const x of U) for (const id of x.five.split(",")) sec[id] = (sec[id] || 0) + x.secs; for (const p of g[t === home ? "homeTeam" : "awayTeam"].players || []) { if (p.played !== "1") continue; P.pChk = (P.pChk || 0) + 1; if (Math.abs((sec[p.personId] || 0) - secOf((p.statistics || {}).minutes)) > 30) P.pOff = (P.pOff || 0) + 1 } }
         if (Math.abs(ss - len) > 2 || pf !== sc) { P.off = (P.off || 0) + 1; if ((P.offEx || []).length < 5) (P.offEx = P.offEx || []).push([gid, t, Math.round(ss), len, pf, sc, bad.join(" ")]) } }
       const inGame = new Set();
       for (const s of out) { const T = P.lu[s.team] = P.lu[s.team] || {}; const e = T[s.five] = T[s.five] || Array(LUCOLS.length).fill(0);

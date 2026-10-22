@@ -249,7 +249,7 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
   if (!last || !last.games || last.v !== 3) {   /* v3 (Oct 12): opponents' shots with each player on the floor — the finished season read once more for it, then kept */ last = await nbaPbpSeason(curNba - 1, log).catch(e => (log("nba pbp: " + e.message), null)); if (last && last.games > 1000 && putPack) await putPack(`p2000_cbb-nbapbp${curNba - 1}`, last) }
   const cur = await nbaPbpSeason(curNba, log).catch(e => (log("nba pbp: " + e.message), null));
   const Z = cur && cur.games >= 150 ? cur : last, zSeason = Z === cur ? curNba : curNba - 1;
-  if (Z) for (const [ab, X] of Object.entries(T)) { const z = Z.teams[ab]; if (z) { X.zo = z.o; X.zd = z.d; X.cl = z.cl } }
+  if (Z) for (const [ab, X] of Object.entries(T)) { const z = Z.teams[ab]; if (z) { X.zo = z.o; X.zd = z.d; X.close = z.cl } }   /* "close": last season's close games ("cl" is this season's losses — Oct 22 audit) */
   const series = [...(last ? last.series.map(g => [curNba - 1, ...g]) : []), ...(cur ? cur.series.map(g => [curNba, ...g]) : [])];
   /* players' zones, assists and clutch lines from the same season as the team zones (20+ shots, or any clutch shot) */
   const pz = {}; if (Z && Z.players) for (const [id, P] of Object.entries(Z.players)) { const n = P.z.reduce((a, z) => a + z[1], 0); if (n >= 20 || P.cl[2] + P.cl[4] > 0 || (P.dz && P.dz.reduce((a, z) => a + z[1], 0) >= 300)) pz[id] = P }

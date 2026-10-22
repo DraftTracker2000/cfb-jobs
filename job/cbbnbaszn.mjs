@@ -79,7 +79,7 @@ export async function nbaFinalIds(code) { const S = await j("https://cdn.nba.com
 export async function buildNbaSzn({ getPack, putPack, log = console.log, curNba, CAP = 400 }) {
   const S = curNba, name = `p${S}_cbb-nbaszn`;
   let P = await getPack(name).catch(() => null);
-  if (!P || P.v !== 4 || P.season !== S) P = { v: 4, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
+  if (!P || P.v !== 5 || P.season !== S) P = { v: 5, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
   const code = "002" + String(S - 1).slice(2); let read = 0, gap = 0; const IDS = await nbaFinalIds(code);
   const ids = IDS || Array.from({ length: 1230 }, (_, i) => code + String(i + 1).padStart(5, "0"));
   for (const gid of ids) { if (read >= CAP || (!IDS && gap >= 12)) break; if (P.done[gid]) { gap = 0; continue }
@@ -91,6 +91,7 @@ export async function buildNbaSzn({ getPack, putPack, log = console.log, curNba,
     for (const [side, t] of [["homeTeam", home], ["awayTeam", away]]) for (const p of g[side].players || []) { if (p.played !== "1") continue; const s = p.statistics || {};
       P.nm[p.personId] = [p.name, t, p.position || ""];
       (P.box[p.personId] = P.box[p.personId] || []).push([gid, t, Math.round(secOf(s.minutes) / 6) / 10, s.points | 0, s.reboundsTotal | 0, s.reboundsOffensive | 0, s.assists | 0, s.steals | 0, s.blocks | 0, s.turnovers | 0, s.fieldGoalsMade | 0, s.fieldGoalsAttempted | 0, s.threePointersMade | 0, s.threePointersAttempted | 0, s.freeThrowsMade | 0, s.freeThrowsAttempted | 0, s.plusMinusPoints | 0, p.starter === "1" ? 1 : 0]) }
+    if (["0022600003", "0022600092", "0022600004"].includes(gid)) { P.raw = P.raw || {}; P.raw[gid] = { box: ["homeTeam", "awayTeam"].map(sd => (g[sd].players || []).filter(p => p.played === "1").map(p => [p.personId, p.name, g[sd].teamTricode, p.starter, (p.statistics || {}).minutes])), acts: (pb.game.actions || []).map(a => [a.actionNumber, a.period, a.clock, a.actionType, a.subType || "", a.personId || 0, a.teamTricode || "", a.shotResult || "", a.description || ""]) } }
     try { const { out, bad } = lineupsOf(bx, pb); if (bad.length) P.bad++;
       /* check: each team's units should add up to the game's length and its final score */
       const len = 2880 + 300 * Math.max(0, g.period - 4); for (const [t, sc] of [[home, +g.homeTeam.score], [away, +g.awayTeam.score]]) { const U = out.filter(x => x.team === t), ss = U.reduce((a, x) => a + x.secs, 0), pf = U.reduce((a, x) => a + x.pf, 0);

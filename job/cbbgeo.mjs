@@ -11,6 +11,8 @@ import { join } from "node:path";
 /* places the schedule names in a way GeoNames doesn't */
 const ALIAS = { "Cancun": ["Cancún", "MX"], "Nassau": ["Nassau", "BS"], "George Town": ["George Town", "KY"], "Maui, HI": ["Kahului", "US", "HI"], "Lahaina, HI": ["Kahului", "US", "HI"],
   "Saint Thomas, Virgin Islands": ["Charlotte Amalie", "VI"], "Charlotte Amalie, Virgin Islands": ["Charlotte Amalie", "VI"], "Moon Township, PA": ["Coraopolis", "US", "PA"],
+  "New York, NY": ["New York City", "US", "NY"], "Bronx, NY": ["New York City", "US", "NY"], "Villanova, PA": ["Bryn Mawr", "US", "PA"], "University Park, PA": ["State College", "US", "PA"],
+  "South Easton, MA": ["Brockton", "US", "MA"], "Lorman, MS": ["Port Gibson", "US", "MS"], "Stateline, NV": ["South Lake Tahoe", "US", "CA"],
   "Paradise Island": ["Nassau", "BS"], "Montego Bay": ["Montego Bay", "JM"], "Riviera Maya": ["Playa del Carmen", "MX"] };
 const COUNTRY = { "italy": "IT", "virgin islands": "VI", "bahamas": "BS", "mexico": "MX", "jamaica": "JM", "cayman islands": "KY", "puerto rico": "PR", "canada": "CA", "ireland": "IE", "germany": "DE", "france": "FR", "spain": "ES", "japan": "JP", "australia": "AU", "england": "GB", "united kingdom": "GB" };
 const CA_PROV = { PQ: "10", QC: "10", ON: "08", BC: "02", AB: "01", MB: "03", NS: "07", NB: "04" };
@@ -41,7 +43,7 @@ function place(by, city) {
 export async function buildGeo({ getPack, putPack, log = console.log, cities }) {
   let P = await getPack("p2000_cbb-geo").catch(() => null); if (!P || P.v !== 1) P = { v: 1, c: {}, miss: {} };
   const want = [...new Set(cities.filter(Boolean))], wk = Date.now() - 7 * 864e5;
-  const todo = want.filter(c => !P.c[c] && !(P.miss[c] > wk));   /* a city we couldn't place is tried again after a week */
+  const todo = want.filter(c => !P.c[c] && (ALIAS[c] || !(P.miss[c] > wk)));   /* a city we couldn't place is tried again after a week */
   if (!todo.length) { log(`geo: ${Object.keys(P.c).length} places, nothing new`); return P }
   let by; try { by = loadGeoNames(log) } catch (e) { log("geo: GeoNames download failed — " + e.message); return P }
   let got = 0; for (const c of todo) { const x = place(by, c); if (x) { P.c[c] = x; delete P.miss[c]; got++ } else P.miss[c] = Date.now() }

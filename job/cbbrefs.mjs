@@ -17,13 +17,17 @@ export async function buildBbRefs({ getPack, putPack, log = console.log, S, CAP 
   let P = await getPack("p2000_cbb-refs").catch(() => null);
   if (!P || P.v !== 1) P = { v: 1, cols: BB_REF_COLS, g: { c: {}, n: {} }, days: { c: {}, n: {} }, none: { c: {}, n: {} } };
   const now = Date.now(); let read = 0, added = 0;
+  /* once (Oct 21): reopen the first days of each NBA season so preseason games already kept get taken out */
+  if (!P.pre1) { for (const y of [S - 1, S]) { const [a] = span("n", y); for (let k = 0; k < 6; k++) { const d = new Date(a); d.setUTCDate(d.getUTCDate() + k); delete P.days.n[ymd(d)] } } P.pre1 = 1 }
   for (const lg of ["c", "n"]) for (const y of [S - 1, S]) {
     const [a, b] = span(lg, y);
     for (let d = new Date(a); d <= b && d.getTime() < now - 864e5 * 0.5; d.setUTCDate(d.getUTCDate() + 1)) {
       const key = ymd(d); if (P.days[lg][key]) continue;   /* a day whose games are all read */
       if (read >= CAP) break;
       const sb = await j(`https://site.api.espn.com/apis/site/v2/sports/basketball/${LG[lg]}/scoreboard?dates=${key}${lg === "c" ? "&groups=50&limit=500" : ""}`); if (!sb) continue;
-      const ev = (sb.events || []).filter(e => ((e.status || {}).type || {}).state === "post"); let all = true;
+      /* regular season and playoffs only — preseason games are left out (Oct 21) */
+      const pre = (sb.events || []).filter(e => (e.season || {}).type === 1); for (const e of pre) { if (P.g[lg][e.id]) { delete P.g[lg][e.id]; added++ } P.none[lg][e.id] = 1 }
+      const ev = (sb.events || []).filter(e => ((e.status || {}).type || {}).state === "post" && (e.season || {}).type !== 1); let all = true;
       for (const e of ev) { if (P.g[lg][e.id] || P.none[lg][e.id]) continue; if (read >= CAP) { all = false; break }
         read++; const s = await j(`https://site.api.espn.com/apis/site/v2/sports/basketball/${LG[lg]}/summary?event=${e.id}`); if (!s) { all = false; continue }
         const row = bbRefRow(s); if (row) { P.g[lg][e.id] = [y, ...row]; added++ } else P.none[lg][e.id] = 1 }

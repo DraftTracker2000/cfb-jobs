@@ -5,8 +5,7 @@
       last two seasons), read once and slowly — two at a time with a pause (Sam: not a flood of reads), NBA first, then college newest
       season first. One line a game (src/bbref.js), kept per season in p<Y>_cbb-refraw-<c|n>; a season's pack is only read by this job.
       ESPN's summaries are already read for the refs, so the fouls come with them — no CollegeBasketballData calls at all.
-   2. Coaches: ESPN's head coach for each college team-season we don't have yet (2013 on is in p2000_cbb-coachids; older seasons are tried
-      here, kept in p2000_cbb-coachids-old); NBA coaches from the nbastats pack's Wikipedia record tables (a season where a team changed
+   2. Coaches: college from p2000_cbb-coachids (2013 on) and, before that, each coach's Wikipedia stops already on the coaches pack; NBA coaches from the nbastats pack's Wikipedia record tables (a season where a team changed
       coaches midway is left out — we can't tell whose games were whose).
    3. Totals, small enough for the pages: for each official his seasons and the teams and coaches he's toughest on, most lenient to, and
       wins and loses with (p2000_cbb-refcar-<lg><shard>), and for each coach every official he's had (p2000_cbb-coachref-<lg><shard>).
@@ -48,20 +47,6 @@ async function backfillSeason({ getPack, putPack, log, lg, y, deadline }) {
   if (all) P.done = 1; P.at = Date.now(); await putPack(name, P);
   log(`refhist ${lg} ${y}: ${Object.keys(P.g).length} games${all ? " · done" : ""} (${read} reads this pass)`);
   return { P, read, done: all };
-}
-
-/* ---------- 2. college coaches before 2013 (ESPN's core API; seasons it doesn't know stay empty) ---------- */
-async function oldCollegeCoaches({ getPack, putPack, log, seasons, deadline }) {
-  let C = await getPack("p2000_cbb-coachids-old").catch(() => null); if (!C || !C.seasons) C = { seasons: {}, names: {}, tried: {} };
-  const B = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball"; let calls = 0, got = 0;
-  for (const [y, ids] of seasons) { if (C.tried[y] || Date.now() > deadline) continue; const map = {};
-    let i = 0; const L = [...ids]; await Promise.all([0, 1, 2].map(async () => { while (i < L.length) { const t = L[i++];
-      const r = await j(`${B}/seasons/${y}/teams/${t}/coaches`); calls++; await sleep(120); const ref = r && r.items && r.items[0] && r.items[0].$ref; if (!ref) continue;
-      const cid = (ref.match(/coaches\/(\d+)/) || [])[1]; if (!cid) continue; map[t] = cid; got++;
-      if (!C.names[cid]) { const c = await j(`${B}/seasons/${y}/coaches/${cid}`); calls++; if (c) C.names[cid] = [c.firstName, c.lastName].filter(Boolean).join(" ") } } }));
-    C.seasons[y] = map; C.tried[y] = 1 }
-  if (calls) { await putPack("p2000_cbb-coachids-old", C); log(`refhist: old college coaches — ${calls} reads, ${got} team-seasons placed`) }
-  return C;
 }
 
 /* ---------- 3. totals ---------- */
@@ -115,10 +100,25 @@ export async function refHist({ getPack, putPack, log, NEXT, curNba, hours = 4.5
   const teamsP = (await getPack(`p${NEXT}_cbb-teams`).catch(() => null)) || (await getPack(`p${NEXT - 1}_cbb-teams`).catch(() => null)) || { teams: {} };
   const cbbdOfEspn = {}; for (const t of Object.values(teamsP.teams || {})) if (t.sid) cbbdOfEspn[t.sid] = t.id;
   const CI = (await getPack("p2000_cbb-coachids").catch(() => null)) || { seasons: {}, names: {} };
-  const oldSeasons = []; for (let y = FIRST; y < 2013; y++) { const ids = new Set(); for (const r of rows.c) if (r.season === y) { if (r.hId) ids.add(r.hId); if (r.aId) ids.add(r.aId) } if (ids.size) oldSeasons.push([y, ids]) }
-  const CO = await oldCollegeCoaches({ getPack, putPack, log, seasons: oldSeasons, deadline: deadline + 20 * 60e3 });
+  /* before 2013 (Oct 22 — Sam: "we already had this information stored"): each coach's stops from his Wikipedia page, already kept on the
+     coaches pack (wiki.stops: ["2000–2009", "Memphis"]) — a stop "2000–2009" is the seasons ending 2001 through 2009 */
+  const CP = (await getPack(`p${NEXT}_cbb-coaches`).catch(() => null)) || (await getPack(`p${NEXT - 1}_cbb-coaches`).catch(() => null)) || { coaches: {} };
+  const kn = v => String(v || "").toLowerCase().replace(/\bst\.?\b/g, "state").replace(/[^a-z]/g, ""), espnOfName = {};
+  for (const t of Object.values(teamsP.teams || {})) if (t.sid) { espnOfName[kn(t.nm)] = t.sid; if (t.mascot) espnOfName[kn(t.nm + " " + t.mascot)] = t.sid }
+  /* Wikipedia's school names that differ from ours */
+  const WK_ALIAS = { "IUPUI": "IU Indianapolis", "FIU": "Florida International", "Appalachian State": "App State", "Seattle": "Seattle U", "UMass": "Massachusetts", "Loyola (MD)": "Loyola Maryland",
+    "Loyola (IL)": "Loyola Chicago", "Loyola Marymount": "Loyola Marymount", "Penn": "Pennsylvania", "Miami (FL)": "Miami", "Miami (OH)": "Miami (OH)", "Southeastern Louisiana": "SE Louisiana", "San Jose State": "San José State",
+    "USC Upstate": "South Carolina Upstate", "Arkansas–Little Rock": "Little Rock", "UALR": "Little Rock", "American": "American University", "Queens": "Queens University", "Queens (NC)": "Queens University", "Detroit": "Detroit Mercy",
+    "LIU Brooklyn": "Long Island University", "LIU": "Long Island University", "Sam Houston State": "Sam Houston", "Louisiana–Monroe": "UL Monroe", "Grambling State": "Grambling", "Albany": "UAlbany", "Nicholls State": "Nicholls",
+    "UTRGV": "UT Rio Grande Valley", "Texas–Pan American": "UT Rio Grande Valley", "UTPA": "UT Rio Grande Valley" };
+  for (const [w, ours] of Object.entries(WK_ALIAS)) { const sid = espnOfName[kn(ours)]; if (sid) espnOfName[kn(w)] = sid }
+  const WIKI = {}; let wkOk = 0, wkMiss = new Set();
+  for (const [cid, c] of Object.entries(CP.coaches || {})) for (const [rng, school] of ((c.wiki || {}).stops || [])) { const m = String(rng).match(/(\d{4})\D+(\d{4}|present)/i); if (!m) continue;
+    const sid = espnOfName[kn(school)]; if (!sid) { wkMiss.add(school); continue } const y1 = /present/i.test(m[2]) ? NEXT : +m[2];
+    for (let y = +m[1] + 1; y <= y1; y++) { const k = y + "|" + sid; (WIKI[k] = WIKI[k] || []).push({ id: String(cid), nm: c.nm }); wkOk++ } }
+  log(`refhist: coaches' Wikipedia stops placed ${wkOk} team-seasons${wkMiss.size ? ` · not matched to a school: ${[...wkMiss].slice(0, 10).join("; ")}` : ""}`);
   const colCoach = (y, espnId) => { const c1 = CI.seasons[y] && CI.seasons[y][cbbdOfEspn[espnId]]; if (c1) return { id: String(c1), nm: CI.names[c1] || "" };
-    const c2 = CO.seasons[y] && CO.seasons[y][espnId]; return c2 ? { id: String(c2), nm: CO.names[c2] || "" } : null };
+    const w = WIKI[y + "|" + espnId]; return w && w.length === 1 ? w[0] : null };
   const NS = await getPack("p2000_cbb-nbastats").catch(() => null), coh = (NS && NS.coh) || {};
   /* NBA: ESPN id → today's abbreviation (franchises keep their ESPN id when they move or rename) */
   const abNow = {}; for (const r of [...rows.n].sort((a, b) => a.season - b.season)) { if (r.hId) abNow[r.hId] = r.home; if (r.aId) abNow[r.aId] = r.away }

@@ -775,18 +775,23 @@ export async function depth(S, log) {
      promoted from or sent to the practice squad; game-day inactives aren't moves), depth-chart starters who changed (the chart now vs a
      week earlier) and players new to (or off) the injury report */
   const chg = {}; let chgInjWeek = null;
-  { const W = {}; for (const o of RR) { const w = +o.week; if (w !== lw && w !== lw - 1) continue; ((W[w] = W[w] || {})[o.team] = W[w][o.team] || {})[o.gsis_id] = o }
+  { const W = {}; for (const o of RR) { const w = +o.week; if (w < lw - 3) continue; ((W[w] = W[w] || {})[o.team] = W[w][o.team] || {})[o.gsis_id] = o }
     const onTeam = (w, id) => { for (const tm in W[w] || {}) if (W[w][tm][id] && W[w][tm][id].status !== "CUT") return tm; return null };
     const C = tm => chg[tm] = chg[tm] || { moves: [], dc: [], inj: [] };
     const nm = o => [o.gsis_id, o.full_name, (o.position || "").toUpperCase()];
-    if (W[lw] && W[lw - 1]) for (const tm in W[lw]) { const A = W[lw - 1][tm] || {}, B = W[lw][tm];
+    /* Oct 22 (Sam: "what changed this week on the nfl page is broken" — Detroit listed its whole roster as "signed"): a team on a bye has
+       no rows in that week's file, so last week's roster read as empty. Each team now compares its own newest roster week with its own
+       week before that, and a team whose earlier roster is missing or under half the size is skipped rather than flooded */
+    const wkOf = tm => Object.keys(W).map(Number).filter(w => W[w][tm] && Object.keys(W[w][tm]).length).sort((x, y) => y - x);
+    if (W[lw]) for (const tm of new Set(Object.values(W).flatMap(x => Object.keys(x)))) { const ws = wkOf(tm); if (ws.length < 2 || ws[0] < lw - 1) continue; const wN = ws[0], wP = ws[1];
+      const A = W[wP][tm] || {}, B = W[wN][tm]; if (Object.keys(A).length < .5 * Object.keys(B).length) continue;
       for (const id in B) { const b = B[id], a = A[id];
         if (b.status === "CUT") { if (a && a.status !== "CUT") C(tm).moves.push([...nm(b), "released", null]); continue }
-        if (!a || a.status === "CUT") { const from = onTeam(lw - 1, id); C(tm).moves.push([...nm(b), from && from !== tm ? "acquired" : b.status === "DEV" ? "signed to practice squad" : "signed", from && from !== tm ? from : null]); continue }
+        if (!a || a.status === "CUT") { const from = onTeam(wP, id); C(tm).moves.push([...nm(b), from && from !== tm ? "acquired" : b.status === "DEV" ? "signed to practice squad" : "signed", from && from !== tm ? from : null]); continue }
         const x = a.status, y = b.status; if (x === y || (x === "ACT" && y === "INA") || (x === "INA" && y === "ACT")) continue;
         const k = (y === "RES" || y === "PUP") ? "to reserve" + (b.status_description_abbr ? ` (${b.status_description_abbr})` : "") : (x === "RES" || x === "PUP") && (y === "ACT" || y === "INA") ? "activated from reserve" : x === "DEV" && (y === "ACT" || y === "INA") ? "promoted from practice squad" : (x === "ACT" || x === "INA") && y === "DEV" ? "to practice squad" : null;
         if (k) C(tm).moves.push([...nm(b), k, null]) }
-      for (const id in A) { const a = A[id]; if (a.status === "CUT" || B[id]) continue; const to = onTeam(lw, id); C(tm).moves.push([...nm(a), to && to !== tm ? "left for" : "released", to && to !== tm ? to : null]) } }
+      for (const id in A) { const a = A[id]; if (a.status === "CUT" || B[id]) continue; const to = onTeam(wN, id) || onTeam(lw, id); C(tm).moves.push([...nm(a), to && to !== tm ? "left for" : "released", to && to !== tm ? to : null]) } }
     /* trades show up on the depth charts (updated daily) before the weekly roster file: a player on this team's chart now who was on another
        team's chart a week ago was acquired from that team (Sam, Oct 1: the Joey Porter Jr. trade) */
     { const was = {}; for (const tm in mem.then) for (const id in mem.then[tm]) was[id] = tm;

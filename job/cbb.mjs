@@ -101,7 +101,9 @@ export async function getPack(name) {
   /* its own service user (Oct 11): the basketball job runs beside the data job, and one sign-in revoked the other's session — a
      defense-chart build died at its first call (401 → signed out) while a basketball run was going */
   if (!SESS) SESS = (await site("POST", "/api/job/session", { body: { who: "cbb" } })).token;
-  const r = await fetch(SITE + "/api/pack/" + name, { headers: { Authorization: "Bearer " + SESS } });
+  let r = await fetch(SITE + "/api/pack/" + name, { headers: { Authorization: "Bearer " + SESS } });
+  /* a job sign-in lasts 2 hours; the long referee backfill (MODE=refhist) outlives it, so sign in again once (Oct 22) */
+  if (r.status === 401) { SESS = (await site("POST", "/api/job/session", { body: { who: "cbb" } })).token; r = await fetch(SITE + "/api/pack/" + name, { headers: { Authorization: "Bearer " + SESS } }) }
   return r.ok ? r.json() : null;
 }
 const INDEX = {};
@@ -216,6 +218,11 @@ export async function main() {
   const full = MODE === "cbbhistory";
   /* nbastats: only the NBA.com tables (play types, hustle, matchups, tracking) from the open sportsdataverse files — no CBBD or ESPN
      calls at all (Oct 12: to fill new NBA profile pieces without spending the day's calls) */
+  /* refhist: the referee history backfill and its totals (job/cbbrefhist.mjs) — ESPN reads only, no CBBD calls */
+  if (MODE === "refhist") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
+    const { refHist } = await import("./cbbrefhist.mjs"); const R = await refHist({ getPack, putPack, log, NEXT: UPCOMING, curNba });
+    await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `Referee history · ${R.reads} ESPN reads · ${R.mins.toFixed(0)} min · 0 CBBD calls`; log(msg);
+    await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return }
   if (MODE === "nbastats") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
     await buildNbaStats({ getPack, putPack, log, curNba, live: nbaLive, full: false });
     try { await refreshNbaOnCourt({ getPack, putPack, log, curNba: M >= 7 ? Yr + 1 : Yr, packNames: [`p${UPCOMING}_cbb-nbagames`, `p${UPCOMING - 1}_cbb-nbagames`] }) } catch (e) { log("nba on-court: " + e.message) }

@@ -821,15 +821,19 @@ export async function depth(S, log) {
    their ESPN and Sleeper ids so the fantasy page can match its rosters. ── */
 async function weeklyOut(S, log) {
   const RW = await get0(`weekly_rosters/roster_weekly_${S}.csv`, log), IJ = await get0(`injuries/injuries_${S}.csv`, log); if (!RW) return null;
-  const out = new Set(); if (IJ) rows(IJ, ["gsis_id", "week", "game_type", "report_status", "report_primary_injury"], o => { if (o.gsis_id && (o.game_type || "REG") === "REG" && o.report_status === "Out" && !notHurt(o.report_primary_injury || "")) out.add(o.gsis_id + "|" + +o.week) });
+  const out = new Set(), listed = new Set(); if (IJ) rows(IJ, ["gsis_id", "week", "game_type", "report_status", "report_primary_injury"], o => { if (!o.gsis_id || (o.game_type || "REG") !== "REG" || notHurt(o.report_primary_injury || "")) return; const k = o.gsis_id + "|" + +o.week;
+    if (o.report_status === "Out") out.add(k); else if (/Doubtful|Questionable/.test(o.report_status || "")) listed.add(k) });
   const w = {}, ids = {}, seen = new Set(); let maxW = 0;
   rows(RW, ["gsis_id", "week", "game_type", "status", "status_description_abbr", "espn_id", "sleeper_id", "full_name", "team"], o => {
     if (!o.gsis_id || (o.game_type || "REG") !== "REG") return; const wk = +o.week, k = o.gsis_id + "|" + wk; if (seen.has(k)) return; seen.add(k); if (wk > maxW) maxW = wk;
-    const c = classify(o.status, o.status_description_abbr || ""), code = c === 1 ? "IR" : (c === 2 || out.has(k)) ? "O" : null; if (!code) return;
+    const c = classify(o.status, o.status_description_abbr || ""), code = c === 1 ? "IR" : (c === 2 || out.has(k)) ? "O" : listed.has(k) ? "L" : null; if (!code) return;
     (w[wk] = w[wk] || {})[o.gsis_id] = [code, o.team || null]; if (!ids[o.gsis_id]) ids[o.gsis_id] = [o.espn_id || null, o.sleeper_id || null, o.full_name || ""] });
   /* someone ruled Out who isn't on that week's roster file yet (a late report) still counts */
   for (const k of out) { const [g, wk] = k.split("|"); if (!(w[wk] && w[wk][g])) (w[wk] = w[wk] || {})[g] = ["O", null] }
-  return { s: S, at: Date.now(), lastWeek: maxW, w, wCols: ["code IR|O", "team that week"], ids, idCols: ["espn", "sleeper", "name"] };
+  /* Oct 21 (Sam: "he was declared out last week tho" — McConkey): listed Questionable or Doubtful with a real injury = "L"; the page counts him
+     out when his team played and he has no game line (a game-day inactive the weekly file still shows as active) */
+
+  return { s: S, at: Date.now(), lastWeek: maxW, w, wCols: ["code IR|O|L (listed questionable/doubtful)", "team that week"], ids, idCols: ["espn", "sleeper", "name"] };
 }
 /* ── referees (Oct 21 — Sam OK'd it: "just do the espn"): every regular-season and playoff game since 2015 with its referee (the crew chief —
    NFL crews stay together all season, so the referee names the crew), the score, the closing spread and total, and each team's penalties

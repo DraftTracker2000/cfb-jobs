@@ -584,6 +584,8 @@ export async function main() {
     for (const g of G) { const c = [g.city, g.state].filter(Boolean).join(", "); if (c) C.add(c) } await buildGeo({ getPack, putPack, log, cities: [...C] }) } catch (e) { log("geo: " + e.message) }
   /* referees, college and NBA (Oct 21; job/cbbrefs.mjs): ESPN's officials for every finished game of last season and this one */
   try { const { buildBbRefs } = await import("./cbbrefs.mjs"); await buildBbRefs({ getPack, putPack, log, S: NEXT }) } catch (e) { log("refs: " + e.message) }
+  /* NBA calls by official and player (Oct 21; job/cbbnbacalls.mjs) */
+  try { const { buildNbaCalls } = await import("./cbbnbacalls.mjs"); await buildNbaCalls({ getPack, putPack, log, curNba }) } catch (e) { log("nba calls: " + e.message) }
   try { if (GM && GM.CI) await buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTED, normName, bySeason: GM.CI.seasons, D1, teams: teamsRaw, schoolKey: wikiSchoolKey }) } catch (e) { log("coach extras: " + e.message) }
   /* NCAA tournament runs since 2008, for the "Name the run" game (job/cbbncaa.mjs) */
   let NCAA = null; try { NCAA = await buildNcaaRuns({ cb, getPack, putPack, log, S, full }) } catch (e) { log("ncaa runs: " + e.message) }

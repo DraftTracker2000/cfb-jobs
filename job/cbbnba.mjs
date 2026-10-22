@@ -106,18 +106,21 @@ export function rowsOf(text) { const rows = []; let row = [], cur = "", q = fals
     else if (c === '"') q = true; else if (c === ",") { row.push(cur); cur = "" } else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cur); cur = ""; if (row.length > 1 || row[0]) rows.push(row); row = [] } else cur += c }
   if (cur || row.length) { row.push(cur); rows.push(row) }
   const H = rows.shift() || []; return rows.map(f => { const o = {}; H.forEach((h, j) => o[h] = f[j]); return o }) }
+export const AL_COLS = [["pts", "team_score"], ["reb", "total_rebounds"], ["oreb", "offensive_rebounds"], ["ast", "assists"], ["stl", "steals"], ["blk", "blocks"], ["tpm", "three_point_field_goals_made"], ["tpa", "three_point_field_goals_attempted"], ["fgm", "field_goals_made"], ["fga", "field_goals_attempted"], ["paint", "points_in_paint"]];
 export function nbaTeamRatings(box, minG = 20) {
   const T = {};
   /* the other side of each game (Oct 12 — Sam picked box-score stand-ins for the defense play types NBA.com doesn't track): fast-break
      points and offensive rebounds given up, per game */
   const byG = {}; for (const r of box) if (+r.season_type === 2) (byG[r.game_id] = byG[r.game_id] || []).push(r);
   for (const r of box) { if (+r.season_type !== 2) continue; const a = r.team_abbreviation; const X = T[a] = T[a] || { nm: r.team_display_name, id: +r.team_id, c1: r.team_color, g: 0, w: 0, pf: 0, pa: 0, poss: 0, fga: 0, tpa: 0, paint: 0, fb: 0, tov: 0, ofb: 0, oorb: 0, og: 0 };
-    const op = (byG[r.game_id] || []).find(x => x !== r && x.team_abbreviation !== a); if (op) { X.og++; X.ofb += +op.fast_break_points || 0; X.oorb += +op.offensive_rebounds || 0 }
+    const op = (byG[r.game_id] || []).find(x => x !== r && x.team_abbreviation !== a); if (op) { X.og++; X.ofb += +op.fast_break_points || 0; X.oorb += +op.offensive_rebounds || 0;
+      /* what the defense gives up, per game (Oct 21 — the nightly matchup lists): the other side's line in each game */
+      const al = X.al = X.al || {}; for (const [k, c] of AL_COLS) al[k] = (al[k] || 0) + (+op[c] || 0) }
     const poss = (+r.field_goals_attempted || 0) - (+r.offensive_rebounds || 0) + (+r.total_turnovers || +r.turnovers || 0) + .44 * (+r.free_throws_attempted || 0);
     X.g++; if (/true/i.test(r.team_winner)) X.w++; X.pf += +r.team_score || 0; X.pa += +r.opponent_team_score || 0; X.poss += poss; X.fga += +r.field_goals_attempted || 0; X.tpa += +r.three_point_field_goals_attempted || 0; X.paint += +r.points_in_paint || 0; X.fb += +r.fast_break_points || 0; X.tov += +r.total_turnovers || 0 }
   const r1 = x => Math.round(10 * x) / 10;
   for (const [k, X] of Object.entries(T)) if (X.g < minG) delete T[k];   /* the All-Star teams (a whole season: under 20 games) */
-  for (const X of Object.values(T)) { const p = X.poss || 1; X.l = X.g - X.w; X.ortg = r1(100 * X.pf / p); X.drtg = r1(100 * X.pa / p); X.net = r1(X.ortg - X.drtg); X.pace = r1(p / Math.max(1, X.g)); X.tpr = r1(100 * X.tpa / Math.max(1, X.fga)); X.paint = r1(X.paint / Math.max(1, X.g)); X.fb = r1(X.fb / Math.max(1, X.g)); X.ofb = X.og ? r1(X.ofb / X.og) : null; X.oorb = X.og ? r1(X.oorb / X.og) : null; delete X.og; X.tovp = r1(100 * X.tov / p); delete X.poss; delete X.fga; delete X.tpa; delete X.tov; X.pf = r1(X.pf / Math.max(1, X.g)); X.pa = r1(X.pa / Math.max(1, X.g)) }
+  for (const X of Object.values(T)) { const p = X.poss || 1; X.l = X.g - X.w; X.ortg = r1(100 * X.pf / p); X.drtg = r1(100 * X.pa / p); X.net = r1(X.ortg - X.drtg); X.pace = r1(p / Math.max(1, X.g)); X.tpr = r1(100 * X.tpa / Math.max(1, X.fga)); X.paint = r1(X.paint / Math.max(1, X.g)); X.fb = r1(X.fb / Math.max(1, X.g)); X.ofb = X.og ? r1(X.ofb / X.og) : null; X.oorb = X.og ? r1(X.oorb / X.og) : null; if (X.al) { for (const k in X.al) X.al[k] = r1(X.al[k] / Math.max(1, X.og)); X.al.g = X.og } delete X.og; X.tovp = r1(100 * X.tov / p); delete X.poss; delete X.fga; delete X.tpa; delete X.tov; X.pf = r1(X.pf / Math.max(1, X.g)); X.pa = r1(X.pa / Math.max(1, X.g)) }
   return T;
 }
 /* our pick (Oct 11, refit — job/nbatest.mjs): the gap in net rating (points per 100; last season blended with this one) → a logistic
@@ -215,7 +218,7 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
      the stagnant information on site"); only this season's files are read each run */
   const sched = await getCsv(REL("espn_nba_schedules", `nba_schedule_${curNba}.csv`)), ros = await getCsv(REL("espn_nba_rosters", `rosters_${curNba}.csv`));
   const LT = await getPack("p2000_cbb-nbalastteams").catch(() => null); let T;
-  if (LT && LT.season === curNba - 1 && LT.T && Object.keys(LT.T).length >= 30) { T = LT.T; log(`nba: ${curNba - 1} team ratings kept`) }
+  if (LT && LT.season === curNba - 1 && LT.T && Object.keys(LT.T).length >= 30 && Object.values(LT.T)[0].al) { T = LT.T; log(`nba: ${curNba - 1} team ratings kept`) }
   else { const box = await getCsv(REL("espn_nba_team_boxscores", `team_box_${curNba - 1}.csv`)); if (!box) { log("nba games: files not out yet"); return null }
     T = nbaTeamRatings(rowsOf(box)); await putPack("p2000_cbb-nbalastteams", { season: curNba - 1, T: JSON.parse(JSON.stringify(T)) }) }
   if (!sched) { log("nba games: files not out yet"); return null }
@@ -223,6 +226,8 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
      rating behind our pick, game by game (15 games = half each), and each team's record this season rides along */
   const curBox = await getCsv(REL("espn_nba_team_boxscores", `team_box_${curNba}.csv`)).catch(() => null), TC = curBox ? nbaTeamRatings(rowsOf(curBox), 1) : {};
   for (const [ab, X] of Object.entries(T)) { const c = TC[ab]; X.pnet = X.net;
+    /* allowed per game: this season blended in game by game (15 games = half each), like the net rating */
+    if (c && c.al && c.al.g && X.al) { const w = c.al.g / (c.al.g + 15), b = {}; for (const k in X.al) if (k !== "g") b[k] = Math.round(10 * (w * (c.al[k] || 0) + (1 - w) * X.al[k])) / 10; X.alNow = b; X.alNow.cg = c.al.g }
     if (c && c.g) { const w = c.g / (c.g + 15); X.pnet = Math.round(10 * (w * c.net + (1 - w) * X.net)) / 10; X.cw = c.w; X.cl = c.l; X.cnet = c.net } }
   /* this season's rosters: every player, with his college (our ESPN-id join) and last season's NBA line */
   const byE = {}; for (const [eid, X] of Object.entries(players || {})) byE[eid] = X;
@@ -250,12 +255,20 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
   const pz = {}; if (Z && Z.players) for (const [id, P] of Object.entries(Z.players)) { const n = P.z.reduce((a, z) => a + z[1], 0); if (n >= 20 || P.cl[2] + P.cl[4] > 0 || (P.dz && P.dz.reduce((a, z) => a + z[1], 0) >= 300)) pz[id] = P }
   /* game logs (this season once it has games, else last season): [date, team, opp, home 1/0, min, pts, reb, ast, stl, blk, tov, fgm, fga, tpm, tpa, ftm, fta, +/-, started] */
   try { const LG0 = await getPack(`p${S}_cbb-nbalogs`).catch(() => null);
-    for (const y of [curNba, curNba - 1]) { if (y < curNba && LG0 && LG0.season === y && LG0.p) { log(`nba logs ${y}: kept (season finished)`); break }   /* a finished season's logs never change (Oct 17) */
+    for (const y of [curNba, curNba - 1]) { if (y < curNba && LG0 && LG0.season === y && LG0.p && LG0.v === 2) { log(`nba logs ${y}: kept (season finished)`); break }   /* a finished season's logs never change (Oct 17) */
       const txt = await getCsv(REL("espn_nba_player_boxscores", `player_box_${y}.csv`)); if (!txt) continue; const R = rowsOf(txt).filter(r => [2, 3, 5].includes(+r.season_type) && +r.minutes > 0); if (R.length < 120) continue;   /* Oct 21 audit: playoffs and play-in count too, and the new season takes over after about two nights (was 500 rows, 3–4 nights) */
-      const P = {}; for (const r of R) (P[r.athlete_id] = P[r.athlete_id] || []).push([String(r.game_date || "").slice(0, 10), r.team_abbreviation, r.opponent_team_abbreviation, /home/i.test(r.home_away) ? 1 : 0, Math.round(+r.minutes), +r.points || 0, +r.rebounds || 0, +r.assists || 0, +r.steals || 0, +r.blocks || 0, +r.turnovers || 0, +r.field_goals_made || 0, +r.field_goals_attempted || 0, +r.three_point_field_goals_made || 0, +r.three_point_field_goals_attempted || 0, +r.free_throws_made || 0, +r.free_throws_attempted || 0, r.plus_minus === "" || r.plus_minus == null ? null : +r.plus_minus, /true/i.test(r.starter) ? 1 : 0]);
+      const P = {}; for (const r of R) (P[r.athlete_id] = P[r.athlete_id] || []).push([String(r.game_date || "").slice(0, 10), r.team_abbreviation, r.opponent_team_abbreviation, /home/i.test(r.home_away) ? 1 : 0, Math.round(+r.minutes), +r.points || 0, +r.rebounds || 0, +r.assists || 0, +r.steals || 0, +r.blocks || 0, +r.turnovers || 0, +r.field_goals_made || 0, +r.field_goals_attempted || 0, +r.three_point_field_goals_made || 0, +r.three_point_field_goals_attempted || 0, +r.free_throws_made || 0, +r.free_throws_attempted || 0, r.plus_minus === "" || r.plus_minus == null ? null : +r.plus_minus, /true/i.test(r.starter) ? 1 : 0, +r.offensive_rebounds || 0]);
       for (const k in P) P[k].sort((a, b) => a[0].localeCompare(b[0]));
-      await putPack(`p${S}_cbb-nbalogs`, { season: y, cols: ["date", "team", "opp", "home", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "pm", "start"], p: P });
+      await putPack(`p${S}_cbb-nbalogs`, { season: y, cols: ["date", "team", "opp", "home", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "pm", "start", "oreb"], p: P, v: 2 });
       log(`nba logs ${y}: ${Object.keys(P).length} players`); break } } catch (e) { log("nba logs: " + e.message) }
+  /* last season's per-game lines with offensive rebounds (Oct 21 — the nightly matchup lists need a full season behind each player while this
+     one is young): p2000_cbb-nbaprev = { season, cols, p: { espnId: [games, min, pts, reb, oreb, ast, stl, blk, fgm, fga, tpm, tpa, ftm, fta] a game } }, built once */
+  try { const PV = await getPack("p2000_cbb-nbaprev").catch(() => null), y = curNba - 1;
+    if (!PV || PV.season !== y) { const txt = await getCsv(REL("espn_nba_player_boxscores", `player_box_${y}.csv`));
+      if (txt) { const A = {}; for (const r of rowsOf(txt)) { if (+r.season_type !== 2 || !(+r.minutes > 0)) continue; const a = A[r.athlete_id] = A[r.athlete_id] || new Array(14).fill(0); a[0]++;
+          [r.minutes, r.points, r.rebounds, r.offensive_rebounds, r.assists, r.steals, r.blocks, r.field_goals_made, r.field_goals_attempted, r.three_point_field_goals_made, r.three_point_field_goals_attempted, r.free_throws_made, r.free_throws_attempted].forEach((v, i) => a[i + 1] += +v || 0) }
+        const P = {}; for (const [id, a] of Object.entries(A)) if (a[0] >= 5) P[id] = [a[0], ...a.slice(1).map(v => Math.round(10 * v / a[0]) / 10)];
+        await putPack("p2000_cbb-nbaprev", { season: y, cols: ["g", "min", "pts", "reb", "oreb", "ast", "stl", "blk", "fgm", "fga", "tpm", "tpa", "ftm", "fta"], p: P }); log(`nba prev ${y}: ${Object.keys(P).length} players`) } } } catch (e) { log("nba prev: " + e.message) }
   /* every NBA player on a current roster or who played the last two seasons gets a profile (Oct 11 — Sam: "multiple players are unclickable
      for the NBA"): his NBA seasons since 2009 — [season, team, gp, gs, min, pts, reb, ast, stl, blk, tov, fgm, fga, tpm, tpa, ftm, fta, playoffs [gp, gs, min, pts] or null] */
   /* Oct 12 (Sam: career tags for NBA players who skipped college "seems like a yes"): every NBA player gets the same tag, against the league */

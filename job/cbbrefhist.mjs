@@ -65,10 +65,13 @@ async function oldCollegeCoaches({ getPack, putPack, log, seasons, deadline }) {
 }
 
 /* ---------- 3. totals ---------- */
-const T0 = () => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];   /* games, fouls, road−home fouls, FTA, points, O/U games, overs, home games, home wins, home ATS games, home covers */
-function addT(T, r) { T[0]++; if (r.hF != null && r.aF != null) { T[1] += r.hF + r.aF; T[2] += r.aF - r.hF } if (r.hFTA != null && r.aFTA != null) T[3] += r.hFTA + r.aFTA; T[4] += (r.hs || 0) + (r.as || 0);
-  if (r.total != null && r.hs + r.as !== r.total) { T[5]++; if (r.hs + r.as > r.total) T[6]++ }
-  if (!r.neutral && r.hs !== r.as) { T[7]++; if (r.hs > r.as) T[8]++; if (r.spread != null && r.hs - r.as + r.spread !== 0) { T[9]++; if (r.hs - r.as + r.spread > 0) T[10]++ } } }
+/* a season's tuple: games, games with fouls, fouls, road−home fouls, games with FTA, FTA, points, O/U games, overs, home games, home wins,
+   home ATS games, home covers (older box scores sometimes lack fouls, so they keep their own count) */
+export const TCOLS = ["n", "fN", "f", "fd", "ftN", "fta", "pts", "ouN", "ov", "hmN", "hmW", "hcN", "hc"];
+const T0 = () => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+function addT(T, r) { T[0]++; if (r.hF != null && r.aF != null) { T[1]++; T[2] += r.hF + r.aF; T[3] += r.aF - r.hF } if (r.hFTA != null && r.aFTA != null) { T[4]++; T[5] += r.hFTA + r.aFTA } T[6] += (r.hs || 0) + (r.as || 0);
+  if (r.total != null && r.hs + r.as !== r.total) { T[7]++; if (r.hs + r.as > r.total) T[8]++ }
+  if (!r.neutral && r.hs !== r.as) { T[9]++; if (r.hs > r.as) T[10]++; if (r.spread != null && r.hs - r.as + r.spread !== 0) { T[11]++; if (r.hs - r.as + r.spread > 0) T[12]++ } } }
 export function buildTotals({ rows, lg, coachOf, teamNm }) {
   const AV = {}; for (const r of rows) { if (r.hF == null || r.aF == null) continue; for (const [k, f] of [[r.hId || r.home, r.hF], [r.aId || r.away, r.aF]]) { const o = AV[k + "|" + r.season] = AV[k + "|" + r.season] || [0, 0]; o[0]++; o[1] += f } }
   const LG = {}, R = {}, CR = {};
@@ -125,7 +128,7 @@ export async function refHist({ getPack, putPack, log, NEXT, curNba, hours = 4.5
   /* 3. totals, sharded so a page loads only its own slice */
   for (const lg of ["n", "c"]) { if (!rows[lg].length) continue;
     const X = buildTotals({ rows: rows[lg], lg, coachOf: lg === "c" ? (y, k) => colCoach(y, k) : nbaCoach });
-    const RS = Array.from({ length: SHARDS }, () => ({ v: 1, lg, LG: X.LG, r: {} })), CS = Array.from({ length: SHARDS }, () => ({ v: 1, lg, c: {} }));
+    const RS = Array.from({ length: SHARDS }, () => ({ v: 1, lg, cols: TCOLS, LG: X.LG, r: {} })), CS = Array.from({ length: SHARDS }, () => ({ v: 1, lg, c: {} }));
     for (const [o, v] of Object.entries(X.refs)) RS[shardOf(o)].r[o] = v;
     for (const [k, v] of Object.entries(X.coaches)) CS[shardOf(k)].c[k] = v;
     for (let i = 0; i < SHARDS; i++) { await putPack(`p2000_cbb-refcar-${lg}${i}`, RS[i]); await putPack(`p2000_cbb-coachref-${lg}${i}`, CS[i]) }

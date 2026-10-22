@@ -13,7 +13,7 @@ const NOT_ON = /technical|ejection/i;
 
 /* the lineup segments of one game: [{team, five (sorted ids), secs, pf, pa, bucket secs[9], clutch secs}] */
 export function lineupsOf(bx, pb) {
-  const g = bx.game, home = g.homeTeam.teamTricode, away = g.awayTeam.teamTricode, A = (pb.game.actions || []).slice().sort((a, b) => a.actionNumber - b.actionNumber);
+  const g = bx.game, home = g.homeTeam.teamTricode, away = g.awayTeam.teamTricode, A = (pb.game.actions || []).slice();   /* in the feed's own order — actionNumber isn't chronological (late corrections get high numbers) */
   const roster = {}; for (const [side, ab] of [["homeTeam", home], ["awayTeam", away]]) for (const p of g[side].players || []) roster[p.personId] = ab;
   const starters = { [home]: (g.homeTeam.players || []).filter(p => p.starter === "1").map(p => p.personId), [away]: (g.awayTeam.players || []).filter(p => p.starter === "1").map(p => p.personId) };
   const periods = [...new Set(A.map(a => a.period))].sort((a, b) => a - b), out = [], bad = [];
@@ -68,7 +68,7 @@ export async function nbaFinalIds(code) { const S = await j("https://cdn.nba.com
 export async function buildNbaSzn({ getPack, putPack, log = console.log, curNba, CAP = 400 }) {
   const S = curNba, name = `p${S}_cbb-nbaszn`;
   let P = await getPack(name).catch(() => null);
-  if (!P || P.v !== 6 || P.season !== S) P = { v: 6, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
+  if (!P || P.v !== 7 || P.season !== S) P = { v: 7, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
   const code = "002" + String(S - 1).slice(2); let read = 0, gap = 0; const IDS = await nbaFinalIds(code);
   const ids = IDS || Array.from({ length: 1230 }, (_, i) => code + String(i + 1).padStart(5, "0"));
   for (const gid of ids) { if (read >= CAP || (!IDS && gap >= 12)) break; if (P.done[gid]) { gap = 0; continue }

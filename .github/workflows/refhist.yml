@@ -1,0 +1,33 @@
+# The referee history backfill for mycbbbigboard.com (job/cbb.mjs, MODE=refhist → job/cbbrefhist.mjs): ESPN's game pages for every college
+# and NBA game back to 2002–03, read slowly, then the totals the referee and coach pages use. Every 6 hours until the history is in, then
+# it only folds in new games. No CollegeBasketballData calls. Published from the site's private repo by tools/sync-jobs.mjs — edit it there.
+name: Referee history
+
+on:
+  schedule:
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refhist
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Backfill and totals
+        env:
+          SITE_URL: ${{ secrets.SITE_URL || 'https://mycfbbigboard.com' }}
+          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
+          MODE: refhist
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: node job/cbb.mjs

@@ -19,7 +19,7 @@ export async function fetchRosters({ teams, log }) {
 
 /* ESPN's game summary (Oct 10 — found while hunting hidden data): the same plays as CBBD (CBBD's play sourceId is ESPN's play id) but
    with a court coordinate on every TURNOVER, plus the officials and attendance. One call per game; only what we use is kept:
-   { off: [referee names], att, tov: { espnPlayId: [x, y] } } — x 0–50 across the floor, y feet out from the offense's baseline. */
+   { off: [referee names], tov: { espnPlayId: [x, y] } } — x 0–50 across the floor, y feet out from the offense's baseline. */
 export async function fetchSummary(eventId) {
   const url = `https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/summary?event=${eventId}`;
   for (let k = 0; k < 3; k++) {
@@ -28,7 +28,7 @@ export async function fetchSummary(eventId) {
         for (const p of d.plays || []) { const t = (p.type || {}).text || "", c = p.coordinate; if (/Turnover/i.test(t) && c && c.x > -100 && c.y > -100 && !(c.x === 25 && c.y === 0)) tov[p.id] = [c.x, c.y] }
         /* ESPN's own team numbers: points in the paint, fast-break points, points off turnovers — { home: [...], away: [...] } */
         const ts = {}; for (const t of (d.boxscore || {}).teams || []) { const g = n => { const x = (t.statistics || []).find(z => z.name === n); return x ? +x.displayValue || 0 : null }; ts[t.homeAway] = [g("pointsInPaint"), g("fastBreakPoints"), g("turnoverPoints")] }
-        return { off: (gi.officials || []).map(o => o.displayName || o.fullName).filter(Boolean), att: gi.attendance || null, tov, ts } } } catch { }
+        return { off: (gi.officials || []).map(o => o.displayName || o.fullName).filter(Boolean), tov, ts } } } catch { }
     await new Promise(r => setTimeout(r, 1500 * (k + 1)));
   }
   return null;

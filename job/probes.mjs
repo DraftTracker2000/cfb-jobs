@@ -2,6 +2,12 @@
    async function evaluated in the page (w(ms) waits, W is the width). Return {ok, ...whatever helps}. Keep results short. */
 const res = `const R=()=>performance.getEntriesByType("resource").map(e=>decodeURIComponent(e.name));`;
 export const PROBES = [
+  /* Oct 21 (Sam: coaches vs refs over a career): how far back ESPN's game pages list the officials, college and NBA */
+  { name: "espn-ofc-depth", node: `const o={ok:true,c:{},n:{}};const L={c:"mens-college-basketball",n:"nba"};
+    for(const lg of ["c","n"])for(const y of [2003,2006,2009,2012,2015,2018,2021]){const d=y+"0115";const sb=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/"+L[lg]+"/scoreboard?dates="+d+(lg==="c"?"&groups=50&limit=500":"")).then(r=>r.ok?r.json():null).catch(()=>null);
+     const ev=(sb&&sb.events||[]).slice(0,4);let w=0,f=0;for(const e of ev){const s=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/"+L[lg]+"/summary?event="+e.id).then(r=>r.ok?r.json():null).catch(()=>null);const off=s&&s.gameInfo&&s.gameInfo.officials||[];if(off.length)w++;
+      const bs=s&&s.boxscore&&s.boxscore.teams||[];if(bs.some(t=>(t.statistics||[]).some(x=>/foul/i.test(x.name||x.label||""))))f++}
+     o[lg][y]=ev.length+" games · "+w+" with officials · "+f+" with fouls"}return o` },
   /* Oct 21 (Sam: calls on players by official): does NBA.com's play-by-play name the official on each foul and violation? */
   { name: "nba-pbp-ofc", node: `const o={ok:false,tried:[]};const H={"User-Agent":"Mozilla/5.0","Referer":"https://www.nba.com/","Origin":"https://www.nba.com"};
     for(const id of ["0022600001","0022600005","0022600010","0022500100"]){const r=await fetch("https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_"+id+".json",{headers:H});o.tried.push(id+":"+r.status);if(!r.ok)continue;

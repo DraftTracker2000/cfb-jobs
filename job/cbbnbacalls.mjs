@@ -5,6 +5,7 @@
    the final status) and the play-by-play once, and keeps, for each official and player who shared a floor, the games together and the calls
    by kind; and each player's calls from everyone. In p2000_cbb-nbacalls. At most CAP games a run, so last season fills over a few runs.
    Left out: bad passes, lost balls, out of bounds, shot clock and the turnover copy of an offensive foul. */
+import { nbaFinalIds } from "./cbbnbaszn.mjs";
 const H = { "User-Agent": "Mozilla/5.0 (mycbbbigboard.com data job)", "Referer": "https://www.nba.com/", "Origin": "https://www.nba.com" };
 async function j(u) { for (let k = 0; k < 3; k++) { try { const r = await fetch(u, { headers: H }); if (r.ok) return await r.json(); if (r.status === 403 || r.status === 404) return null } catch (e) { } await new Promise(r => setTimeout(r, 1200 * (k + 1))) } return null }
 /* call kinds: 0 shooting foul · 1 other personal foul (loose ball, take, flagrant, technical …) · 2 offensive foul · 3 violation (traveling, palming, double dribble, 3/5/8 seconds, backcourt, goaltending, kicked ball, lane …) */
@@ -22,7 +23,8 @@ export async function buildNbaCalls({ getPack, putPack, log = console.log, curNb
   const seasons = [curNba - 1, curNba].map(y => ({ y, code: "002" + String(y - 1).slice(2) }));
   let read = 0;
   for (const { y, code } of seasons) { let gap = 0;
-    for (let n = 1; n <= 1230 && read < CAP && gap < 12; n++) { const gid = code + String(n).padStart(5, "0"); if (P.done[gid]) { gap = 0; continue }
+    const IDS = await nbaFinalIds(code), ids = IDS || Array.from({ length: 1230 }, (_, i) => code + String(i + 1).padStart(5, "0"));   /* Oct 22: from NBA.com's schedule — game numbers aren't in date order */
+    for (const gid of ids) { if (read >= CAP || (!IDS && gap >= 12)) break; if (P.done[gid]) { gap = 0; continue }
       const bx = await j(`https://cdn.nba.com/static/json/liveData/boxscore/boxscore_${gid}.json`); if (!bx || !bx.game) { gap++; continue } gap = 0;
       if (bx.game.gameStatus !== 3) continue;   /* not final yet */
       const pb = await j(`https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_${gid}.json`); read++; if (!pb || !pb.game) continue;

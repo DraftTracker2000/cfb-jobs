@@ -23,13 +23,22 @@ export function lineupsOf(bx, pb) {
     /* who's on the floor to start the period */
     let on;
     if (per === 1) on = { [home]: new Set(starters[home]), [away]: new Set(starters[away]) };
-    else { on = { [home]: new Set(), [away]: new Set() }; const seen = new Set(), subIn = new Set();
-      for (const a of PA) { const id = a.personId, t = roster[id]; if (!id || !t || seen.has(id)) continue;
-        if (a.actionType === "substitution") { seen.add(id); if (a.subType === "in") subIn.add(id); else on[t].add(id); continue }
-        if (NOT_ON.test(a.subType || "") || NOT_ON.test(a.actionType || "")) continue; seen.add(id); on[t].add(id) }
+    else { on = { [home]: new Set(), [away]: new Set() };
+      /* each player's first sub-in this period (seconds left), and his first other action; he started the period if he went out first, or
+         acted before (not at the same clock as) his first sub-in — NBA.com sometimes lists the sub after a free throw at the same second */
+      const firstIn = {}, firstAct = {}, firstOut = {};
+      for (const a of PA) { const id = a.personId; if (!id || !roster[id]) continue; const tl = secOf(a.clock);
+        if (a.actionType === "substitution") { if (a.subType === "in") { if (firstIn[id] == null) firstIn[id] = tl } else if (firstOut[id] == null) firstOut[id] = tl; continue }
+        if (NOT_ON.test(a.subType || "") || NOT_ON.test(a.actionType || "")) continue; if (firstAct[id] == null) firstAct[id] = tl }
+      const cand = { [home]: [], [away]: [] };
+      for (const id of new Set([...Object.keys(firstAct), ...Object.keys(firstOut)].map(Number))) { const fi = firstIn[id], fo = firstOut[id], fa = firstAct[id];
+        const started = fi == null || (fo != null && fo >= fi) || (fa != null && fa > fi);
+        if (started) cand[roster[id]].push([id, Math.max(fo ?? -1, fa ?? -1)]) }
+      /* more than five: keep the five seen earliest in the period */
+      for (const t of [home, away]) for (const [id] of cand[t].sort((x, y) => y[1] - x[1]).slice(0, 5)) on[t].add(id);
       /* someone who played the whole period without a stat: carry him over from the end of the last period */
-      for (const t of [home, away]) if (on[t].size < 5 && prevEnd) for (const id of prevEnd[t]) { if (on[t].size >= 5) break; if (!subIn.has(id) && !on[t].has(id)) on[t].add(id) } }
-    for (const t of [home, away]) if (on[t].size !== 5) { bad.push(per + t + on[t].size); if (!lineupsOf.dbg) lineupsOf.dbg = { per, t, on: [...on[t]], acts: PA.slice(0, 40).filter(a => a.personId).map(a => [a.clock, a.actionType, a.subType || "", a.personId, roster[a.personId] || "", a.actionNumber]) } }
+      for (const t of [home, away]) if (on[t].size < 5 && prevEnd) for (const id of prevEnd[t]) { if (on[t].size >= 5) break; if (firstIn[id] == null && !on[t].has(id)) on[t].add(id) } }
+    for (const t of [home, away]) if (on[t].size !== 5) { bad.push(per + t + on[t].size); if (!lineupsOf.dbg) lineupsOf.dbg = { gid: g.gameId, per, t, on: [...on[t]], acts: PA.slice(0, 40).filter(a => a.personId).map(a => [a.clock, a.actionType, a.subType || "", a.personId, roster[a.personId] || "", a.actionNumber]) } }
     let last = len;   /* seconds left at the start of the open segment */
     const close = (tLeft) => { const d = last - tLeft; if (d <= 0) return;
       for (const t of [home, away]) { if (on[t].size !== 5) continue; const k = [...on[t]].sort((x, y) => x - y).join(","), seg = { team: t, five: k, secs: d, pf: 0, pa: 0, b: Array(9).fill(0), cl: 0 };
@@ -39,11 +48,11 @@ export function lineupsOf(bx, pb) {
         out.push(seg) } last = tLeft };
     for (const a of PA) {
       const tLeft = secOf(a.clock);
-      const nh = +a.scoreHome, na = +a.scoreAway;
       if (a.actionType === "substitution") { close(tLeft); const t = roster[a.personId]; if (t) { if (a.subType === "out") on[t].delete(a.personId); else on[t].add(a.personId) } continue }
-      if (isFinite(nh) && isFinite(na) && (nh !== sH || na !== sA)) {
-        /* points go to the units on the floor when they're scored */
-        close(tLeft); const dh = nh - sH, da = na - sA; sH = nh; sA = na;
+      /* points from made shots and free throws (the running score fields can skip) */
+      const pts = a.shotResult === "Made" ? (a.actionType === "3pt" ? 3 : a.actionType === "2pt" ? 2 : a.actionType === "freethrow" ? 1 : 0) : 0, st = a.teamTricode;
+      if (pts && (st === home || st === away)) {
+        close(tLeft); const dh = st === home ? pts : 0, da = st === away ? pts : 0; sH += dh; sA += da;
         for (const t of [home, away]) { if (on[t].size !== 5) continue; const k = [...on[t]].sort((x, y) => x - y).join(","); out.push({ team: t, five: k, secs: 0, pf: t === home ? dh : da, pa: t === home ? da : dh, b: Array(9).fill(0), cl: 0 }) } }
     }
     close(0); prevEnd = { [home]: new Set(on[home]), [away]: new Set(on[away]) }
@@ -58,7 +67,7 @@ export async function nbaFinalIds(code) { const S = await j("https://cdn.nba.com
 export async function buildNbaSzn({ getPack, putPack, log = console.log, curNba, CAP = 400 }) {
   const S = curNba, name = `p${S}_cbb-nbaszn`;
   let P = await getPack(name).catch(() => null);
-  if (!P || P.v !== 2 || P.season !== S) P = { v: 2, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
+  if (!P || P.v !== 3 || P.season !== S) P = { v: 3, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
   const code = "002" + String(S - 1).slice(2); let read = 0, gap = 0; const IDS = await nbaFinalIds(code);
   const ids = IDS || Array.from({ length: 1230 }, (_, i) => code + String(i + 1).padStart(5, "0"));
   for (const gid of ids) { if (read >= CAP || (!IDS && gap >= 12)) break; if (P.done[gid]) { gap = 0; continue }

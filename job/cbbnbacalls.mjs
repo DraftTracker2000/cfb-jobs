@@ -15,7 +15,7 @@ export function kindOf(a) {
   if (a.actionType === "turnover") { const s = String(a.subType || ""); return SKIP_TO.test(s) ? -1 : 3 }
   return -1 }
 
-export async function buildNbaCalls({ getPack, putPack, log = console.log, curNba, CAP = 450 }) {
+export async function buildNbaCalls({ getPack, putPack, log = console.log, curNba, CAP = 900 }) {
   let P = await getPack("p2000_cbb-nbacalls").catch(() => null);
   if (!P || P.v !== 1) P = { v: 1, kinds: ["shooting", "personal", "offensive", "violation"], done: {}, miss: {}, ofc: {}, pl: {}, by: {} };
   /* NBA seasons as NBA.com codes: 2025–26 → 225; curNba is the season's end year */

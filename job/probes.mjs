@@ -2,6 +2,14 @@
    async function evaluated in the page (w(ms) waits, W is the width). Return {ok, ...whatever helps}. Keep results short. */
 const res = `const R=()=>performance.getEntriesByType("resource").map(e=>decodeURIComponent(e.name));`;
 export const PROBES = [
+  /* Oct 21 (Sam: calls on players by official): does NBA.com's play-by-play name the official on each foul and violation? */
+  { name: "nba-pbp-ofc", node: `const o={ok:false,tried:[]};const H={"User-Agent":"Mozilla/5.0","Referer":"https://www.nba.com/","Origin":"https://www.nba.com"};
+    for(const id of ["0022600001","0022600005","0022600010","0022500100"]){const r=await fetch("https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_"+id+".json",{headers:H});o.tried.push(id+":"+r.status);if(!r.ok)continue;
+     const j=await r.json(),A=j.game.actions,F=A.filter(a=>/foul|violation|turnover/.test(a.actionType));o.ok=true;o.id=id;o.n=A.length;
+     o.kinds=[...new Set(F.map(a=>a.actionType+":"+(a.subType||"")+":"+(a.descriptor||"")+":"+(a.officialId?"ofc":"-")))].slice(0,40);
+     o.sample=F.filter(a=>a.officialId).slice(0,3).map(a=>({t:a.actionType,s:a.subType,d:a.descriptor,p:a.personId,nm:a.playerNameI,team:a.teamTricode,ofc:a.officialId,desc:a.description}));
+     const b=await fetch("https://cdn.nba.com/static/json/liveData/boxscore/boxscore_"+id+".json",{headers:H});if(b.ok){const bj=await b.json();o.officials=(bj.game.officials||[]).map(x=>[x.personId,x.name,x.assignment])}
+     break}return o` },
   /* Oct 11 (#334, Sam on "who made the play": "this seems like a huge miss"): CFBD's play stats (every player on a play, by role, with
      his id) against what the defender charts read out of play text — same team, same season */
   { name: "playstats-cmp", page: "/lab/", widths: [390], run: `const o={ok:true,types:null,teams:{}};try{o.types=(await api("/plays/stats/types")).map(t=>t.id+":"+t.name).join(", ")}catch(e){o.types="ERR "+e.message}

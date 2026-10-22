@@ -226,7 +226,7 @@ export async function main() {
   /* nbaszn: only the NBA season box scores and lineups (job/cbbnbaszn.mjs), NBA.com reads only (Oct 22) */
   if (MODE === "nbaszn") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
     const { buildNbaSzn } = await import("./cbbnbaszn.mjs"); const P = await buildNbaSzn({ getPack, putPack, log, curNba });
-    await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `NBA season · ${Object.keys(P.done).length} games · ${Object.keys(P.box).length} players · gaps ${P.bad} · off ${P.off || 0} ${JSON.stringify(P.offEx || [])}`.slice(0, 900); log(msg);
+    await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `NBA season · ${Object.keys(P.done).length} games · ${Object.keys(P.box).length} players · gaps ${P.bad} · off ${P.off || 0} · player minutes off ${P.pOff || 0} of ${P.pChk || 0} ${JSON.stringify(P.offEx || [])}`.slice(0, 900); log(msg);
     await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return }
   if (MODE === "nbastats") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
     await buildNbaStats({ getPack, putPack, log, curNba, live: nbaLive, full: false });

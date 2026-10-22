@@ -29,7 +29,7 @@ export function lineupsOf(bx, pb) {
         if (NOT_ON.test(a.subType || "") || NOT_ON.test(a.actionType || "")) continue; seen.add(id); on[t].add(id) }
       /* someone who played the whole period without a stat: carry him over from the end of the last period */
       for (const t of [home, away]) if (on[t].size < 5 && prevEnd) for (const id of prevEnd[t]) { if (on[t].size >= 5) break; if (!subIn.has(id) && !on[t].has(id)) on[t].add(id) } }
-    for (const t of [home, away]) if (on[t].size !== 5) bad.push(per + t + on[t].size);
+    for (const t of [home, away]) if (on[t].size !== 5) { bad.push(per + t + on[t].size); if (!lineupsOf.dbg) lineupsOf.dbg = { per, t, on: [...on[t]], acts: PA.slice(0, 40).filter(a => a.personId).map(a => [a.clock, a.actionType, a.subType || "", a.personId, roster[a.personId] || "", a.actionNumber]) } }
     let last = len;   /* seconds left at the start of the open segment */
     const close = (tLeft) => { const d = last - tLeft; if (d <= 0) return;
       for (const t of [home, away]) { if (on[t].size !== 5) continue; const k = [...on[t]].sort((x, y) => x - y).join(","), seg = { team: t, five: k, secs: d, pf: 0, pa: 0, b: Array(9).fill(0), cl: 0 };
@@ -51,12 +51,17 @@ export function lineupsOf(bx, pb) {
   return { out, bad };
 }
 
+/* the season's finished regular-season games from NBA.com's schedule file (Oct 22: game numbers aren't in date order — opening week's
+   national games were 1–5 and the rest come later — so walking the numbers stopped early); null when the file can't be read */
+export async function nbaFinalIds(code) { const S = await j("https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"); if (!S || !S.leagueSchedule) return null;
+  const out = []; for (const d of S.leagueSchedule.gameDates || []) for (const g of d.games || []) if (String(g.gameId).startsWith(code) && g.gameStatus === 3) out.push(String(g.gameId)); return out.length ? out.sort() : null }
 export async function buildNbaSzn({ getPack, putPack, log = console.log, curNba, CAP = 400 }) {
   const S = curNba, name = `p${S}_cbb-nbaszn`;
   let P = await getPack(name).catch(() => null);
-  if (!P || P.v !== 1 || P.season !== S) P = { v: 1, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
-  const code = "002" + String(S - 1).slice(2); let read = 0, gap = 0;
-  for (let n = 1; n <= 1230 && read < CAP && gap < 12; n++) { const gid = code + String(n).padStart(5, "0"); if (P.done[gid]) { gap = 0; continue }
+  if (!P || P.v !== 2 || P.season !== S) P = { v: 2, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
+  const code = "002" + String(S - 1).slice(2); let read = 0, gap = 0; const IDS = await nbaFinalIds(code);
+  const ids = IDS || Array.from({ length: 1230 }, (_, i) => code + String(i + 1).padStart(5, "0"));
+  for (const gid of ids) { if (read >= CAP || (!IDS && gap >= 12)) break; if (P.done[gid]) { gap = 0; continue }
     const bx = await j(`https://cdn.nba.com/static/json/liveData/boxscore/boxscore_${gid}.json`); if (!bx || !bx.game) { gap++; continue } gap = 0;
     if (bx.game.gameStatus !== 3) continue;
     const pb = await j(`https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_${gid}.json`); read++; if (!pb || !pb.game) continue;
@@ -74,6 +79,7 @@ export async function buildNbaSzn({ getPack, putPack, log = console.log, curNba,
         e[0] += s.secs; e[1] += s.pf; e[2] += s.pa; for (let i = 0; i < 9; i++) e[3 + i] += s.b[i]; e[12] += s.cl; const gk = s.team + s.five; if (!inGame.has(gk) && s.secs > 0) { inGame.add(gk); e[13]++ } }
     } catch (e) { P.bad++ }
     P.done[gid] = 1 }
+  if (lineupsOf.dbg) P.dbg = lineupsOf.dbg;
   P.at = Date.now(); if (read) await putPack(name, P);
   log(`nba season: read ${read} games · ${Object.keys(P.done).length} in all · ${Object.keys(P.box).length} players · lineup gaps in ${P.bad} games`);
   return P;

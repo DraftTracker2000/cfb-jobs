@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "cbb (everyday) · cbbhistory (rebuild history and every shot chart) · nbastats (only the NBA.com tables, no API calls)"
+        description: "cbb (everyday) · cbbhistory (rebuild history and every shot chart) · nbastats (only the NBA.com tables, no API calls) · nbaszn (NBA season box scores and lineups)"
         default: cbb
         type: choice
-        options: [cbb, cbbhistory, nbastats]
+        options: [cbb, cbbhistory, nbastats, nbaszn]
 
 permissions:
   contents: read

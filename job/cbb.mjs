@@ -223,6 +223,11 @@ export async function main() {
     const { refHist } = await import("./cbbrefhist.mjs"); const R = await refHist({ getPack, putPack, log, NEXT: UPCOMING, curNba });
     await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `Referee history · ${R.reads} ESPN reads · ${R.mins.toFixed(0)} min · 0 CBBD calls`; log(msg);
     await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return }
+  /* nbaszn: only the NBA season box scores and lineups (job/cbbnbaszn.mjs), NBA.com reads only (Oct 22) */
+  if (MODE === "nbaszn") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
+    const { buildNbaSzn } = await import("./cbbnbaszn.mjs"); const P = await buildNbaSzn({ getPack, putPack, log, curNba });
+    await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `NBA season · ${Object.keys(P.done).length} games · ${Object.keys(P.box).length} players · gaps ${P.bad} · off ${P.off || 0} ${JSON.stringify(P.offEx || [])}`.slice(0, 900); log(msg);
+    await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return }
   if (MODE === "nbastats") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
     await buildNbaStats({ getPack, putPack, log, curNba, live: nbaLive, full: false });
     try { await refreshNbaOnCourt({ getPack, putPack, log, curNba: M >= 7 ? Yr + 1 : Yr, packNames: [`p${UPCOMING}_cbb-nbagames`, `p${UPCOMING - 1}_cbb-nbagames`] }) } catch (e) { log("nba on-court: " + e.message) }
@@ -593,6 +598,8 @@ export async function main() {
   try { const { buildBbRefs } = await import("./cbbrefs.mjs"); await buildBbRefs({ getPack, putPack, log, S: NEXT }) } catch (e) { log("refs: " + e.message) }
   /* NBA calls by official and player (Oct 21; job/cbbnbacalls.mjs) */
   try { const { buildNbaCalls } = await import("./cbbnbacalls.mjs"); await buildNbaCalls({ getPack, putPack, log, curNba }) } catch (e) { log("nba calls: " + e.message) }
+  /* NBA season box scores, +/- and lineups with when they play (Oct 22; job/cbbnbaszn.mjs) */
+  try { const { buildNbaSzn } = await import("./cbbnbaszn.mjs"); await buildNbaSzn({ getPack, putPack, log, curNba }) } catch (e) { log("nba season: " + e.message) }
   try { if (GM && GM.CI) await buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTED, normName, bySeason: GM.CI.seasons, D1, teams: teamsRaw, schoolKey: wikiSchoolKey }) } catch (e) { log("coach extras: " + e.message) }
   /* NCAA tournament runs since 2008, for the "Name the run" game (job/cbbncaa.mjs) */
   let NCAA = null; try { NCAA = await buildNcaaRuns({ cb, getPack, putPack, log, S, full }) } catch (e) { log("ncaa runs: " + e.message) }

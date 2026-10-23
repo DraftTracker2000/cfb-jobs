@@ -135,7 +135,9 @@ export function pos5({ pos, ht, d, listed }) {
   if (h && BAND[L] && (h < BAND[L][0] || h > BAND[L][1])) L = "";
   /* Oct 23 (Sam: "i thought he won small forward of the year" — Flagg, Erving Award 2025, came out PF off his recruiting listing): a listed
      PF who passes and shoots from outside like a wing is a SF; the listing still keeps him a forward */
-  if (L === "PF" && hasD && d.ast40 >= 4.5 && d.tpr >= .22 && (!h || h <= 82)) return "SF";
+  if (L === "PF" && hasD && d.ast40 >= 4.5 && d.tpr >= .22 && d.reb40 < 11 && (!h || h <= 82)) return "SF";
+  /* …and the other way (Keegan Murray, Ethan Happ came out SF): a listed SF who rebounds and blocks like a big, or never shoots threes, is a PF (C at 6'10"+) */
+  if (L === "SF" && hasD && h >= 80 && ((d.reb40 >= 11.5 && d.tpr < .1) || (d.reb40 >= 10.5 && d.blk40 >= 2))) return h >= 82 && d.tpr < .1 ? "C" : "PF";
   if (/^(PG|SG|SF|PF|C)$/.test(L)) return L;
   if (L === "CG") return hasD && (d.ast40 >= 4.6 || (d.ast40 >= 3.8 && h && h <= 75)) ? "PG" : "SG";
   if (L === "WF" || L === "W") return hasD && h >= 81 && (d.reb40 >= 9 || d.tpr < .25) ? "PF" : "SF";
@@ -150,7 +152,7 @@ export function pos5({ pos, ht, d, listed }) {
   if (g === "C") return "C";
   if (g === "G") return hasD ? (d.ast40 >= 4.6 || (d.ast40 >= 3.8 && h && h <= 75) ? "PG" : "SG") : (h && h <= 75 ? "PG" : "SG");
   if (hasD && h >= 82 && (d.reb40 >= 10.5 || d.blk40 >= 2) && d.tpr < .2) return "C";
-  return hasD ? ((d.tpr >= .32 && h <= 81) || (d.ast40 >= 3.4 && h <= 80) || (d.ast40 >= 4.5 && d.tpr >= .22 && h <= 82) || (h && h <= 78) ? "SF" : "PF") : (h >= 81 ? "PF" : "SF");
+  return hasD ? ((d.tpr >= .32 && h <= 81) || (d.ast40 >= 3.4 && h <= 80) || (d.ast40 >= 4.5 && d.tpr >= .22 && d.reb40 < 11 && h <= 82) || (h && h <= 78) ? "SF" : "PF") : (h >= 81 ? "PF" : "SF");
 }
 /* G / F / C from any of CBBD's spellings ("G", "Guard", "PG", "CG" = combo guard, "SF", "Forward", "C", "Center"…) */
 export const posGroup = p => { p = String(p || "").toUpperCase().trim(); if (/^(PG|SG|CG|G\b|G$|GUARD|COMBO)/.test(p)) return "G"; if (/^(C|CENTER)$/.test(p)) return "C"; return "F" };

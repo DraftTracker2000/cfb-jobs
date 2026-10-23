@@ -147,7 +147,9 @@ const DEF_COLS = ["week", "type", "game", "team", "opp", "solo", "ast", "tfl", "
 const LOG_COLS = ["week", "type", "game", "team", "opp", "cmp", "att", "pyd", "ptd", "int", "sk", "car", "ryd", "rtd", "tgt", "rec", "yds", "td", "fl", "tgtShare", "airShare", "epa", "fp", "snp", "tsnp",
   /* scoring bonuses (Sam, Oct 4: "Sleeper also has bonuses for all positions, they both do, full lists"): every fumble (lost or not), two-point
      conversions, first downs — from the weekly stats; long touchdowns (40+/50+), pick-sixes thrown and 40+ yard plays — from the play-by-play */
-  "fum", "p2", "r2", "c2", "pfd", "rfd", "cfd", "ptd40", "ptd50", "rtd40", "rtd50", "ctd40", "ctd50", "pi6", "cmp40", "car40", "rec40"];
+  "fum", "p2", "r2", "c2", "pfd", "rfd", "cfd", "ptd40", "ptd50", "rtd40", "rtd50", "ctd40", "ctd50", "pi6", "cmp40", "car40", "rec40",
+  /* Oct 23 (Sam: "do we not have adot and stuff for charts?"): air yards and yards after the catch, thrown and caught, from the weekly stats */
+  "pay", "pyac", "ray", "ryac", "cpoeA"];   // cpoeA = the game's CPOE × attempts, so a season sum ÷ attempts is his CPOE
 const BON_N = 10;   // the play-by-play ones: ptd40 … rec40
 /* offensive snaps, game by game (Sam, Oct 3: "so many sites have that and we don't"): Sleeper's public weekly stats (the same free API the
    fantasy pages read) — off_snp and tm_off_snp for every player, 2020 on. Not Pro Football Reference (nflverse's snap file comes from there,
@@ -181,7 +183,7 @@ async function logs(S, log) {
   rows(t, ["player_id", "position", "week", "season_type", "game_id", "team", "opponent_team", "completions", "attempts", "passing_yards", "passing_tds", "passing_interceptions",
     "sacks_suffered", "carries", "rushing_yards", "rushing_tds", "targets", "receptions", "receiving_yards", "receiving_tds", "rushing_fumbles_lost", "receiving_fumbles_lost",
     "sack_fumbles_lost", "rushing_fumbles", "receiving_fumbles", "sack_fumbles", "passing_2pt_conversions", "rushing_2pt_conversions", "receiving_2pt_conversions",
-    "passing_first_downs", "rushing_first_downs", "receiving_first_downs", "target_share", "air_yards_share", "passing_epa", "rushing_epa", "receiving_epa", "fantasy_points_ppr",
+    "passing_first_downs", "rushing_first_downs", "receiving_first_downs", "passing_air_yards", "passing_yards_after_catch", "receiving_air_yards", "receiving_yards_after_catch", "passing_cpoe", "target_share", "air_yards_share", "passing_epa", "rushing_epa", "receiving_epa", "fantasy_points_ppr",
     "def_tackles_solo", "def_tackles_with_assist", "def_tackle_assists", "def_tackles_for_loss", "def_sacks", "def_qb_hits", "def_interceptions", "def_pass_defended", "def_fumbles_forced", "def_tds"], o => {
     if (!o.player_id) return;
     if (DGRP(o.position)) { const n = k => num(o[k]) || 0;
@@ -196,7 +198,8 @@ async function logs(S, log) {
       n("targets"), n("receptions"), n("receiving_yards"), n("receiving_tds"), n("rushing_fumbles_lost") + n("receiving_fumbles_lost") + n("sack_fumbles_lost"),
       r2(num(o.target_share)), r2(num(o.air_yards_share)), r2(epa), r1(num(o.fantasy_points_ppr)), null, null,
       n("rushing_fumbles") + n("receiving_fumbles") + n("sack_fumbles"), n("passing_2pt_conversions"), n("rushing_2pt_conversions"), n("receiving_2pt_conversions"),
-      n("passing_first_downs"), n("rushing_first_downs"), n("receiving_first_downs"), ...new Array(BON_N).fill(0)]);
+      n("passing_first_downs"), n("rushing_first_downs"), n("receiving_first_downs"), ...new Array(BON_N).fill(0),
+      n("passing_air_yards"), n("passing_yards_after_catch"), n("receiving_air_yards"), n("receiving_yards_after_catch"), num(o.passing_cpoe) != null ? r1(num(o.passing_cpoe) * n("attempts")) : 0]);
   });
   /* snaps from Sleeper, regular season (2020 on) */
   const SN = await sleeperSnaps(S, log); if (SN) for (const id in out) { const m = SN[id]; if (!m) continue; for (const row of out[id]) { if (row[1] !== "R") continue; const x = m[row[0]]; if (x) { row[23] = x[0]; row[24] = x[1] } } }
@@ -925,7 +928,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
     try { const k = await kicking(s, log); if (k) KICK[s] = k } catch (e) { log("nfl: kicking " + s + ": " + e.message) }
     const B = await pbp(s, log);
     /* the play-by-play bonuses onto each game log, then the logs are written */
-    if (L) { const BN = (B && B.bon) || {}, at = LOG_COLS.length - BON_N; let nb = 0; for (const id in L.p) { const m = BN[id]; if (!m) continue; for (const row of L.p[id]) { const x = m[row[2]]; if (x) { for (let i = 0; i < BON_N; i++) row[at + i] = x[i]; nb++ } } }
+    if (L) { const BN = (B && B.bon) || {}, at = LOG_COLS.indexOf("ptd40"); let nb = 0; for (const id in L.p) { const m = BN[id]; if (!m) continue; for (const row of L.p[id]) { const x = m[row[2]]; if (x) { for (let i = 0; i < BON_N; i++) row[at + i] = x[i]; nb++ } } }
       if (B) delete B.bon; log(`nfl: logs ${s}: bonuses on ${nb} player-games`); await put(P("logs-" + s), L) }
     if (B) { const RI = roleIndex(LOGS[s], POS); for (const d in RI) { const t0 = B.team[d] = B.team[d] || { off: {}, def: {} }; t0.vsRole = RI[d] } B.vsRoleCols = ["games", "yards", "expected yards", "targets (RB: touches)", "expected"];
       if (s >= 2001) { try { B.ol = await olStarters(s, G, log) } catch (e) { log("nfl: OL starters " + s + ": " + e.message) }

@@ -131,7 +131,7 @@ export function pos5({ pos, ht, d, listed }) {
   let L = String(listed || "").toUpperCase().trim(); const h = ht || (d && d.ht) || 0, hasD = d && d.pts40 != null;
   /* Oct 23 check after the first run: the recruiting match is by name, so a few players picked up another player's listing (a 5'10"
      Jayden Williams listed C, a 7'0" center listed PG). A listing his height can't fit is ignored and CBBD's group decides. */
-  const BAND = { PG: [0, 78], SG: [0, 80], CG: [0, 80], SF: [74, 83], WF: [74, 84], W: [74, 84], PF: [76, 99], C: [79, 99] };
+  const BAND = { PG: [0, 78], SG: [0, 80], CG: [0, 80], G: [0, 80], GUARD: [0, 80], SF: [74, 83], WF: [74, 84], W: [74, 84], F: [74, 99], FORWARD: [74, 99], PF: [76, 99], C: [79, 99], CENTER: [79, 99] };
   if (h && BAND[L] && (h < BAND[L][0] || h > BAND[L][1])) L = "";
   if (/^(PG|SG|SF|PF|C)$/.test(L)) return L;
   if (L === "CG") return hasD && (d.ast40 >= 4.6 || (d.ast40 >= 3.8 && h && h <= 75)) ? "PG" : "SG";

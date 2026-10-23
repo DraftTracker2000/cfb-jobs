@@ -703,7 +703,12 @@ export async function main() {
   const finalGrade = d => { const a = (hBy[d._id] || []).filter(h => h.r.s <= d.year).sort((x, y) => y.r.s - x.r.s || y.r.min - x.r.min)[0]; return a ? { g: grade(a.m), s: a.r.s, fresh: a.r.s > KNOWN_TO ? 1 : 0, p5: a.d.p5 } : null };
   const draftOut = draft.map(d => ({ y: d.year, pk: d.overall, rd: d.round, nm: d.name, nba: d.draftTeam, col: d.sourceTeamCollegeId || null, from: d.sourceTeamCollegeId ? null : [...new Set([d.sourceTeamLocation, d.sourceTeamName].filter(Boolean))].join(" "), rk: d.overallRank || null, pos: d.position, ht: d.height, id: d._id || null, our: d._id ? finalGrade(d) : null }));
   const meta = { built: Date.now(), season: S, next: NEXT, off, test, pickTest: GM.test, trainSeasons: `${TRAIN_FROM}–${KNOWN_TO}`, nTrain: train.length, recTrain: recRows.length, calls: CALLS, feats: FEATS };
-  await putPack(`p${S}_cbb-core`, { meta, players: board, bands, qs: QS, bandStats: BAND_STATS, teamNames: Object.fromEntries(Object.entries(TEAM).map(([id, t]) => [id, [t.school, t.abbreviation, t.primaryColor]])) });
+  /* Oct 23 (Sam: "so when they start moving a up or down triangle fits to say how they are trending on score"): each player's BoardScore a
+     week ago rides along — g.wk = the score from the last snapshot at least 6 days old (kept in the pack as trend {at, s: {id: score}}) */
+  let trend = null; try { const old = await getPack(`p${S}_cbb-core`); trend = old && old.trend || null;
+    const now = Date.now(); if (!trend || now - trend.at >= 6 * 864e5) { const prevS = {}; if (old) for (const p of old.players || []) if (p.g && p.g.score != null) prevS[p.id] = p.g.score; trend = old ? { at: now, s: prevS, from: trend && trend.s || null } : null } } catch (e) { log("trend: " + e.message) }
+  if (trend) for (const p of board) { const w = trend.s[p.id]; if (w != null && p.g) p.g.wk = w }
+  await putPack(`p${S}_cbb-core`, { trend, meta, players: board, bands, qs: QS, bandStats: BAND_STATS, teamNames: Object.fromEntries(Object.entries(TEAM).map(([id, t]) => [id, [t.school, t.abbreviation, t.primaryColor]])) });
   await putPack(`p${S}_cbb-careers`, careers);
   await putPack(`p${S}_cbb-teams`, { season: S, next: NEXT, teams, polls: pollPack });
   await putPack(`p${S}_cbb-draft`, { picks: draftOut.map(d => ({ ...d, tag: d.id && NBA_BY_CID[d.id] ? NBA_BY_CID[d.id].tag.t : null })), test });

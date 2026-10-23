@@ -133,6 +133,9 @@ export function pos5({ pos, ht, d, listed }) {
      Jayden Williams listed C, a 7'0" center listed PG). A listing his height can't fit is ignored and CBBD's group decides. */
   const BAND = { PG: [0, 78], SG: [0, 80], CG: [0, 80], G: [0, 80], GUARD: [0, 80], SF: [74, 83], WF: [74, 84], W: [74, 84], F: [74, 99], FORWARD: [74, 99], PF: [76, 99], C: [79, 99], CENTER: [79, 99] };
   if (h && BAND[L] && (h < BAND[L][0] || h > BAND[L][1])) L = "";
+  /* Oct 23 (Sam: "i thought he won small forward of the year" — Flagg, Erving Award 2025, came out PF off his recruiting listing): a listed
+     PF who passes and shoots from outside like a wing is a SF; the listing still keeps him a forward */
+  if (L === "PF" && hasD && d.ast40 >= 4.5 && d.tpr >= .22 && (!h || h <= 82)) return "SF";
   if (/^(PG|SG|SF|PF|C)$/.test(L)) return L;
   if (L === "CG") return hasD && (d.ast40 >= 4.6 || (d.ast40 >= 3.8 && h && h <= 75)) ? "PG" : "SG";
   if (L === "WF" || L === "W") return hasD && h >= 81 && (d.reb40 >= 9 || d.tpr < .25) ? "PF" : "SF";
@@ -147,7 +150,7 @@ export function pos5({ pos, ht, d, listed }) {
   if (g === "C") return "C";
   if (g === "G") return hasD ? (d.ast40 >= 4.6 || (d.ast40 >= 3.8 && h && h <= 75) ? "PG" : "SG") : (h && h <= 75 ? "PG" : "SG");
   if (hasD && h >= 82 && (d.reb40 >= 10.5 || d.blk40 >= 2) && d.tpr < .2) return "C";
-  return hasD ? ((d.tpr >= .32 && h <= 81) || (d.ast40 >= 3.4 && h <= 80) || (h && h <= 78) ? "SF" : "PF") : (h >= 81 ? "PF" : "SF");
+  return hasD ? ((d.tpr >= .32 && h <= 81) || (d.ast40 >= 3.4 && h <= 80) || (d.ast40 >= 4.5 && d.tpr >= .22 && h <= 82) || (h && h <= 78) ? "SF" : "PF") : (h >= 81 ? "PF" : "SF");
 }
 /* G / F / C from any of CBBD's spellings ("G", "Guard", "PG", "CG" = combo guard, "SF", "Forward", "C", "Center"…) */
 export const posGroup = p => { p = String(p || "").toUpperCase().trim(); if (/^(PG|SG|CG|G\b|G$|GUARD|COMBO)/.test(p)) return "G"; if (/^(C|CENTER)$/.test(p)) return "C"; return "F" };

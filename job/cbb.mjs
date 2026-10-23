@@ -124,18 +124,24 @@ export const normName = s => String(s || "").toLowerCase().normalize("NFD").repl
    how he plays: assist rate splits guards, three-point share and passing split forwards, size with rebounding or shot-blocking makes a
    centre. Without stats: a recruiting position (PG, SG, SF, PF, C; a combo guard counts as SG), else height within his listed group. */
 export function pos5({ pos, ht, d, listed }) {
-  const L = String(listed || "").toUpperCase();
-  if (d && d.pts40 != null) {
-    const h = ht || d.ht || 0;
-    if (pos === "C" || (h >= 82 && (d.reb40 >= 10.5 || d.blk40 >= 2)) || (h >= 83 && d.tpr < .15)) return "C";
-    if (pos === "G") return d.ast40 >= 4.6 || (d.ast40 >= 3.8 && h && h <= 75) ? "PG" : (h >= 79 && d.reb40 >= 7 ? "SF" : "SG");
-    if (d.ast40 >= 4.6 && h && h <= 78) return "PG";
-    return (d.tpr >= .32 && h <= 81) || (d.ast40 >= 3.4 && h <= 80) || (h && h <= 78) ? "SF" : "PF";
-  }
+  /* Oct 23 (Sam: "their positions are for sure available … the position toggles cant be trusted" — Cooper Flagg, 6'9", came out a PG
+     because CBBD lists him as a Guard and he passed well): a real five-position listing wins — the recruiting services' position (PG, SG,
+     SF, PF, C; CG combo guard and WF wing forward are split by his stats inside that pair). Without one, stats only split a player INSIDE
+     his listed group (guard → PG/SG, forward → SF/PF, center → C) and never move him across groups. */
+  const L = String(listed || "").toUpperCase().trim(), h = ht || (d && d.ht) || 0, hasD = d && d.pts40 != null;
   if (/^(PG|SG|SF|PF|C)$/.test(L)) return L;
-  if (L === "CG") return "SG"; if (L === "WF" || L === "W") return "SF";
-  const g = posGroup(listed || pos), h = ht || 0;
-  return g === "C" ? "C" : g === "G" ? (h && h <= 75 ? "PG" : "SG") : (h >= 81 ? "PF" : "SF");
+  if (L === "CG") return hasD && (d.ast40 >= 4.6 || (d.ast40 >= 3.8 && h && h <= 75)) ? "PG" : "SG";
+  if (L === "WF" || L === "W") return hasD && h >= 81 && (d.reb40 >= 9 || d.tpr < .25) ? "PF" : "SF";
+  /* a two-part listing (G/F, Guard-Forward, F/C) — he can be either half; his stats pick which */
+  const two = L.match(/^(G|GUARD|F|FORWARD|C|CENTER)\s*[\/-]\s*(G|GUARD|F|FORWARD|C|CENTER)$/);
+  if (two && hasD) { const gs = [posGroup(two[1]), posGroup(two[2])];
+    if (gs.includes("G") && gs.includes("F")) return d.ast40 >= 4.6 && h <= 77 ? "PG" : h <= 77 ? "SG" : "SF";
+    if (gs.includes("F") && gs.includes("C")) return (h >= 82 && (d.reb40 >= 10.5 || d.blk40 >= 2)) ? "C" : "PF" }
+  const g = posGroup(L || pos);
+  if (g === "C") return "C";
+  if (g === "G") return hasD ? (d.ast40 >= 4.6 || (d.ast40 >= 3.8 && h && h <= 75) ? "PG" : "SG") : (h && h <= 75 ? "PG" : "SG");
+  if (hasD && h >= 82 && (d.reb40 >= 10.5 || d.blk40 >= 2) && d.tpr < .2) return "C";
+  return hasD ? ((d.tpr >= .32 && h <= 81) || (d.ast40 >= 3.4 && h <= 80) || (h && h <= 78) ? "SF" : "PF") : (h >= 81 ? "PF" : "SF");
 }
 /* G / F / C from any of CBBD's spellings ("G", "Guard", "PG", "CG" = combo guard, "SF", "Forward", "C", "Center"…) */
 export const posGroup = p => { p = String(p || "").toUpperCase().trim(); if (/^(PG|SG|CG|G\b|G$|GUARD|COMBO)/.test(p)) return "G"; if (/^(C|CENTER)$/.test(p)) return "C"; return "F" };
@@ -265,9 +271,11 @@ export async function main() {
       let adj = await cb("/ratings/adjusted", { season: y }); if (!adj.length) adj = (await cb("/ratings/srs", { season: y })).map(t => ({ teamId: t.teamId, conference: t.conference, netRating: t.rating * 1.0 }));
       H.adj[y] = Object.fromEntries(adj.map(t => [t.teamId, [r1(t.netRating), t.conference]]));
     });
-    for (let y = add ? add - 1 : HFROM - 1; y < S; y++) { const rc = await cb("/recruiting/players", { year: y }); H.rec[y] = rc.map(r => [normName(r.name), (r.committedTo || {}).id || null, r.rating, r.stars, r.ranking, r.heightInches, r.athleteId || null]) }
-    await putPack("p2000_cbb-hist", H);
+    for (let y = add ? add - 1 : HFROM - 1; y < S; y++) { const rc = await cb("/recruiting/players", { year: y }); H.rec[y] = rc.map(r => [normName(r.name), (r.committedTo || {}).id || null, r.rating, r.stars, r.ranking, r.heightInches, r.athleteId || null, r.position || null]) }
+    H.recPos = 1; await putPack("p2000_cbb-hist", H);
   }
+  /* Oct 23: the recruiting position (PG/SG/SF/PF/C/CG/WF) joined the cached recruit rows — backfilled once */
+  if (!H.recPos) { log("history cache: adding recruiting positions"); for (const y of Object.keys(H.rec).map(Number)) { const rc = await cb("/recruiting/players", { year: y }); H.rec[y] = rc.map(r => [normName(r.name), (r.committedTo || {}).id || null, r.rating, r.stars, r.ranking, r.heightInches, r.athleteId || null, r.position || null]) } H.recPos = 1; await putPack("p2000_cbb-hist", H) }
   /* this season */
   const rowsS = statsNow.filter(r => r.minutes > 0).map(trimRow);
   const rosterS = await cb("/teams/roster", { season: S });
@@ -291,7 +299,7 @@ export async function main() {
   const D1 = new Set(adjS.length >= 300 || !H.adj[S - 1] ? adjS.map(t => t.teamId) : Object.keys(H.adj[S - 1]).map(Number));
   if (adjS.length < 300) log(`ratings: only ${adjS.length} teams rated for ${S} so far — Division I taken from ${S - 1}`);
   const srsS = await cb("/ratings/srs", { season: S }); const SRS = Object.fromEntries(srsS.map(t => [t.teamId, t.rating]));
-  if (!H.rec[S - 1]) { const rc = await cb("/recruiting/players", { year: S - 1 }); H.rec[S - 1] = rc.map(r => [normName(r.name), (r.committedTo || {}).id || null, r.rating, r.stars, r.ranking, r.heightInches, r.athleteId || null]) }
+  if (!H.rec[S - 1]) { const rc = await cb("/recruiting/players", { year: S - 1 }); H.rec[S - 1] = rc.map(r => [normName(r.name), (r.committedTo || {}).id || null, r.rating, r.stars, r.ranking, r.heightInches, r.athleteId || null, r.position || null]) }
   /* the incoming class (off-season: recruits of year S, who play in S+1) */
   /* in season the class that enrolled this year (recruits of S−1) keeps its recruiting grade until it has played enough (Oct 13 opening-night check) */
   const recFresh = await cb("/recruiting/players", { year: off ? S : S - 1 });
@@ -364,7 +372,7 @@ export async function main() {
     const d = derive(r), a = (H.adj[r.s] || {})[r.tm] || [null, null], ht = (H.ht[r.id] || [])[0], rc = REC[r.id];
     Object.assign(d, { yr, y1: yr === 1 ? 1 : 0, y2: yr === 2 ? 1 : 0, y3: yr === 3 ? 1 : 0, ht: ht || posHt[r.pos] || 78, htMiss: ht ? 0 : 1, net: a[0] ?? -10, confNet: (confNet[r.s] || {})[a[1]] ?? -10, rec: rc ? (rc[2] || 0) : 0, recMiss: rc ? 0 : 1, ptsYr: d.pts40 / yr, blkHt: d.blk40 * ((ht || 78) - 70) / 10 });
     /* five positions (Oct 9 — Sam: "narrow down our ratings and draft profiles more granularly than just the 3 positions") */
-    d.p5 = pos5({ pos: r.pos, ht: ht || null, d }); d.pPG = d.p5 === "PG" ? 1 : 0; d.pSG = d.p5 === "SG" ? 1 : 0; d.pSF = d.p5 === "SF" ? 1 : 0; d.pPF = d.p5 === "PF" ? 1 : 0;
+    d.p5 = pos5({ pos: r.pos, ht: ht || null, d, listed: rc ? rc[7] : null }); d.pPG = d.p5 === "PG" ? 1 : 0; d.pSG = d.p5 === "SG" ? 1 : 0; d.pSF = d.p5 === "SF" ? 1 : 0; d.pPF = d.p5 === "PF" ? 1 : 0;
     return d;
   }
   const yrOf = r => Math.max(1, Math.min(5, r.s - Math.min(firstSeason[r.id] || r.s, H.start[r.id] || 9999) + 1));
@@ -521,7 +529,7 @@ export async function main() {
       home: rc.hometown ? [rc.hometown.city, rc.hometown.state].filter(Boolean).join(", ") : "", hs: rc.school || "", rec: { r: r3(rc.rating), st: rc.stars, rk: rc.ranking },
       s: null, d: { ht: rc.heightInches || null }, g: { score: grade(m), pD: r3(pD), pR1: r3(pR1), pL: r3(pL), prof: profileOf({ pD, pR1, pL }), recOnly: 1 }, comps: [] });
   }
-  for (const p of board) if (!p.p5) p.p5 = pos5({ pos: p.pos, ht: p.ht, d: p.s ? p.d : null, listed: p.posFull });
+  for (const p of board) if (!p.p5) p.p5 = pos5({ pos: p.pos, ht: p.ht, d: p.s ? p.d : null, listed: (REC[p.id] && REC[p.id][7]) || p.posFull });
   board.sort((a, b) => b.g.score - a.g.score || (b.g.pR1 - a.g.pR1) || (a.nodata ? 1 : 0) - (b.nodata ? 1 : 0));
   /* the tags are capped by rank, so a class can't have far more "lottery" or "first round" players than a draft takes from college
      (about 11 of the 14 lottery picks and 24 of 30 first-rounders have been college players since 2015) */

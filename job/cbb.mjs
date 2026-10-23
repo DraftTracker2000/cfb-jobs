@@ -26,6 +26,7 @@ import { buildNcaaRuns } from "./cbbncaa.mjs";
 import { buildCombine } from "./cbbcombine.mjs";
 import { buildNbaStats } from "./cbbnbastats.mjs";
 import { buildPast, confTourneyIds } from "./cbbpast.mjs";
+import { awardPos } from "./cbbawardpos.mjs";
 import { runPbp } from "./cbbpbp.mjs";
 import { buildCoachX } from "./cbbcoachx.mjs";
 import { buildOldDraft } from "./cbbolddraft.mjs";
@@ -383,7 +384,7 @@ export async function main() {
     const d = derive(r), a = (H.adj[r.s] || {})[r.tm] || [null, null], ht = (H.ht[r.id] || [])[0], rc = REC[r.id];
     Object.assign(d, { yr, y1: yr === 1 ? 1 : 0, y2: yr === 2 ? 1 : 0, y3: yr === 3 ? 1 : 0, ht: ht || posHt[r.pos] || 78, htMiss: ht ? 0 : 1, net: a[0] ?? -10, confNet: (confNet[r.s] || {})[a[1]] ?? -10, rec: rc ? (rc[2] || 0) : 0, recMiss: rc ? 0 : 1, ptsYr: d.pts40 / yr, blkHt: d.blk40 * ((ht || 78) - 70) / 10 });
     /* five positions (Oct 9 — Sam: "narrow down our ratings and draft profiles more granularly than just the 3 positions") */
-    d.p5 = pos5({ pos: r.pos, ht: ht || null, d, listed: rc ? rc[7] : null }); d.pPG = d.p5 === "PG" ? 1 : 0; d.pSG = d.p5 === "SG" ? 1 : 0; d.pSF = d.p5 === "SF" ? 1 : 0; d.pPF = d.p5 === "PF" ? 1 : 0;
+    d.p5 = awardPos(r.nm, r.s) || pos5({ pos: r.pos, ht: ht || null, d, listed: rc ? rc[7] : null });   /* the Hall of Fame position awards decide when they name him */ d.pPG = d.p5 === "PG" ? 1 : 0; d.pSG = d.p5 === "SG" ? 1 : 0; d.pSF = d.p5 === "SF" ? 1 : 0; d.pPF = d.p5 === "PF" ? 1 : 0;
     return d;
   }
   const yrOf = r => Math.max(1, Math.min(5, r.s - Math.min(firstSeason[r.id] || r.s, H.start[r.id] || 9999) + 1));
@@ -540,7 +541,7 @@ export async function main() {
       home: rc.hometown ? [rc.hometown.city, rc.hometown.state].filter(Boolean).join(", ") : "", hs: rc.school || "", rec: { r: r3(rc.rating), st: rc.stars, rk: rc.ranking },
       s: null, d: { ht: rc.heightInches || null }, g: { score: grade(m), pD: r3(pD), pR1: r3(pR1), pL: r3(pL), prof: profileOf({ pD, pR1, pL }), recOnly: 1 }, comps: [] });
   }
-  for (const p of board) if (!p.p5) p.p5 = pos5({ pos: p.pos, ht: p.ht, d: p.s ? p.d : null, listed: (REC[p.id] && REC[p.id][7]) || p.posFull });
+  for (const p of board) if (!p.p5) p.p5 = awardPos(p.nm, S) || pos5({ pos: p.pos, ht: p.ht, d: p.s ? p.d : null, listed: (REC[p.id] && REC[p.id][7]) || p.posFull });
   board.sort((a, b) => b.g.score - a.g.score || (b.g.pR1 - a.g.pR1) || (a.nodata ? 1 : 0) - (b.nodata ? 1 : 0));
   /* the tags are capped by rank, so a class can't have far more "lottery" or "first round" players than a draft takes from college
      (about 11 of the 14 lottery picks and 24 of 30 first-rounders have been college players since 2015) */

@@ -128,7 +128,11 @@ export function pos5({ pos, ht, d, listed }) {
      because CBBD lists him as a Guard and he passed well): a real five-position listing wins — the recruiting services' position (PG, SG,
      SF, PF, C; CG combo guard and WF wing forward are split by his stats inside that pair). Without one, stats only split a player INSIDE
      his listed group (guard → PG/SG, forward → SF/PF, center → C) and never move him across groups. */
-  const L = String(listed || "").toUpperCase().trim(), h = ht || (d && d.ht) || 0, hasD = d && d.pts40 != null;
+  let L = String(listed || "").toUpperCase().trim(); const h = ht || (d && d.ht) || 0, hasD = d && d.pts40 != null;
+  /* Oct 23 check after the first run: the recruiting match is by name, so a few players picked up another player's listing (a 5'10"
+     Jayden Williams listed C, a 7'0" center listed PG). A listing his height can't fit is ignored and CBBD's group decides. */
+  const BAND = { PG: [0, 78], SG: [0, 80], CG: [0, 80], SF: [74, 83], WF: [74, 84], W: [74, 84], PF: [76, 99], C: [79, 99] };
+  if (h && BAND[L] && (h < BAND[L][0] || h > BAND[L][1])) L = "";
   if (/^(PG|SG|SF|PF|C)$/.test(L)) return L;
   if (L === "CG") return hasD && (d.ast40 >= 4.6 || (d.ast40 >= 3.8 && h && h <= 75)) ? "PG" : "SG";
   if (L === "WF" || L === "W") return hasD && h >= 81 && (d.reb40 >= 9 || d.tpr < .25) ? "PF" : "SF";

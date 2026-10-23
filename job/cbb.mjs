@@ -502,12 +502,19 @@ export async function main() {
   const recByName = {}; for (const rc of recFresh) recByName[normName(rc.name)] = rc;
   const usedRec = new Set();
   if (useEspn) { const USED = new Set();
+    /* Oct 23 (Sam: "michigan state for sure has more guys"): transfers the portal list missed (Kaleb Glenn) came through with no stats. A
+       last try: a non-freshman whose name is on exactly one roster in the country and on exactly one stats row, from a team whose roster no
+       longer lists him — he moved, and those are his numbers */
+    const ESPN_NM = {}, ROST_NM = {}; for (const [t, L] of Object.entries(ESPN.rosters)) { const set = ROST_NM[t] = new Set(); for (const x of L) { const n = normName(x.nm); set.add(n); ESPN_NM[n] = (ESPN_NM[n] || 0) + 1 } }
+    let movedHits = 0;
     for (const [tidS, list] of Object.entries(ESPN.rosters)) { const tid = +tidS;
       for (const a of list) {
         let cid = sidToCbbd[a.eid] || null; let r = cid ? lastRow[cid] : null;
         /* no id match: the same name on this team, or a portal move from elsewhere to this team (a bare name match across the country put
            one Trent Perry's stats on another) */
-        if (!r) { const c = (rowByName[normName(a.nm)] || []).filter(x => x.tm === tid || (PORT[x.id] && PORT[x.id].destination && PORT[x.id].destination.id === tid)); if (c.length === 1) { r = lastRow[c[0].id] || c[0]; cid = r.id } }
+        if (!r) { const c = (rowByName[normName(a.nm)] || []).filter(x => x.tm === tid || (PORT[x.id] && PORT[x.id].destination && PORT[x.id].destination.id === tid)); if (c.length === 1) { r = lastRow[c[0].id] || c[0]; cid = r.id }
+          else if (!c.length && a.cls && a.cls !== "FR") { const n = normName(a.nm), all = rowByName[n] || [], ids = [...new Set(all.map(x => x.id))];
+            if (ids.length === 1 && ESPN_NM[n] === 1) { const x = lastRow[ids[0]] || all[0]; if (x.tm !== tid && !(ROST_NM[x.tm] && ROST_NM[x.tm].has(n))) { r = x; cid = r.id; movedHits++ } } } }
         if (r && USED.has(r.id)) r = null; if (r) USED.add(r.id);
         const pid = r ? r.id : cid; if (r && r.s !== S) r = lastRow[r.id] || null;   /* a name match on last season's row */
         const h = r ? H_S[r.id + "|" + r.tm] : null;
@@ -524,6 +531,7 @@ export async function main() {
         /* listed, but no Division I stats and not a ranked recruit (walk-ons, internationals, players from other levels) */
         board.push({ id: "e" + a.eid, eid: a.eid, nm: a.nm, pos: posGroup(a.pos), posFull: a.pos || "", tm: tid, from: null, cls: a.cls || "FR", yr: 1, ht: a.ht, wt: a.wt, home: a.home, jersey: a.jersey || "", inj: a.inj || undefined, nodata: 1, s: null, d: { ht: a.ht }, g: { score: 0, pD: 0, pR1: 0, pL: 0, prof: "Undrafted", none: 1 }, comps: [] });
       } }
+    log(`ESPN rosters: ${movedHits} moved players matched to last season's stats by a unique name`)
   } else for (const r of Object.values(lastRow)) {
     /* no ESPN lists: last season's players, minus NBA draftees and (off-season) anyone out of eligibility (four seasons played, or five since his first) */
     if (r.min < 100 || !D1.has(r.tm)) continue;

@@ -143,7 +143,7 @@ export async function players(log) {
 }
 
 /* ── one season of game logs ── */
-const DEF_COLS = ["week", "type", "game", "team", "opp", "solo", "ast", "tfl", "sk", "qbh", "int", "pd", "ff", "td"];
+const DEF_COLS = ["week", "type", "game", "team", "opp", "solo", "ast", "tfl", "sk", "qbh", "int", "pd", "ff", "td", "fr"];   // fr (Oct 23, Sam: "no fumbles recovered … on the player side"): fumbles he recovered from the other team
 const LOG_COLS = ["week", "type", "game", "team", "opp", "cmp", "att", "pyd", "ptd", "int", "sk", "car", "ryd", "rtd", "tgt", "rec", "yds", "td", "fl", "tgtShare", "airShare", "epa", "fp", "snp", "tsnp",
   /* scoring bonuses (Sam, Oct 4: "Sleeper also has bonuses for all positions, they both do, full lists"): every fumble (lost or not), two-point
      conversions, first downs — from the weekly stats; long touchdowns (40+/50+), pick-sixes thrown and 40+ yard plays — from the play-by-play */
@@ -184,12 +184,12 @@ async function logs(S, log) {
     "sacks_suffered", "carries", "rushing_yards", "rushing_tds", "targets", "receptions", "receiving_yards", "receiving_tds", "rushing_fumbles_lost", "receiving_fumbles_lost",
     "sack_fumbles_lost", "rushing_fumbles", "receiving_fumbles", "sack_fumbles", "passing_2pt_conversions", "rushing_2pt_conversions", "receiving_2pt_conversions",
     "passing_first_downs", "rushing_first_downs", "receiving_first_downs", "passing_air_yards", "passing_yards_after_catch", "receiving_air_yards", "receiving_yards_after_catch", "passing_cpoe", "target_share", "air_yards_share", "passing_epa", "rushing_epa", "receiving_epa", "fantasy_points_ppr",
-    "def_tackles_solo", "def_tackles_with_assist", "def_tackle_assists", "def_tackles_for_loss", "def_sacks", "def_qb_hits", "def_interceptions", "def_pass_defended", "def_fumbles_forced", "def_tds"], o => {
+    "def_tackles_solo", "def_tackles_with_assist", "def_tackle_assists", "def_tackles_for_loss", "def_sacks", "def_qb_hits", "def_interceptions", "def_pass_defended", "def_fumbles_forced", "def_tds", "fumble_recovery_opp"], o => {
     if (!o.player_id) return;
     if (DGRP(o.position)) { const n = k => num(o[k]) || 0;
       (D[o.player_id] = D[o.player_id] || []).push([+o.week, o.season_type === "POST" ? "P" : "R", o.game_id || null, o.team || null, o.opponent_team || null,
         n("def_tackles_solo"), n("def_tackle_assists") + n("def_tackles_with_assist"), n("def_tackles_for_loss"),   /* Oct 8: shared tackles where he had first credit ("with assist") were left out — 3–5 a season for a starter; they're assisted tackles */ n("def_sacks"), n("def_qb_hits"), n("def_interceptions"), n("def_pass_defended"),
-        n("def_fumbles_forced"), n("def_tds")]); return }
+        n("def_fumbles_forced"), n("def_tds"), n("fumble_recovery_opp")]); return }
     if (!SKILL.has((o.position || "").toUpperCase())) return;
     const n = k => num(o[k]) || 0;
     const epa = (num(o.passing_epa) || 0) + (num(o.rushing_epa) || 0) + (num(o.receiving_epa) || 0);

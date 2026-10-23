@@ -141,7 +141,9 @@ export function pos5({ pos, ht, d, listed }) {
   if (two && hasD) { const gs = [posGroup(two[1]), posGroup(two[2])];
     if (gs.includes("G") && gs.includes("F")) return d.ast40 >= 4.6 && h <= 77 ? "PG" : h <= 77 ? "SG" : "SF";
     if (gs.includes("F") && gs.includes("C")) return (h >= 82 && (d.reb40 >= 10.5 || d.blk40 >= 2)) ? "C" : "PF" }
-  const g = posGroup(L || pos);
+  let g = posGroup(L || pos);
+  /* CBBD's own G/F/C is wrong for a few (a 6'10" shot-blocker listed G, a 6'3" guard listed C): a group his height can't fit gives way */
+  if (h && g === "G" && h >= 81) g = "F"; else if (h && g === "C" && h <= 77) g = "G";
   if (g === "C") return "C";
   if (g === "G") return hasD ? (d.ast40 >= 4.6 || (d.ast40 >= 3.8 && h && h <= 75) ? "PG" : "SG") : (h && h <= 75 ? "PG" : "SG");
   if (hasD && h >= 82 && (d.reb40 >= 10.5 || d.blk40 >= 2) && d.tpr < .2) return "C";

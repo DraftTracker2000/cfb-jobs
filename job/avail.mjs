@@ -39,9 +39,43 @@ export function classify(status, code) {
   return 4;
 }
 
-export async function buildAvailability({ from = 2016, to, log = console.log, prev = null } = {}) {
-  const out = {};
+/* before 2016 (Oct 23 — Sam: "why don't we have available scores for players? and why is brady's so wrong?"): the weekly roster files
+   can't tell a missed week from a played one, so a season is read from the weekly stat lines instead: the weeks his team played and the
+   weeks he has a line. A week his team played without him counts injured when the week's injury report lists him hurt (2009 on), or —
+   for 1999–2008, before injury reports — whenever he missed it in a season he otherwise played (stars rarely sit healthy). A whole season
+   with no line between two he played (Peyton Manning 2011, neck) counts as all injured. [a, r, i, u, o] like the roster-file years. */
+const NFLS = "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_";
+async function oldSeasons(from, to, log) {
+  const play = {}, teamW = {}, mainT = {}, hurt = {};
   for (let y = from; y <= to; y++) {
+    const r = await fetch(NFLS + y + ".csv", { redirect: "follow" }); if (!r.ok) { log(`availability (stats) ${y}: ${r.status}`); continue }
+    const R = csvRows(await r.text()), H = R[0], iG = H.indexOf("player_id"), iT = H.indexOf("season_type"), iW = H.indexOf("week"), iTm = H.indexOf("team");
+    const P = play[y] = {}, T = teamW[y] = {}, M = mainT[y] = {};
+    for (let i = 1; i < R.length; i++) { const x = R[i]; if (x[iT] && x[iT] !== "REG") continue; const g = x[iG], w = +x[iW], t = x[iTm]; if (!g || !t) continue;
+      (T[t] = T[t] || new Set()).add(w); (P[g] = P[g] || new Set()).add(w); const m = M[g] = M[g] || {}; m[t] = (m[t] || 0) + 1 }
+    if (y >= 2009) { const h = hurt[y] = new Set(); try { const ir = await fetch(NFLI + y + ".csv", { redirect: "follow" }); if (ir.ok) { const Q = csvRows(await ir.text()), q = Q[0], jG = q.indexOf("gsis_id"), jW = q.indexOf("week"), jT = q.indexOf("game_type"), jI = q.indexOf("report_primary_injury");
+      for (let i = 1; i < Q.length; i++) { const x = Q[i]; if (x[jT] && x[jT] !== "REG") continue; const inj = x[jI] || ""; if (!inj || notHurt(inj)) continue; h.add(x[jG] + "|" + x[jW]) } } } catch (e) { log(`injury reports ${y}: ${e.message}`) } }
+    log(`availability (stats) ${y}: ${Object.keys(P).length} players`) }
+  const out = {}, years = Object.keys(play).map(Number).sort((a, b) => a - b), first = {}, last = {};
+  for (const y of years) for (const g in play[y]) { if (first[g] == null) first[g] = y; last[g] = y }
+  for (const y of years) { const S = out[y] = {};
+    for (const g in play[y]) { const M = mainT[y][g], t = Object.keys(M).sort((a, b) => M[b] - M[a])[0], tw = teamW[y][t] || new Set(), me = play[y][g]; let a = 0, i = 0;
+      for (const w of tw) { if (me.has(w)) { a++; continue } if (y >= 2009 ? hurt[y] && hurt[y].has(g + "|" + w) : true) i++ }
+      /* before injury reports (1999–2008) a missed week only counts for a player in the lineup: 8+ games this season or last (Brady 2008
+         counts; Rodgers sitting behind Favre in 2007 doesn't) */
+      if (y < 2009 && i > 0 && a < 8 && !((play[y - 1] && play[y - 1][g] && play[y - 1][g].size >= 8))) i = 0;
+      S[g] = [a, 0, i, 0, 0] }
+    /* a whole season missed between two he played */
+    for (const g in first) if (first[g] < y && last[g] > y && !play[y][g]) { const prevY = play[y - 1] && play[y - 1][g] ? y - 1 : null; if (prevY == null) continue; const M = mainT[prevY][g], t = Object.keys(M).sort((a, b) => M[b] - M[a])[0]; const n = (teamW[y][t] || new Set()).size || 16; S[g] = [0, n, 0, 0, 0] } }
+  return out }
+
+export async function buildAvailability({ from = 1999, to, log = console.log, prev = null } = {}) {
+  const out = {};
+  const oldTo = Math.min(2015, to); let OLD = null;
+  if (from <= oldTo) { const need = []; for (let y = from; y <= oldTo; y++) if (!(prev && prev[y] && Object.keys(prev[y]).length > 500)) need.push(y);
+    if (need.length) OLD = await oldSeasons(from, oldTo, log);
+    for (let y = from; y <= oldTo; y++) out[y] = OLD ? OLD[y] || {} : prev[y] }
+  for (let y = Math.max(from, 2016); y <= to; y++) {
     if (prev && y < to && prev[y] && Object.keys(prev[y]).length > 500) { out[y] = prev[y]; continue }   /* a finished season, kept (Oct 12) */
     const r = await fetch(NFLV + y + ".csv", { redirect: "follow" });
     if (!r.ok) { log(`availability ${y}: ${r.status}`); continue }

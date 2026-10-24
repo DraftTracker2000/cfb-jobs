@@ -250,7 +250,7 @@ export async function main() {
     await buildNbaStats({ getPack, putPack, log, curNba, live: nbaLive, full: false });
     try { const { buildNbaTrades } = await import("./cbbnbatrades.mjs"); await buildNbaTrades({ putPack, log }) } catch (e) { log("nba trades: " + e.message) }
     try { const { buildNbaBrackets } = await import("./cbbnbatrades.mjs"); await buildNbaBrackets({ getPack, putPack, log }) } catch (e) { log("nba brackets: " + e.message) }
-    try { const { buildNbaCareers } = await import("./cbbnbatrades.mjs"); const C = await getPack("p2000_cbb-nbacareers").catch(() => null); if (!C || Date.now() - (C.t || 0) > 6 * 864e5) await buildNbaCareers({ getPack, putPack, log }) } catch (e) { log("nba careers: " + e.message) }
+    try { const { buildNbaCareers } = await import("./cbbnbatrades.mjs"); const C = await getPack("p2000_cbb-nbacareers").catch(() => null); if (!C || (C.v || 0) < 2 || Date.now() - (C.t || 0) > 6 * 864e5) await buildNbaCareers({ getPack, putPack, log }) } catch (e) { log("nba careers: " + e.message) }
     try { await refreshNbaOnCourt({ getPack, putPack, log, curNba: M >= 7 ? Yr + 1 : Yr, packNames: [`p${UPCOMING}_cbb-nbagames`, `p${UPCOMING - 1}_cbb-nbagames`] }) } catch (e) { log("nba on-court: " + e.message) }
     await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `Basketball · NBA stats only · ${((Date.now() - started) / 60e3).toFixed(1)} min · 0 CBBD calls`; log(msg);
     await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return }

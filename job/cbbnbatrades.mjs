@@ -115,16 +115,20 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
     for (let g = 0; g < 40; g++) { const j = await call({ action: "query", list: "categorymembers", cmtitle: cat, cmlimit: "500", cmnamespace: "0", ...cont }); if (!j) break;
       for (const m of (j.query && j.query.categorymembers) || []) { T.add(m.title); n++ } if (!j.continue) break; cont = j.continue }
     if (!n) miss.push(cat); await new Promise(z => setTimeout(z, 150)) }
-  const titles = [...T]; let sec = true;
-  for (let k = 0; k < titles.length; k += 50) { const L = titles.slice(k, k + 50); let cont = {};
+  const titles = [...T]; let sec = true, failed = [];
+  const batch = async (L, failTo) => { let cont = {}, got = 0;
     for (let g = 0; g < 20; g++) { let j = await call({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", ...(sec ? { rvsection: "0" } : {}), titles: L.join("|"), ...cont });
-      if (!j && sec) { sec = false; j = await call({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", titles: L.join("|"), ...cont }) } if (!j) break;
+      if (!j) { failTo.push(...L); break }
       for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots && pg.revisions[0].slots.main.content; if (!w) continue;
-        const C = parseNbaCareer(w, nowStart); if (!C) continue; const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim(); const cur = P[nm] || []; for (const c of C) if (!cur.some(x => x.join() === c.join())) cur.push(c); P[nm] = cur }
+        got++; const C = parseNbaCareer(w, nowStart); if (!C) continue; const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim(); const cur = P[nm] || []; for (const c of C) if (!cur.some(x => x.join() === c.join())) cur.push(c); P[nm] = cur }
       if (!j.continue) break; cont = j.continue }
-    await new Promise(z => setTimeout(z, 200)) }
-  log(`nba careers: ${titles.length} pages in the team categories${sec ? " (infobox sections)" : " (whole pages)"}`);
-  await putPack("p2000_cbb-nbacareers", { v: 1, t: Date.now(), p: P }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.slice(0, 12).join(", ")}` : ""}`); return P;
+    await new Promise(z => setTimeout(z, 400)); return got };
+  /* fifty a read; any read that fails is tried again ten at a time, then one at a time */
+  let pages = 0; for (let k = 0; k < titles.length; k += 50) pages += await batch(titles.slice(k, k + 50), failed);
+  let f2 = []; for (let k = 0; k < failed.length; k += 10) pages += await batch(failed.slice(k, k + 10), f2);
+  let f3 = []; for (const t of f2) pages += await batch([t], f3);
+  log(`nba careers: ${pages} of ${titles.length} pages read${f3.length ? `, ${f3.length} never came back` : ""}`);
+  await putPack("p2000_cbb-nbacareers", { v: 2, t: Date.now(), p: P }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.slice(0, 12).join(", ")}` : ""}`); return P;
 }
 /* probe (MODE=probe, PROBE=nba-careers-test): why a few famous careers were missing */
 export async function run() { const L = ["Larry Bird", "Kobe Bryant", "Scottie Pippen", "Kareem Abdul-Jabbar", "Kevin McHale"], out = {};

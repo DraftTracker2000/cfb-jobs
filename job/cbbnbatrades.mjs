@@ -39,3 +39,31 @@ export async function buildNbaPlayoffs({ getPack, putPack, log = console.log, up
       out.sort((p, q) => p[0].localeCompare(q[0])); if (out.length) S[y] = out; log(`nba playoffs ${y}: ${out.length} games`) } catch (e) { log(`nba playoffs ${y}: ${e.message}`) } }
   await putPack("p2000_cbb-nbapo", { v: 2, t: Date.now(), s: S }); log(`nba playoffs: ${Object.keys(S).length} seasons, ${Object.values(S).reduce((a, x) => a + x.length, 0)} games, ${reads} ESPN reads`); return S;
 }
+/* Every NBA playoff bracket since 1970 (Oct 24 — Sam: "no way to find it just by searching nba champions and then looking at who they beat …
+   just the champions if we can go back far enough … the same thing for the team that lost the finals … chasing larry"). Wikipedia's
+   "{year} NBA playoffs" page carries the bracket as a template (12TeamBracket, 16TeamBracket …): each series' two teams, their seeds (E1,
+   W4 …) and series wins. One read a season; finished seasons are kept.
+   Pack p2000_cbb-nbabrk: { v: 1, t, s: { season: [[round, team A, seed A, wins A, team B, seed B, wins B]] }, rd: { season: [round names] } } */
+const WUA = { "User-Agent": "mycbbbigboard.com data job (basketball stats site; contact via the site)" };
+export function parseNbaBracket(w) {
+  const cands = [...String(w).matchAll(/\{\{\s*\d+TeamBracket[^]*?\n\}\}/g)].map(m => m[0]); const t = cands.find(c => /Finals/i.test(c) && /RD4/.test(c)) || cands.sort((a, b) => b.length - a.length)[0]; if (!t) return null;
+  const P = {}, names = [];
+  for (const m of t.matchAll(/\|\s*RD(\d)\s*=\s*([^\n|]*)/g)) names[+m[1]] = m[2].replace(/\[\[[^|\]]*\|([^\]]*)\]\]/g, "$1").replace(/[\[\]']/g, "").trim();
+  for (const m of t.matchAll(/\|\s*RD(\d)-(seed|team|score)(\d+)\s*=\s*([^\n]*)/g)) { const k = m[1] + "|" + (+m[3]); (P[k] = P[k] || {})[m[2]] = m[4].trim() }
+  const clean = v => String(v || "").replace(/\{\{\s*nowrap\s*\|/gi, "").replace(/\}\}/g, "").replace(/'{2,}/g, "").replace(/<[^>]*>/g, "").replace(/\*/g, "").trim();
+  const team = v => { const c = clean(v), m = c.match(/\[\[([^|\]]+)(?:\|[^\]]*)?\]\]/); if (!m) return c.replace(/[\[\]]/g, "") || null; return m[1].replace(/^\d{4}[–-]\d{2,4}\s+/, "").replace(/\s+season$/, "").trim() };
+  const out = [];
+  for (const k of Object.keys(P)) { const [r, i] = k.split("|").map(Number); if (i % 2 === 0) continue; const A = P[k], B = P[r + "|" + (i + 1)]; if (!A || !B) continue;
+    const ta = team(A.team), tb = team(B.team), sa = parseInt(clean(A.score)), sb = parseInt(clean(B.score)); if (!ta || !tb || isNaN(sa) || isNaN(sb)) continue;
+    out.push([r, ta, clean(A.seed), sa, tb, clean(B.seed), sb]) }
+  out.sort((a, b) => a[0] - b[0]); return { s: out, rd: names.slice(1) };
+}
+export async function buildNbaBrackets({ getPack, putPack, log = console.log, upto }) {
+  const prev = await getPack("p2000_cbb-nbabrk").catch(() => null), S = (prev && prev.s) || {}, RD = (prev && prev.rd) || {}; let reads = 0, bad = [];
+  const now = new Date(), last = upto || (now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1);
+  for (let y = 1970; y <= last; y++) { if (S[y] && S[y].length && y < last) continue;
+    try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(y + " NBA playoffs")}`, { headers: WUA }); reads++;
+      const j = await r.json(), pg = ((j.query || {}).pages || [])[0], w = pg && pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content, B = w && parseNbaBracket(w);
+      if (B && B.s.length) { S[y] = B.s; RD[y] = B.rd } else bad.push(y); await new Promise(z => setTimeout(z, 250)) } catch (e) { bad.push(y + ":" + e.message) } }
+  await putPack("p2000_cbb-nbabrk", { v: 1, t: Date.now(), s: S, rd: RD }); log(`nba brackets: ${Object.keys(S).length} seasons, ${reads} Wikipedia reads${bad.length ? `, no bracket: ${bad.join(" ")}` : ""}`); return S;
+}

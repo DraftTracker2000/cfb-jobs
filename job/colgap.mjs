@@ -59,7 +59,7 @@ export async function buildColGap({ site, token, hand = [], log = console.log, m
 
   /* team-seasons needed */
   const need = new Map();   // "team|y" -> [player]
-  for (const p of P) { const T = new Set(); const t0 = team(p.col); if (t0) T.add(t0); else miss.add(p.col);
+  for (const p of P) { const T = new Set(); for (const c of String(p.col).split(";").map(x => x.trim()).filter(Boolean)) { const t0 = team(c); if (t0) T.add(t0); else miss.add(c) }   /* transfers: nflverse lists every school, "Georgia Tech; Alabama" */
     for (const t of handTeams[nm(p.n)] || []) { const tt = team(t); if (tt) T.add(tt) }
     for (const t of T) for (let y = p.dy - 5; y < p.dy; y++) if (G[y]) { const k = t + "|" + y; (need.get(k) || need.set(k, []).get(k)).push(p) } }
   log(`college gaps: ${P.length} players · ${need.size} team-seasons · ${miss.size} colleges not placed`);
@@ -104,7 +104,7 @@ export async function buildColGap({ site, token, hand = [], log = console.log, m
 }
 
 export async function uploadColGap({ api, data }) {
-  const name = "colgap";
+  const name = `p${new Date().getUTCFullYear()}_colgap`;
   const gz = gzipSync(Buffer.from(JSON.stringify({ colgap: { t: Date.now(), v: 1, ...data } })));
   const r = await api("PUT", `/api/pack/${name}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
   await api("PUT", "/api/pack-index", { body: { [name]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });

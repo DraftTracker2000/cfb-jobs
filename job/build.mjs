@@ -53,14 +53,14 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest"];
+const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest"];   // these write packs only; the shared data version is unchanged
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflhistory: 120, nfldraft: 60 }[MODE];
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflhistory: 120, nfldraft: 60, colgap: 150 }[MODE];
 const PAGE = ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 const started = Date.now();
 
@@ -138,6 +138,16 @@ async function main() {
   console.log(`[${MODE}] signed in to ${SITE}`);
   CFTOK = sess.token; CF0 = await cfbdLeft(); if (CF0 != null) console.log(`CFBD calls left at the start: ${CF0}`);
 
+  /* MODE=colgap: college missed-game check from box scores (job/colgap.mjs, Oct 24) */
+  if (MODE === "colgap") { const { buildColGap, uploadColGap } = await import("./colgap.mjs");
+    let hand = []; try { hand = (await (await fetch(SITE + "/data/col-injuries.json")).json()).p || [] } catch { }
+    const d = await buildColGap({ site: SITE, token: sess.token, hand }); const up = await uploadColGap({ api, data: d });
+    const n = Object.keys(d.p).length, gaps = Object.values(d.p).reduce((a, r) => a + r[2].length, 0);
+    console.log(`::notice title=college gaps::${d.players} players · ${d.teamSeasons} team-seasons · ${d.calls} CFBD calls${d.stopped ? " (stopped early, budget)" : ""} · ${n} players with a missed stretch · ${gaps} stretches · ${(up.bytes / 1024).toFixed(0)} KB`);
+    const C = d.check.map(c => `${c[0]} ${c[1]} (Sam ${c[2]}): ${c[3] ? `last played ${c[3][0]} vs ${c[3][1]}, missed ${c[3][2]}${c[3][3] ? " to season end" : ""}` : "no gap seen"}`);
+    for (let i = 0, k = 0; i < C.length && k < 6; k++) { let s = ""; while (i < C.length && (s + C[i]).length < 5800) s += C[i++] + " | "; console.log(`::notice title=college gaps check ${k + 1}::${s}`) }
+    console.log(`::notice title=college gaps unplaced::${d.miss.join(", ").slice(0, 5800)}`);
+    await report(true, `college gaps · ${n} players · ${gaps} stretches · ${d.calls} calls`); return }
   /* MODE=probe: single-feature checks in a browser (job/probe.mjs, job/probes.mjs), results as notices on the run; PROBE picks them */
   if (MODE === "probe") { const { runProbes } = await import("./probe.mjs"); const browser = await chromium.launch();
     try { await runProbes({ browser, site: SITE, token: sess.token, only: process.env.PROBE || "" }) } finally { await browser.close() } return }

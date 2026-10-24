@@ -124,8 +124,11 @@ async function main() {
     const up = await uploadAvailability({ api, season, data });
     console.log(`availability: ${up.name} uploaded (${(up.bytes / 1024).toFixed(0)} KB)`);
     /* injury history, week by week (Oct 23 — the mini profile's Injuries tab): finished seasons kept from the last pack */
-    try { let pi = null; try { const ss = await api("POST", "/api/job/session"); const r = await fetch(SITE + `/api/pack/p${season}_injhist`, { headers: { Authorization: "Bearer " + (ss && ss.token) } }); if (r.ok) { const j = await r.json(); pi = j && j.injhist && j.injhist.v === 1 ? j.injhist : null } } catch { }
-      const ih = await buildInjHist({ to: season, prev: pi }); const u2 = await uploadInjHist({ api, season, data: ih });
+    try { let pi = null; try { const ss = await api("POST", "/api/job/session"); const r = await fetch(SITE + `/api/pack/p${season}_injhist`, { headers: { Authorization: "Bearer " + (ss && ss.token) } }); if (r.ok) { const j = await r.json(); pi = j && j.injhist && j.injhist.v === 2 ? j.injhist : null } } catch { }
+      /* games he left hurt need the game logs, and for the latest game ESPN's current injury list (the site's slimmed copy) */
+      const ss2 = await api("POST", "/api/job/session"), getPackIH = async n => { const r = await fetch(SITE + "/api/pack/" + n, { headers: { Authorization: "Bearer " + (ss2 && ss2.token) } }); return r.ok ? r.json() : null };
+      let espnNow = null; try { const r = await fetch(SITE + "/api/inj", { headers: { Authorization: "Bearer " + (ss2 && ss2.token) } }); if (r.ok) { const j = await r.json(); espnNow = {}; for (const [e, x] of Object.entries((j && j.r) || {})) if (x && x[1]) espnNow[e] = x[1] } } catch { }
+      const ih = await buildInjHist({ to: season, prev: pi, getPack: getPackIH, nflSeason: now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, espnNow }); const u2 = await uploadInjHist({ api, season, data: ih });
       console.log(`injury history: ${u2.name} uploaded (${(u2.bytes / 1024).toFixed(0)} KB, ${ih.inj.length} injury names)`) } catch (e) { console.log("injury history: " + e.message) }
     /* what happens after an injury (Oct 24, job/injimpact.mjs): from the injury history and the NFL game logs, no CFBD calls */
     try { const ss = await api("POST", "/api/job/session"); const getPack = async n => { const r = await fetch(SITE + "/api/pack/" + n, { headers: { Authorization: "Bearer " + (ss && ss.token) } }); return r.ok ? r.json() : null };

@@ -51,15 +51,19 @@ export function parseNbaBracket(w) {
   for (const m of t.matchAll(/\|\s*RD(\d)\s*=\s*([^\n|]*)/g)) names[+m[1]] = m[2].replace(/\[\[[^|\]]*\|([^\]]*)\]\]/g, "$1").replace(/[\[\]']/g, "").trim();
   for (const m of t.matchAll(/\|\s*RD(\d)-(seed|team|score)(\d+)\s*=\s*([^\n]*)/g)) { const k = m[1] + "|" + (+m[3]); (P[k] = P[k] || {})[m[2]] = m[4].trim() }
   const clean = v => String(v || "").replace(/\{\{\s*nowrap\s*\|/gi, "").replace(/\}\}/g, "").replace(/'{2,}/g, "").replace(/<[^>]*>/g, "").replace(/\*/g, "").trim();
-  const team = v => { const c = clean(v), m = c.match(/\[\[([^|\]]+)(?:\|[^\]]*)?\]\]/); if (!m) return c.replace(/[\[\]]/g, "") || null; return m[1].replace(/^\d{4}[–-]\d{2,4}\s+/, "").replace(/\s+season$/, "").trim() };
+  const LINKED = new Set(), team = v => { const c = clean(v), m = c.match(/\[\[([^|\]]+)(?:\|[^\]]*)?\]\]/); if (!m) return c.replace(/[\[\]]/g, "") || null; const n = m[1].replace(/^\d{4}[–-]\d{2,4}\s+/, "").replace(/\s+season$/, "").trim(); LINKED.add(n); return n };
   const out = [];
   for (const k of Object.keys(P)) { const [r, i] = k.split("|").map(Number); if (i % 2 === 0) continue; const A = P[k], B = P[r + "|" + (i + 1)]; if (!A || !B) continue;
     const ta = team(A.team), tb = team(B.team), sa = parseInt(clean(A.score)), sb = parseInt(clean(B.score)); if (!ta || !tb || isNaN(sa) || isNaN(sb)) continue;
     out.push([r, ta, clean(A.seed), sa, tb, clean(B.seed), sb]) }
+  /* later rounds often name a team by its city only ("Chicago", "LA Lakers"): give it the full name it has elsewhere in the bracket */
+  const full = [...LINKED];
+  const fix = n => { if (full.includes(n)) return n; const L = n.replace(/^LA\s+/, "Los Angeles "), hit = full.filter(f => f === L || f.startsWith(L + " ")); return hit.length === 1 ? hit[0] : n };
+  for (const x of out) { x[1] = fix(x[1]); x[4] = fix(x[4]) }
   out.sort((a, b) => a[0] - b[0]); return { s: out, rd: names.slice(1) };
 }
 export async function buildNbaBrackets({ getPack, putPack, log = console.log, upto }) {
-  const prev = await getPack("p2000_cbb-nbabrk").catch(() => null), S = (prev && prev.s) || {}, RD = (prev && prev.rd) || {}; let reads = 0, bad = [];
+  const prev0 = await getPack("p2000_cbb-nbabrk").catch(() => null), prev = prev0 && prev0.v >= 2 ? prev0 : null, S = (prev && prev.s) || {}, RD = (prev && prev.rd) || {}; let reads = 0, bad = [];
   const now = new Date(), last = upto || (now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1);
   /* ten seasons a read (Wikipedia returns several pages' text at once), with retries — one read a season was throttled after three */
   const need = []; for (let y = 1970; y <= last; y++) if (!(S[y] && S[y].length && y < last)) need.push(y);
@@ -68,8 +72,10 @@ export async function buildNbaBrackets({ getPack, putPack, log = console.log, up
       if (r.ok) j = await r.json(); else { log(`nba brackets: ${r.status}`); await new Promise(z => setTimeout(z, 3000 * (a + 1))) } } catch (e) { await new Promise(z => setTimeout(z, 3000 * (a + 1))) } }
     if (!j) { bad.push(...Y); continue }
     const red = {}; for (const x of (j.query && j.query.redirects) || []) red[x.to] = x.from;
-    for (const pg of (j.query && j.query.pages) || []) { const ti = red[pg.title] || pg.title, y = +String(ti).slice(0, 4), w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content, B = w && parseNbaBracket(w);
-      if (B && B.s.length) { S[y] = B.s; RD[y] = B.rd } else bad.push(y) }
+    for (const pg of (j.query && j.query.pages) || []) { const ti = red[pg.title] || pg.title, y = +String(ti).slice(0, 4); let w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content;
+      /* a batch can leave a page's text out (it continues in a later read): fetch that one on its own */
+      if (!w) try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(y + " NBA playoffs")}`, { headers: WUA }); reads++; const j2 = await r.json(), p2 = ((j2.query || {}).pages || [])[0]; w = p2 && p2.revisions && p2.revisions[0] && p2.revisions[0].slots.main.content; await new Promise(z => setTimeout(z, 600)) } catch (e) { }
+      const B = w && parseNbaBracket(w); if (B && B.s.length) { S[y] = B.s; RD[y] = B.rd } else bad.push(y) }
     await new Promise(z => setTimeout(z, 1000)) }
-  await putPack("p2000_cbb-nbabrk", { v: 1, t: Date.now(), s: S, rd: RD }); log(`nba brackets: ${Object.keys(S).length} seasons, ${reads} Wikipedia reads${bad.length ? `, no bracket: ${bad.join(" ")}` : ""}`); return S;
+  await putPack("p2000_cbb-nbabrk", { v: 2, t: Date.now(), s: S, rd: RD }); log(`nba brackets: ${Object.keys(S).length} seasons, ${reads} Wikipedia reads${bad.length ? `, no bracket: ${bad.join(" ")}` : ""}`); return S;
 }

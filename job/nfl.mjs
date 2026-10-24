@@ -232,6 +232,8 @@ async function pbp(S, log) {
   const hsF = o => num(o.total_home_score) != null && num(o.total_away_score) != null;
   const WPS = {}, YACS = [];
   const pl = (M, id) => M[id] = M[id] || { Z: {}, all: line(), late: line(), third: [0, 0], rz: line(), two: line() };
+  /* field position of a snap: backed up (own 1–10), own 11 to midfield, their 49–21, red zone 20–11, inside the 10; short yardage = 3rd or 4th and 1–2 */
+  const fpos = o => { const y = num(o.yardline_100) || 50; return y >= 90 ? "bk" : y >= 50 ? "own" : y >= 21 ? "opp" : y >= 11 ? "rz2" : "i10" }, shortY = o => num(o.down) >= 3 && (num(o.ydstogo) || 99) <= 2;
   const zc = (Z, k) => Z[k] = Z[k] || [0, 0, 0, 0, 0, 0];   // att, cmp, yds, td, int, epa
   rows(t, ["game_id", "season_type", "home_team", "away_team", "posteam", "defteam", "qtr", "down", "ydstogo", "yardline_100", "play_type", "yards_gained", "pass_location",
     "air_yards", "run_location", "epa", "score_differential", "total_home_score", "total_away_score", "complete_pass", "interception", "touchdown", "sack", "fumble_lost",
@@ -379,10 +381,12 @@ async function pbp(S, log) {
           /* direction by situation (Oct 24, Sam: "add percentages for which direction they run in those instances. L CL C CR R"):
              carries left edge / left tackle–guard / middle / right guard–tackle / right edge, for every carry, late and close, red zone, third down */
           const d5 = { LE: 0, LT: 1, LG: 1, M: 2, RG: 3, RT: 3, RE: 4 }[k], sd = ur.sd = ur.sd || { all: [0, 0, 0, 0, 0], late: [0, 0, 0, 0, 0], rz: [0, 0, 0, 0, 0], third: [0, 0, 0, 0, 0] };
-          sd.all[d5]++; if (late) sd.late[d5]++; if (rz) sd.rz[d5]++; if (third) sd.third[d5]++ } }
+          sd.all[d5]++; if (late) sd.late[d5]++; if (rz) sd.rz[d5]++; if (third) sd.third[d5]++;
+          /* by field position and short yardage (Oct 24 — Sam: "we could have done things like between groupings of yard lines on the field") */
+          const zb = fpos(o); (sd[zb] = sd[zb] || [0, 0, 0, 0, 0])[d5]++; if (shortY(o)) (sd.sy = sd.sy || [0, 0, 0, 0, 0])[d5]++ } }
       const u = U[o.rusher_player_id] = U[o.rusher_player_id] || { dir: {}, all: [0, 0, 0, 0], late: [0, 0, 0, 0], rz: [0, 0, 0, 0], third: [0, 0] };   // carries, yards, TD, EPA
       const add = A => { A[0]++; A[1] += yds; if (td) A[2]++; A[3] += epa };
-      add(u.all); if (late) add(u.late); if (rz) add(u.rz); const d = LOC[o.run_location] || "M"; add(u.dir[d] = u.dir[d] || [0, 0, 0, 0]);
+      add(u.all); if (late) add(u.late); if (rz) add(u.rz); { const zb = fpos(o); add(u[zb] = u[zb] || [0, 0, 0, 0]); if (shortY(o)) { add(u.sy = u.sy || [0, 0, 0, 0]); if (o.first_down === "1" || td) (u.syc = u.syc || [0])[0]++ } } const d = LOC[o.run_location] || "M"; add(u.dir[d] = u.dir[d] || [0, 0, 0, 0]);
       if (third) { u.third[0]++; if (o.third_down_converted === "1") u.third[1]++ }
       /* how his carries go (Oct 16 — Sam on Jeanty: "that jeanty one is eye opening"): every designed carry's yards, counted by yard
          (yards → carries), for the back, the offense, the defense facing it and the league, so the site can split carries into stuffed

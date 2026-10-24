@@ -65,12 +65,12 @@ export function parseNbaBracket(w) {
 export async function buildNbaBrackets({ getPack, putPack, log = console.log, upto }) {
   const prev0 = await getPack("p2000_cbb-nbabrk").catch(() => null), prev = prev0 && prev0.v >= 2 ? prev0 : null, S = (prev && prev.s) || {}, RD = (prev && prev.rd) || {}; let reads = 0, bad = [];
   const now = new Date(), last = upto || (now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1);
-  /* ten seasons a read (Wikipedia returns several pages' text at once), with retries — one read a season was throttled after three */
+  /* four seasons a read (Wikipedia returns several pages' text at once), with retries — one read a season was throttled after three */
   const need = []; for (let y = 1970; y <= last; y++) if (!(S[y] && S[y].length && y < last)) need.push(y);
-  for (let k = 0; k < need.length; k += 10) { const Y = need.slice(k, k + 10), titles = Y.map(y => y + " NBA playoffs"); let j = null;
+  for (let k = 0; k < need.length; k += 4) { const Y = need.slice(k, k + 4), titles = Y.map(y => y + " NBA playoffs"); let j = null;
     for (let a = 0; a < 4 && !j; a++) { try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(titles.join("|"))}`, { headers: WUA }); reads++;
       if (r.ok) j = await r.json(); else { log(`nba brackets: ${r.status}`); await new Promise(z => setTimeout(z, 3000 * (a + 1))) } } catch (e) { await new Promise(z => setTimeout(z, 3000 * (a + 1))) } }
-    if (!j) { bad.push(...Y); continue }
+    if (!j) { for (const y of Y) { try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(y + " NBA playoffs")}`, { headers: WUA }); reads++; const j2 = await r.json(), p2 = ((j2.query || {}).pages || [])[0], w = p2 && p2.revisions && p2.revisions[0] && p2.revisions[0].slots.main.content, B = w && parseNbaBracket(w); if (B && B.s.length) { S[y] = B.s; RD[y] = B.rd } else bad.push(y + ":" + r.status) } catch (e) { bad.push(y + ":" + e.message) } await new Promise(z => setTimeout(z, 800)) } continue }
     const red = {}; for (const x of (j.query && j.query.redirects) || []) red[x.to] = x.from;
     for (const pg of (j.query && j.query.pages) || []) { const ti = red[pg.title] || pg.title, y = +String(ti).slice(0, 4); let w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content;
       /* a batch can leave a page's text out (it continues in a later read): fetch that one on its own */

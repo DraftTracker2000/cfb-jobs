@@ -40,7 +40,7 @@ export async function buildColGap({ site, token, hand = [], log = console.log, m
   /* who: current NFL players who show up in box scores */
   const R = csvRows(await (await fetch(PLAYERS, { redirect: "follow" })).text()), h = R[0], c = k => h.indexOf(k);
   const P = [];
-  for (let i = 1; i < R.length; i++) { const x = R[i]; const last = +x[c("last_season")]; if (!(last >= cur)) continue; const pos = x[c("position")] || "";
+  for (let i = 1; i < R.length; i++) { const x = R[i]; const last = +x[c("last_season")]; if (!(last >= cur - 1) || /^(RET|CUT)$/.test(x[c("status")] || "")) continue;   /* last season too: a player hurt all of this one (Skattebo) still counts */ const pos = x[c("position")] || "";
     if (NOSTAT.test(pos) || !x[c("college_name")]) continue; const dy = +x[c("draft_year")] || +x[c("rookie_season")]; if (!dy) continue;
     P.push({ g: x[c("gsis_id")], n: x[c("display_name")], pos, col: x[c("college_name")], dy }) }
   /* Sam's hand list: his schools too (transfers), keyed by name */

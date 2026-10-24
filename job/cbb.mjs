@@ -249,6 +249,7 @@ export async function main() {
   if (MODE === "nbastats") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
     await buildNbaStats({ getPack, putPack, log, curNba, live: nbaLive, full: false });
     try { const { buildNbaTrades } = await import("./cbbnbatrades.mjs"); await buildNbaTrades({ putPack, log }) } catch (e) { log("nba trades: " + e.message) }
+    try { const { buildNbaPlayoffs } = await import("./cbbnbatrades.mjs"); await buildNbaPlayoffs({ getPack, putPack, log }) } catch (e) { log("nba playoffs: " + e.message) }
     try { await refreshNbaOnCourt({ getPack, putPack, log, curNba: M >= 7 ? Yr + 1 : Yr, packNames: [`p${UPCOMING}_cbb-nbagames`, `p${UPCOMING - 1}_cbb-nbagames`] }) } catch (e) { log("nba on-court: " + e.message) }
     await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `Basketball · NBA stats only · ${((Date.now() - started) / 60e3).toFixed(1)} min · 0 CBBD calls`; log(msg);
     await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return }

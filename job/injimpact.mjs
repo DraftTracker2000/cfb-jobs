@@ -56,8 +56,15 @@ export async function buildInjImpact({ getPack, season, nflSeason = season, log 
   const out = {};
   for (const k in G) { const A = G[k]; if (A.r.length < 8) continue;
     out[k] = [A.r.length, +med(A.r).toFixed(3), +(A.r.filter(x => x < 0.8).length / A.r.length).toFixed(3), A.s.length ? +med(A.s).toFixed(3) : null, +(A.same / A.r.length).toFixed(3), med(A.m)] }
-  log(`injury impact: ${Object.keys(out).length} position-injury groups, ${Object.keys(P).length} players`);
-  return { g: out, p: P };
+  /* the yardstick: the same comparison with no injury in between — any 4 games against the 4 before them, players at 5+ points — because
+     points bounce around anyway; an injury "costs" only what it takes beyond this */
+  const base = {};
+  for (const y in games) for (const g in games[y]) { const pos = posOf[g] === "FB" ? "RB" : posOf[g]; if (!["QB", "RB", "WR", "TE"].includes(pos)) continue;
+    const L = games[y][g]; for (let i = 4; i + 4 <= L.length; i += 4) { const b = L.slice(i - 4, i).reduce((a, x) => a + x.fp, 0) / 4, a = L.slice(i, i + 4).reduce((s2, x) => s2 + x.fp, 0) / 4;
+      if (b >= 5) (base[pos] = base[pos] || []).push(a / b) } }
+  const B = {}; for (const pos in base) B[pos] = [base[pos].length, +med(base[pos]).toFixed(3), +(base[pos].filter(x => x < 0.8).length / base[pos].length).toFixed(3)];
+  log(`injury impact: ${Object.keys(out).length} position-injury groups, ${Object.keys(P).length} players · no-injury yardstick ${JSON.stringify(B)}`);
+  return { g: out, p: P, base: B };
 }
 
 export async function uploadInjImpact({ api, season, data }) {

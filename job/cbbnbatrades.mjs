@@ -25,15 +25,17 @@ export async function buildNbaTrades({ putPack, log = console.log }) {
 export async function buildNbaPlayoffs({ getPack, putPack, log = console.log, upto }) {
   const prev = await getPack("p2000_cbb-nbapo").catch(() => null), S = (prev && prev.s) || {}; let reads = 0;
   const last = upto || new Date().getUTCFullYear();
-  for (let y = 2003; y <= last; y++) { if (S[y] && S[y].length && y < last) continue;
+  /* 2020's playoffs were in the bubble (August–October) and 2021's ran late (May–July) */
+  const WIN = { 2020: [7, 15, 9, 13], 2021: [4, 20, 6, 22] };
+  for (let y = 2003; y <= last; y++) { if (S[y] && S[y].length && y < last && (!WIN[y] || (prev && prev.v >= 2))) continue; const [m0, d0, m1, d1] = WIN[y] || [3, 12, 5, 24];
     /* ESPN's scoreboard takes one day at a time for the NBA (a date range is refused): every day from mid-April to late June */
     try { const out = [], ev = [];
-      for (let t = Date.UTC(y, 3, 12); t <= Date.UTC(y, 5, 24); t += 864e5) { const d = new Date(t).toISOString().slice(0, 10).replace(/-/g, "");
+      for (let t = Date.UTC(y, m0, d0); t <= Date.UTC(y, m1, d1); t += 864e5) { const d = new Date(t).toISOString().slice(0, 10).replace(/-/g, "");
         const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${d}&seasontype=3`, { headers: { "User-Agent": "Mozilla/5.0 (mycbbbigboard.com data job)" } }); reads++;
         if (r.ok) { const J = await r.json(); ev.push(...(J.events || [])) } await new Promise(z => setTimeout(z, 120)) }
       for (const e of ev) { const c = (e.competitions || [])[0]; if (!c || !(c.status && c.status.type && c.status.type.completed)) continue;
         const h = (c.competitors || []).find(x => x.homeAway === "home"), a = (c.competitors || []).find(x => x.homeAway === "away"); if (!h || !a) continue;
         out.push([String(e.date || "").slice(0, 10), h.team.abbreviation, a.team.abbreviation, +h.score, +a.score, h.team.displayName, a.team.displayName, ((c.notes || [])[0] || {}).headline || ""]) }
       out.sort((p, q) => p[0].localeCompare(q[0])); if (out.length) S[y] = out; log(`nba playoffs ${y}: ${out.length} games`) } catch (e) { log(`nba playoffs ${y}: ${e.message}`) } }
-  await putPack("p2000_cbb-nbapo", { v: 1, t: Date.now(), s: S }); log(`nba playoffs: ${Object.keys(S).length} seasons, ${Object.values(S).reduce((a, x) => a + x.length, 0)} games, ${reads} ESPN reads`); return S;
+  await putPack("p2000_cbb-nbapo", { v: 2, t: Date.now(), s: S }); log(`nba playoffs: ${Object.keys(S).length} seasons, ${Object.values(S).reduce((a, x) => a + x.length, 0)} games, ${reads} ESPN reads`); return S;
 }

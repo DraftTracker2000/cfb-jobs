@@ -132,7 +132,7 @@ async function main() {
       const nflSeason = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
       const ii = await buildInjImpact({ getPack, season, nflSeason }); const u3 = await uploadInjImpact({ api, season, data: ii });
       const top = Object.entries(ii.g).sort((a, b) => b[1][0] - a[1][0]).slice(0, 12).map(([k, v]) => `${k} ${v[0]}× ${Math.round(100 * v[1])}% (fell off ${Math.round(100 * v[2])}%)`).join(" · ");
-      console.log(`::notice title=injury impact::${u3.name} ${(u3.bytes / 1024).toFixed(0)} KB · ${Object.keys(ii.g).length} groups · ${top}`) } catch (e) { console.log(`::warning title=injury impact::${String(e && e.message || e).slice(0, 500)}`) }
+      console.log(`::notice title=injury impact::${u3.name} ${(u3.bytes / 1024).toFixed(0)} KB · ${Object.keys(ii.g).length} groups · no injury: ${JSON.stringify(ii.base)} · ${top}`) } catch (e) { console.log(`::warning title=injury impact::${String(e && e.message || e).slice(0, 500)}`) }
     if (MODE === "avail") { await report(true, `availability · ${Object.keys(data).length} seasons · ${(up.bytes / 1024).toFixed(0)} KB`); return }
   }
   const { chromium } = await import("playwright"); const { lookCheck, lookMsg } = await import("./look.mjs");

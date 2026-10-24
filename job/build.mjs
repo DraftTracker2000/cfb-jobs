@@ -141,7 +141,8 @@ async function main() {
   /* MODE=colgap: college missed-game check from box scores (job/colgap.mjs, Oct 24) */
   if (MODE === "colgap") { const { buildColGap, uploadColGap } = await import("./colgap.mjs");
     let hand = []; try { hand = (await (await fetch(SITE + "/data/col-injuries.json")).json()).p || [] } catch { }
-    const d = await buildColGap({ site: SITE, token: sess.token, hand }); const up = await uploadColGap({ api, data: d });
+    let d; try { d = await buildColGap({ site: SITE, token: sess.token, hand }) } catch (e) { console.log(`::warning title=college gaps failed::${String(e && e.stack || e).slice(0, 3000)}`); throw e }
+    let up = { bytes: 0 }; try { up = await uploadColGap({ api, data: d }) } catch (e) { console.log(`::warning title=college gaps upload failed::${String(e && e.message || e).slice(0, 1500)}`) }
     const n = Object.keys(d.p).length, gaps = Object.values(d.p).reduce((a, r) => a + r[2].length, 0);
     console.log(`::notice title=college gaps::${d.players} players · ${d.teamSeasons} team-seasons · ${d.calls} CFBD calls${d.stopped ? " (stopped early, budget)" : ""} · ${n} players with a missed stretch · ${gaps} stretches · ${(up.bytes / 1024).toFixed(0)} KB`);
     const C = d.check.map(c => `${c[0]} ${c[1]} (Sam ${c[2]}): ${c[3] ? `last played ${c[3][0]} vs ${c[3][1]}, missed ${c[3][2]}${c[3][3] ? " to season end" : ""}` : "no gap seen"}`);

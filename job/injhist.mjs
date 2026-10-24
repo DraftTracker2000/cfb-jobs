@@ -5,7 +5,7 @@
        status 1 questionable · 2 doubtful · 3 out · 4 on reserve (IR, PUP, NFI — not on the report, the roster file says so)
      a fifth value, 1, when he left that game hurt (Oct 24 — Sam: "mid game injuries should be included when they are ruled out before halftime like ladd was"):
          he played under half his usual share of the offense's snaps (his median of the 3 games before, when that was 40%+), and the next
-         injury report (a bye skipped) — or, for the latest game, ESPN's current injury list — names an injury. Snaps from the game logs
+         injury report (a bye skipped) — or, for his latest game when that report isn't out yet, ESPN's current injury list — names an injury. Snaps from the game logs
          (Sleeper's weekly stats), so 2020 on.
        missed 1 = he didn't play that week because he was hurt (reserve-injured, or inactive with an injury listed)
    Rest days, personal reasons, coach's decisions and COVID aren't injuries (notHurt). The site groups the weeks into stints.
@@ -61,7 +61,7 @@ export async function buildInjHist({ from = 2016, to, prev = null, getPack = nul
           for (let k = 2; k < G.length; k++) { const prev3 = G.slice(Math.max(0, k - 3), k).map(x => x.sh).sort((a, b) => a - b), base = prev3[Math.floor(prev3.length / 2)];
             if (!(base >= .4) || !(G[k].sh <= .5 * base)) continue; const w = G[k].w, nx = W[g] && (W[g][w + 1] || W[g][w + 2]);
             let i = nx && nx[0] >= 0 ? nx[0] : -1;
-            if (i < 0 && w === lastW && y === to && espnNow) { const e = espnNow[espnOf[g]]; if (e && !notHurt(e)) i = id(injName(e)) }
+            if (i < 0 && !nx && lastW - w <= 1 && y === to && espnNow) { const e = espnNow[espnOf[g]]; if (e && !notHurt(e)) i = id(injName(e)) }
             if (i < 0) continue; const cur = W[g] && W[g][w];
             if (cur) { if (!cur[2]) { cur[3] = 1; if (cur[0] < 0) cur[0] = i } } else (W[g] = W[g] || {})[w] = [i, 0, 0, 1]; exits++ } } } }
     /* a reserve week with no injury named takes the injury from the nearest listed week before it */

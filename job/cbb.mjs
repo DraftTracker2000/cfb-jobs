@@ -664,7 +664,7 @@ export async function main() {
     log(`shots ${y}: ${dates.length} days to read`);
     let added = 0;
     await pool(dates, 4, async dt => {
-      const plays = await cb("/plays/date", { date: dt, shootingPlaysOnly: "true" });
+      const plays = await cb("/plays/date", { date: dt, shootingPlaysOnly: "true" }).catch(e => { log(`shots ${y}: ${dt} skipped this run (${e.message.slice(0, 60)})`); return [] });   /* Oct 24: one day timing out (504) no longer stops the whole run; it is read again next time */
       const fresh = new Set();
       for (const p of plays) {
         if (have.has(p.gameId) || p.season !== y) continue; fresh.add(p.gameId);

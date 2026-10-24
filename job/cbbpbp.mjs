@@ -303,7 +303,7 @@ export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots,
   log(`pbp ${S}: ${dates.length} days to read`);
   let added = 0;
   await pool(dates, 3, async dt => {
-    const plays = await cb("/plays/date", { date: dt });
+    const plays = await cb("/plays/date", { date: dt }).catch(e => { log(`pbp ${S}: ${dt} skipped this run (${e.message.slice(0, 60)})`); return [] });   /* Oct 24: a day that times out is read again next run */
     const byGame = {}; for (const p of plays) { if (p.season !== S || have.has(p.gameId)) continue; (byGame[p.gameId] = byGame[p.gameId] || []).push(p) }
     /* ESPN's summary for each game: turnover locations, officials, attendance */
     const ES = {}; if (summary) await pool(Object.keys(byGame), 6, async gid => { const ev = (byGame[gid][0] || {}).gameSourceId; if (ev) ES[gid] = await summary(ev).catch(() => null) });

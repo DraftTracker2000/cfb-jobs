@@ -25,7 +25,7 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
     const first = Math.min(...Object.keys(bySeason).map(Number));
     for (const [cid, x] of Object.entries((WR && WR.c) || {})) for (const r of x.r) { if (r[0] >= first) continue; const id = idOf[schoolKey(r[1])]; if (id != null) (wiki[r[0]] = wiki[r[0]] || {})[id] = cid } } catch (e) { log("coach extras: wikipedia tenure " + e.message) }
   const coachOf = (tid, y) => (bySeason[y] || {})[tid] || (wiki[y] || {})[tid] || null;
-  const out = { v: 1, S, rc: {}, pin: {}, pout: {}, dev: {}, fr: {}, frBase: {}, sh: {}, shAvg: {} };
+  const out = { v: 1, S, rc: {}, pin: {}, pout: {}, dev: {}, fr: {}, frBase: {}, tr: {}, prev: {}, sh: {}, shAvg: {} };
   const push = (k, cid, v) => { (out[k][cid] = out[k][cid] || []).push(v) };
   const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10, r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 
@@ -92,6 +92,25 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
       out.fr[c] = { n: L.length, x: r1(L.reduce((a, f) => a + f.x, 0) / L.length), by: Object.fromEntries(Object.entries(by).map(([k, [n, x]]) => [k, [n, r1(x / n)]])) } }
     const ys = [...new Set(F.map(f => f.y))].sort((a, b) => b - a).slice(0, 3); for (const st of [2, 3, 4, 5]) { const L = F.filter(f => f.st === st && ys.includes(f.y)); if (L.length) out.frBase[st] = [L.length, r1(L.reduce((a, f) => a + f.mpg, 0) / L.length)] } }
 
+  /* ---- transfers in, and players coming back (Oct 24 — Sam: "there is history of transfers on to teams from coaches and there are for
+     sure data on how they use them along with players they've been developing or missed the prior season due to injury but had good
+     numbers the season prior, wherever they played"):
+     tr[coach] = { n, dm, de }: his incoming transfers' minutes a game and production per 40 at his school against their last season
+     before the move, minus the same change for every D-I transfer that year — how much more (or less) he plays and gets out of them.
+     prev[player] = his most recent full season (300+ minutes, the last three) when the season just finished was under 100 minutes —
+     an injury or a redshirt — so the site can count him at those numbers: [season, team, g, min, pts, orb, ast, stl, blk, tov, fga, fgm,
+     tpa, tpm, fta, ftm, reb] */
+  { const T = []; for (const [Y, rows] of Object.entries(P.y)) { const y = +Y;
+      for (const [nm, from, to] of rows) { if (from == null || to == null) continue; const ids = byNT[normName(nm) + "|" + from], pid = ids && ids.size === 1 ? [...ids][0] : null; if (!pid) continue;
+        const a = rowOf[pid + "|" + y], b = rowOf[pid + "|" + (y + 1)]; if (!a || !b || a.tm !== from || b.tm !== to || a.min < 150 || !a.g || !b.g) continue;
+        T.push({ y: y + 1, c: coachOf(to, y + 1), dm: b.min / b.g - a.min / a.g, de: eff40(b) - eff40(a) }) } }
+    const B = {}; for (const t of T) { const z = B[t.y] = B[t.y] || [0, 0, 0]; z[0] += t.dm; z[1] += t.de; z[2]++ }
+    const byC = {}; for (const t of T) { if (!t.c) continue; const z = B[t.y]; (byC[t.c] = byC[t.c] || []).push([t.dm - z[0] / z[2], t.de - z[1] / z[2]]) }
+    for (const [c, L] of Object.entries(byC)) out.tr[c] = { n: L.length, dm: r1(L.reduce((a, x) => a + x[0], 0) / L.length), de: r1(L.reduce((a, x) => a + x[1], 0) / L.length) };
+    const last = {}; for (const r of ALL[S] || []) last[r.id] = Math.max(last[r.id] || 0, r.min || 0);
+    for (const y of [S - 1, S - 2, S - 3]) for (const r of ALL[y] || []) { if ((last[r.id] || 0) >= 100 || out.prev[r.id] || r.min < 300 || !r.g) continue;
+      out.prev[r.id] = [y, r.tm, r.g, Math.round(r.min), r.pts || 0, r.orb || 0, r.ast || 0, r.stl || 0, r.blk || 0, r.tov || 0, r.fga || 0, r.fgm || 0, r.tpa || 0, r.tpm || 0, r.fta || 0, r.ftm || 0, r.reb || 0] } }
+
   /* ---- shot diet ---- */
   const share = z => { const a = z.map(v => v[1]), t = a.reduce((x, v) => x + v, 0); if (t < 200) return null;
     return [a[0] / t, a[1] / t, (a[2] + a[3] + a[4] + a[5] + a[6]) / t, (a[7] + a[11]) / t, (a[8] + a[9] + a[10]) / t].map(r3) };
@@ -101,6 +120,6 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
     if (n) out.shAvg[y] = acc.map(v => r3(v / n)) }
 
   await putPack(`p${S}_cbb-coachx`, out);
-  log(`coach extras: ${Object.keys(out.rc).length} with classes, ${Object.keys(out.pin).length} with transfers in, ${Object.keys(out.dev).length} with development (${pairs.length} player pairs), ${Object.keys(out.fr).length} with freshmen minutes, ${Object.keys(out.sh).length} team shot diets · ${calls} portal calls`);
+  log(`coach extras: ${Object.keys(out.rc).length} with classes, ${Object.keys(out.pin).length} with transfers in, ${Object.keys(out.dev).length} with development (${pairs.length} player pairs), ${Object.keys(out.fr).length} with freshmen minutes, ${Object.keys(out.tr).length} with transfer use, ${Object.keys(out.prev).length} players back from a missed season, ${Object.keys(out.sh).length} team shot diets · ${calls} portal calls`);
   return out;
 }

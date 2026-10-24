@@ -79,3 +79,50 @@ export async function buildNbaBrackets({ getPack, putPack, log = console.log, up
     await new Promise(z => setTimeout(z, 1000)) }
   await putPack("p2000_cbb-nbabrk", { v: 2, t: Date.now(), s: S, rd: RD }); log(`nba brackets: ${Object.keys(S).length} seasons, ${reads} Wikipedia reads${bad.length ? `, no bracket: ${bad.join(" ")}` : ""}`); return S;
 }
+/* Every NBA player's teams, season by season, back to the 1960s (Oct 24 — Sam on Teammate chain: "it only covers seasons since 2008–09 …
+   this makes it a non-starter bc people would be frustrated by that"). From Wikipedia: the members of each team's "players" category,
+   and each player's infobox (years1 / team1 …: {{nbay|1993|start}}–{{nbay|1998|end}}, [[2003–04 NBA season|2004]], or plain years).
+   A player traded during a season is on both teams that season. Teams are folded into franchises (Bullets → Wizards, SuperSonics →
+   Thunder …). Pack p2000_cbb-nbacareers: { v: 1, t, p: { name: [[franchise, first season, last season]] } } — seasons by their start year. */
+export const NBA_FR = { "Atlanta Hawks": "ATL", "St. Louis Hawks": "ATL", "Boston Celtics": "BOS", "Brooklyn Nets": "BKN", "New Jersey Nets": "BKN", "New York Nets": "BKN", "Charlotte Hornets": "CHA", "Charlotte Bobcats": "CHA",
+  "Chicago Bulls": "CHI", "Cleveland Cavaliers": "CLE", "Dallas Mavericks": "DAL", "Denver Nuggets": "DEN", "Detroit Pistons": "DET", "Golden State Warriors": "GS", "San Francisco Warriors": "GS", "Philadelphia Warriors": "GS",
+  "Houston Rockets": "HOU", "San Diego Rockets": "HOU", "Indiana Pacers": "IND", "Los Angeles Clippers": "LAC", "LA Clippers": "LAC", "San Diego Clippers": "LAC", "Buffalo Braves": "LAC", "Los Angeles Lakers": "LAL", "Minneapolis Lakers": "LAL",
+  "Memphis Grizzlies": "MEM", "Vancouver Grizzlies": "MEM", "Miami Heat": "MIA", "Milwaukee Bucks": "MIL", "Minnesota Timberwolves": "MIN", "New Orleans Pelicans": "NO", "New Orleans Hornets": "NO", "New Orleans/Oklahoma City Hornets": "NO",
+  "New York Knicks": "NY", "Oklahoma City Thunder": "OKC", "Seattle SuperSonics": "OKC", "Orlando Magic": "ORL", "Philadelphia 76ers": "PHI", "Syracuse Nationals": "PHI", "Phoenix Suns": "PHX", "Portland Trail Blazers": "POR",
+  "Sacramento Kings": "SAC", "Kansas City Kings": "SAC", "Kansas City-Omaha Kings": "SAC", "Kansas City–Omaha Kings": "SAC", "Cincinnati Royals": "SAC", "Rochester Royals": "SAC", "San Antonio Spurs": "SA", "Toronto Raptors": "TOR",
+  "Utah Jazz": "UTAH", "New Orleans Jazz": "UTAH", "Washington Wizards": "WSH", "Washington Bullets": "WSH", "Capital Bullets": "WSH", "Baltimore Bullets": "WSH", "Chicago Zephyrs": "WSH", "Chicago Packers": "WSH" };
+export function parseNbaCareer(w, nowStart) {
+  const k = String(w).search(/\{\{\s*Infobox basketball/i); if (k < 0) return null; const box = w.slice(k, k + 12000), P = {};
+  for (const m of box.matchAll(/\n\s*\|\s*(years|team)(\d+)\s*=\s*([^\n]*)/g)) (P[m[2]] = P[m[2]] || {})[m[1]] = m[3];
+  const out = [];
+  for (const i of Object.keys(P).sort((a, b) => a - b)) { const { years, team } = P[i]; if (!years || !team) continue;
+    const tm = (team.match(/\[\[([^|\]]+)/) || [])[1] || team.replace(/[\[\]']/g, "").trim(), fr = NBA_FR[tm.trim()]; if (!fr) continue;
+    /* each year mark: {{nbay|Y|start}} / {{nbay|Y|end}} / {{nbay|Y}} = the season starting Y; [[1993–94 NBA season|1994]] = that season; a plain year */
+    const marks = []; for (const m of years.matchAll(/\{\{\s*nbay\s*\|\s*(\d{4})[^}]*\}\}|\[\[(\d{4})[–-]\d{2,4} NBA season[^\]]*\]\]|\b(19|20)(\d{2})\b|present/gi)) {
+      if (/present/i.test(m[0])) marks.push({ s: nowStart, plain: 0 }); else if (m[1]) marks.push({ s: +m[1], plain: 0 }); else if (m[2]) marks.push({ s: +m[2], plain: 0 }); else marks.push({ s: +(m[3] + m[4]), plain: 1 }) }
+    if (!marks.length) continue; const a = marks[0], b = marks[marks.length - 1];
+    /* plain years are calendar years: "1979–1992" is the 1979–80 season through 1991–92 */
+    const s0 = a.s, s1 = marks.length === 1 ? a.s : b.plain ? Math.max(s0, b.s - 1) : b.s; out.push([fr, s0, s1]) }
+  return out.length ? out : null;
+}
+export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
+  const now = new Date(), nowStart = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, cats = [...new Set(Object.keys(NBA_FR))].map(t => `Category:${t} players`);
+  /* the names first (500 a read, each player once however many teams he played for), then the top of each page — the infobox —
+     fifty players a read */
+  const P = {}, T = new Set(); let reads = 0; const miss = [];
+  const call = async q => { for (let a = 0; a < 4; a++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", ...q }), { headers: WUA }); reads++; if (r.ok) { const j = await r.json(); if (!j.error) return j; log(`nba careers: ${j.error.code} ${j.error.info}`); return null } } catch (e) { } await new Promise(z => setTimeout(z, 2500 * (a + 1))) } return null };
+  for (const cat of cats) { let cont = {}, n = 0;
+    for (let g = 0; g < 40; g++) { const j = await call({ action: "query", list: "categorymembers", cmtitle: cat, cmlimit: "500", cmnamespace: "0", ...cont }); if (!j) break;
+      for (const m of (j.query && j.query.categorymembers) || []) { T.add(m.title); n++ } if (!j.continue) break; cont = j.continue }
+    if (!n) miss.push(cat); await new Promise(z => setTimeout(z, 150)) }
+  const titles = [...T]; let sec = true;
+  for (let k = 0; k < titles.length; k += 50) { const L = titles.slice(k, k + 50); let cont = {};
+    for (let g = 0; g < 20; g++) { let j = await call({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", ...(sec ? { rvsection: "0" } : {}), titles: L.join("|"), ...cont });
+      if (!j && sec) { sec = false; j = await call({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", titles: L.join("|"), ...cont }) } if (!j) break;
+      for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots && pg.revisions[0].slots.main.content; if (!w) continue;
+        const C = parseNbaCareer(w, nowStart); if (!C) continue; const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim(); const cur = P[nm] || []; for (const c of C) if (!cur.some(x => x.join() === c.join())) cur.push(c); P[nm] = cur }
+      if (!j.continue) break; cont = j.continue }
+    await new Promise(z => setTimeout(z, 200)) }
+  log(`nba careers: ${titles.length} pages in the team categories${sec ? " (infobox sections)" : " (whole pages)"}`);
+  await putPack("p2000_cbb-nbacareers", { v: 1, t: Date.now(), p: P }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.slice(0, 12).join(", ")}` : ""}`); return P;
+}

@@ -25,7 +25,7 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
     const first = Math.min(...Object.keys(bySeason).map(Number));
     for (const [cid, x] of Object.entries((WR && WR.c) || {})) for (const r of x.r) { if (r[0] >= first) continue; const id = idOf[schoolKey(r[1])]; if (id != null) (wiki[r[0]] = wiki[r[0]] || {})[id] = cid } } catch (e) { log("coach extras: wikipedia tenure " + e.message) }
   const coachOf = (tid, y) => (bySeason[y] || {})[tid] || (wiki[y] || {})[tid] || null;
-  const out = { v: 1, S, rc: {}, pin: {}, pout: {}, dev: {}, sh: {}, shAvg: {} };
+  const out = { v: 1, S, rc: {}, pin: {}, pout: {}, dev: {}, fr: {}, frBase: {}, sh: {}, shAvg: {} };
   const push = (k, cid, v) => { (out[k][cid] = out[k][cid] || []).push(v) };
   const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10, r3 = x => x == null || !isFinite(x) ? null : Math.round(x * 1000) / 1000;
 
@@ -80,6 +80,18 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
     out.dev[c] = { n, ws: r1(L.reduce((a, p) => a + p.xws, 0) / n), pts: r1(L.reduce((a, p) => a + p.xpts, 0) / n), up: L.filter(p => p.xws > 0).length,
       top: [...L].sort((a, b) => b.xws - a.xws).slice(0, 5).map(p => [p.nm, p.y, p.tm, pg(p.a), pg(p.b), r1(eff40(p.a)), r1(eff40(p.b))]) } }
 
+  /* ---- freshmen minutes (Oct 24 — Sam: "see what type of recruits typically play early for coaches or take time to develop"): every
+     rated recruit we can find in his first season at the school he signed with, his minutes a game against every D-I freshman of the same
+     star rating that year. fr[coach] = { n, x: extra minutes a game, by: { stars: [n, x] } }; frBase[stars] = D-I minutes a game (last 3
+     classes), for the site's roster estimates */
+  { const F = []; for (const [Y, list] of Object.entries(H.rec || {})) { const y = +Y + 1; for (const r of list) { if (r[6] == null || r[1] == null || !r[3]) continue;
+      const row = rowOf[r[6] + "|" + y]; if (!row || row.tm !== r[1] || !row.g) continue; F.push({ y, st: Math.max(2, Math.min(5, r[3])), mpg: row.min / row.g, c: coachOf(r[1], y) }) } }
+    const B = {}; for (const f of F) { const k = f.y + "|" + f.st, b = B[k] = B[k] || [0, 0]; b[0] += f.mpg; b[1]++ }
+    const byC = {}; for (const f of F) { if (!f.c) continue; const b = B[f.y + "|" + f.st]; (byC[f.c] = byC[f.c] || []).push({ st: f.st, x: f.mpg - b[0] / b[1] }) }
+    for (const [c, L] of Object.entries(byC)) { const by = {}; for (const f of L) { const z = by[f.st] = by[f.st] || [0, 0]; z[0]++; z[1] += f.x }
+      out.fr[c] = { n: L.length, x: r1(L.reduce((a, f) => a + f.x, 0) / L.length), by: Object.fromEntries(Object.entries(by).map(([k, [n, x]]) => [k, [n, r1(x / n)]])) } }
+    const ys = [...new Set(F.map(f => f.y))].sort((a, b) => b - a).slice(0, 3); for (const st of [2, 3, 4, 5]) { const L = F.filter(f => f.st === st && ys.includes(f.y)); if (L.length) out.frBase[st] = [L.length, r1(L.reduce((a, f) => a + f.mpg, 0) / L.length)] } }
+
   /* ---- shot diet ---- */
   const share = z => { const a = z.map(v => v[1]), t = a.reduce((x, v) => x + v, 0); if (t < 200) return null;
     return [a[0] / t, a[1] / t, (a[2] + a[3] + a[4] + a[5] + a[6]) / t, (a[7] + a[11]) / t, (a[8] + a[9] + a[10]) / t].map(r3) };
@@ -89,6 +101,6 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
     if (n) out.shAvg[y] = acc.map(v => r3(v / n)) }
 
   await putPack(`p${S}_cbb-coachx`, out);
-  log(`coach extras: ${Object.keys(out.rc).length} with classes, ${Object.keys(out.pin).length} with transfers in, ${Object.keys(out.dev).length} with development (${pairs.length} player pairs), ${Object.keys(out.sh).length} team shot diets · ${calls} portal calls`);
+  log(`coach extras: ${Object.keys(out.rc).length} with classes, ${Object.keys(out.pin).length} with transfers in, ${Object.keys(out.dev).length} with development (${pairs.length} player pairs), ${Object.keys(out.fr).length} with freshmen minutes, ${Object.keys(out.sh).length} team shot diets · ${calls} portal calls`);
   return out;
 }

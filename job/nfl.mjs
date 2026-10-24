@@ -375,7 +375,11 @@ async function pbp(S, log) {
           const gg = (tO.gapG = tO.gapG || {})[g] = tO.gapG[g] || {}, x3 = gg[k] = gg[k] || [0, 0, 0, 0]; x3[0]++; x3[1] += yds; x3[2] += epa; if (o.success === "1") x3[3]++
           /* the ball carrier's own gaps (Sam, Sept 30: the run chart — his yards a carry at each gap against his own average) */
           const ur = U[o.rusher_player_id] = U[o.rusher_player_id] || { dir: {}, all: [0, 0, 0, 0], late: [0, 0, 0, 0], rz: [0, 0, 0, 0], third: [0, 0] };
-          const xg = (ur.gap = ur.gap || {})[k] = ur.gap[k] || [0, 0, 0]; xg[0]++; xg[1] += yds; if (o.success === "1") xg[2]++ } }
+          const xg = (ur.gap = ur.gap || {})[k] = ur.gap[k] || [0, 0, 0]; xg[0]++; xg[1] += yds; if (o.success === "1") xg[2]++;
+          /* direction by situation (Oct 24, Sam: "add percentages for which direction they run in those instances. L CL C CR R"):
+             carries left edge / left tackle–guard / middle / right guard–tackle / right edge, for every carry, late and close, red zone, third down */
+          const d5 = { LE: 0, LT: 1, LG: 1, M: 2, RG: 3, RT: 3, RE: 4 }[k], sd = ur.sd = ur.sd || { all: [0, 0, 0, 0, 0], late: [0, 0, 0, 0, 0], rz: [0, 0, 0, 0, 0], third: [0, 0, 0, 0, 0] };
+          sd.all[d5]++; if (late) sd.late[d5]++; if (rz) sd.rz[d5]++; if (third) sd.third[d5]++ } }
       const u = U[o.rusher_player_id] = U[o.rusher_player_id] || { dir: {}, all: [0, 0, 0, 0], late: [0, 0, 0, 0], rz: [0, 0, 0, 0], third: [0, 0] };   // carries, yards, TD, EPA
       const add = A => { A[0]++; A[1] += yds; if (td) A[2]++; A[3] += epa };
       add(u.all); if (late) add(u.late); if (rz) add(u.rz); const d = LOC[o.run_location] || "M"; add(u.dir[d] = u.dir[d] || [0, 0, 0, 0]);

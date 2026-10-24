@@ -10,7 +10,8 @@
    Output: pack "pYYYY_injimpact" = { injimpact: { t, v: 1, g: { "RB|hamstring": [n, med, fell, snapMed, backSame] }, p: { gsis: [[season, w0,
    key, before, after, snapBefore, snapAfter, nAfter], …] } } } */
 
-import { gzipSync } from "node:zlib";
+import { gzipSync, gunzipSync } from "node:zlib";
+import { csvRows } from "./lib/files.mjs";
 
 export function injKey(name) {
   const s = String(name || "").toLowerCase();
@@ -35,7 +36,7 @@ export async function buildInjImpact({ getPack, season, nflSeason = season, log 
     let L = null; try { L = await getPack(`p${nflSeason}_nfl-logs-${y}`) } catch { }
     if (!L || !L.p) { log(`injury impact: no logs for ${y}`); continue }
     const c = Object.fromEntries(L.cols.map((k, i) => [k, i])); const S = games[y] = {};
-    for (const g in L.p) S[g] = L.p[g].filter(r => r[c.type] === "R").map(r => ({ w: +r[c.week], fp: +r[c.fp] || 0, sh: r[c.tsnp] > 0 ? r[c.snp] / r[c.tsnp] : null })).sort((a, b) => a.w - b.w);
+    for (const g in L.p) S[g] = L.p[g].filter(r => r[c.type] === "R").map(r => ({ w: +r[c.week], fp: +r[c.fp] || 0, sh: r[c.tsnp] > 0 ? r[c.snp] / r[c.tsnp] : null, tm: r[c.team] })).sort((a, b) => a.w - b.w);
   }
   const P = {}, G = {};
   for (const ys in IH.d) { const y = +ys;
@@ -56,6 +57,36 @@ export async function buildInjImpact({ getPack, season, nflSeason = season, log 
   const out = {};
   for (const k in G) { const A = G[k]; if (A.r.length < 8) continue;
     out[k] = [A.r.length, +med(A.r).toFixed(3), +(A.r.filter(x => x < 0.8).length / A.r.length).toFixed(3), A.s.length ? +med(A.s).toFixed(3) : null, +(A.same / A.r.length).toFixed(3), med(A.m)] }
+  /* his whole injury picture (Oct 24 — Sam: "there have to be more injury related stats"), per player:
+     points lost (games missed × his points a game that season), how often he played when listed questionable and what he scored,
+     his team with him and without him (record and points a game, regular season), injuries that came back, and games missed a season
+     against everyone at his position */
+  const SCH = {};   // "season|week|team" -> [pf, pa]
+  try { const r = await fetch("https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv.gz", { redirect: "follow" });
+    const R = csvRows(gunzipSync(Buffer.from(await r.arrayBuffer())).toString()), h = R[0], c = k => h.indexOf(k);
+    for (let i = 1; i < R.length; i++) { const x = R[i]; if (x[c("game_type")] !== "REG" || x[c("home_score")] === "") continue; const y = x[c("season")], w = x[c("week")], hs = +x[c("home_score")], as = +x[c("away_score")];
+      SCH[`${y}|${w}|${x[c("home_team")]}`] = [hs, as]; SCH[`${y}|${w}|${x[c("away_team")]}`] = [as, hs] } } catch (e) { log("injury impact: schedule " + e.message) }
+  const tmFix = t => ({ LA: "LA", LAR: "LA", STL: "LA", SD: "LAC", OAK: "LV", JAC: "JAX", WSH: "WAS" }[t] || t);
+  const SUM = {}, posTot = {};
+  const allG = new Set(); for (const y in games) for (const g in games[y]) allG.add(g); for (const y in IH.d) for (const g in IH.d[y]) allG.add(g);
+  for (const g of allG) { const pos0 = posOf[g]; if (!["QB", "RB", "WR", "TE", "FB"].includes(pos0)) continue; const pos = pos0 === "FB" ? "RB" : pos0;
+    let lost = 0, seasons = 0, missed = 0, qN = 0, qP = 0, qFp = 0, wW = 0, wL = 0, wPF = 0, wN = 0, oW = 0, oL = 0, oPF = 0, oN = 0; const keys = {};
+    for (const ys of new Set([...Object.keys(games).filter(y => games[y][g]), ...Object.keys(IH.d).filter(y => IH.d[y][g])])) { const y = +ys;
+      const pl = (games[y] && games[y][g]) || [], rows = (IH.d[ys] && IH.d[ys][g]) || [];
+      if (pl.length < 1 && !rows.some(r => r[3])) continue; seasons++;
+      const ppg = pl.length ? pl.reduce((a, x) => a + x.fp, 0) / pl.length : (games[y - 1] && games[y - 1][g] && games[y - 1][g].length ? games[y - 1][g].reduce((a, x) => a + x.fp, 0) / games[y - 1][g].length : 0);
+      const m = rows.filter(r => r[3]).length; missed += m; lost += m * ppg;
+      for (const r of rows) if (r[2] === 1) { qN++; const gm = pl.find(x => x.w === r[0]); if (gm) { qP++; qFp += gm.fp } }
+      const teamAt = w => { let best = null, d = 99; for (const x of pl) { const dd = Math.abs(x.w - w); if (dd < d) { d = dd; best = x.tm } } return best };
+      for (const x of pl) { const sc = SCH[`${y}|${x.w}|${x.tm}`] || SCH[`${y}|${x.w}|${tmFix(x.tm)}`]; if (!sc) continue; wN++; wPF += sc[0]; if (sc[0] > sc[1]) wW++; else if (sc[0] < sc[1]) wL++ }
+      for (const r of rows) { if (!r[3]) continue; const tm = teamAt(r[0]); const sc = tm && (SCH[`${y}|${r[0]}|${tm}`] || SCH[`${y}|${r[0]}|${tmFix(tm)}`]); if (!sc) continue; oN++; oPF += sc[0]; if (sc[0] > sc[1]) oW++; else if (sc[0] < sc[1]) oL++ }
+      /* injuries that came back: the distinct stints of each kind, by season */
+      let lastW = -9, lastK = ""; for (const r of rows) { const k = injKey(r[1] >= 0 ? IH.inj[r[1]] : ""); if (!k) continue; if (!(k === lastK && r[0] - lastW <= 2)) keys[k] = (keys[k] || 0) + 1; lastK = k; lastW = r[0] } }
+    if (!seasons) continue;
+    const T = posTot[pos] = posTot[pos] || [0, 0]; T[0] += missed; T[1] += seasons;
+    const rep = Object.entries(keys).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}:${n}`).join(",");
+    if (missed || qN || rep) SUM[g] = [Math.round(lost), seasons, missed, qN, qP, qP ? +(qFp / qP).toFixed(1) : null, wW, wL, wN ? +(wPF / wN).toFixed(1) : null, wN, oW, oL, oN ? +(oPF / oN).toFixed(1) : null, oN, rep] }
+  const posAvg = {}; for (const p in posTot) posAvg[p] = +(posTot[p][0] / Math.max(1, posTot[p][1])).toFixed(2);
   /* the yardstick: the same comparison with no injury in between — any 4 games against the 4 before them, players at 5+ points — because
      points bounce around anyway; an injury "costs" only what it takes beyond this */
   const base = {};
@@ -64,7 +95,8 @@ export async function buildInjImpact({ getPack, season, nflSeason = season, log 
       if (b >= 5) (base[pos] = base[pos] || []).push(a / b) } }
   const B = {}; for (const pos in base) B[pos] = [base[pos].length, +med(base[pos]).toFixed(3), +(base[pos].filter(x => x < 0.8).length / base[pos].length).toFixed(3)];
   log(`injury impact: ${Object.keys(out).length} position-injury groups, ${Object.keys(P).length} players · no-injury yardstick ${JSON.stringify(B)}`);
-  return { g: out, p: P, base: B };
+  log(`injury impact: ${Object.keys(SUM).length} player summaries · games missed a season by position ${JSON.stringify(posAvg)}`);
+  return { g: out, p: P, base: B, s: SUM, posAvg };
 }
 
 export async function uploadInjImpact({ api, season, data }) {

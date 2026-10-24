@@ -46,6 +46,7 @@ import { gzipSync } from "node:zlib";
 import { refreshRefs } from "./refs.mjs";
 import { buildAvailability, uploadAvailability } from "./avail.mjs";
 import { buildInjHist, uploadInjHist } from "./injhist.mjs";
+import { buildInjImpact, uploadInjImpact } from "./injimpact.mjs";
 import { buildCollegeAvail, uploadCollegeAvail } from "./cavail.mjs";
 import { buildNfl } from "./nfl.mjs";
 import { buildStaff } from "./staff.mjs";
@@ -126,6 +127,12 @@ async function main() {
     try { let pi = null; try { const ss = await api("POST", "/api/job/session"); const r = await fetch(SITE + `/api/pack/p${season}_injhist`, { headers: { Authorization: "Bearer " + (ss && ss.token) } }); if (r.ok) { const j = await r.json(); pi = j && j.injhist && j.injhist.v === 1 ? j.injhist : null } } catch { }
       const ih = await buildInjHist({ to: season, prev: pi }); const u2 = await uploadInjHist({ api, season, data: ih });
       console.log(`injury history: ${u2.name} uploaded (${(u2.bytes / 1024).toFixed(0)} KB, ${ih.inj.length} injury names)`) } catch (e) { console.log("injury history: " + e.message) }
+    /* what happens after an injury (Oct 24, job/injimpact.mjs): from the injury history and the NFL game logs, no CFBD calls */
+    try { const ss = await api("POST", "/api/job/session"); const getPack = async n => { const r = await fetch(SITE + "/api/pack/" + n, { headers: { Authorization: "Bearer " + (ss && ss.token) } }); return r.ok ? r.json() : null };
+      const nflSeason = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+      const ii = await buildInjImpact({ getPack, season, nflSeason }); const u3 = await uploadInjImpact({ api, season, data: ii });
+      const top = Object.entries(ii.g).sort((a, b) => b[1][0] - a[1][0]).slice(0, 12).map(([k, v]) => `${k} ${v[0]}× ${Math.round(100 * v[1])}% (fell off ${Math.round(100 * v[2])}%)`).join(" · ");
+      console.log(`::notice title=injury impact::${u3.name} ${(u3.bytes / 1024).toFixed(0)} KB · ${Object.keys(ii.g).length} groups · ${top}`) } catch (e) { console.log(`::warning title=injury impact::${String(e && e.message || e).slice(0, 500)}`) }
     if (MODE === "avail") { await report(true, `availability · ${Object.keys(data).length} seasons · ${(up.bytes / 1024).toFixed(0)} KB`); return }
   }
   const { chromium } = await import("playwright"); const { lookCheck, lookMsg } = await import("./look.mjs");

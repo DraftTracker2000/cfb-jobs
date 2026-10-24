@@ -529,7 +529,7 @@ export async function main() {
           ht: a.ht || rc.heightInches || null, wt: a.wt || rc.weightPounds || null, home: a.home || (rc.hometown ? [rc.hometown.city, rc.hometown.state].filter(Boolean).join(", ") : ""), hs: rc.school || "", jersey: a.jersey || "", inj: a.inj || undefined,
           rec: { r: r3(rc.rating), st: rc.stars, rk: rc.ranking }, s: null, d: { ht: a.ht || rc.heightInches || null }, g: recGrade(rc), comps: [] }); continue }
         /* listed, but no Division I stats and not a ranked recruit (walk-ons, internationals, players from other levels) */
-        board.push({ id: "e" + a.eid, eid: a.eid, nm: a.nm, pos: posGroup(a.pos), posFull: a.pos || "", tm: tid, from: null, cls: a.cls || "FR", yr: 1, ht: a.ht, wt: a.wt, home: a.home, jersey: a.jersey || "", inj: a.inj || undefined, nodata: 1, s: null, d: { ht: a.ht }, g: { score: 0, pD: 0, pR1: 0, pL: 0, prof: "Undrafted", none: 1 }, comps: [] });
+        board.push({ id: "e" + a.eid, eid: a.eid, cid: pid || undefined /* Oct 24: his CBBD id when known, so a player back from a missed season finds his last full one (coach extras prev) */, nm: a.nm, pos: posGroup(a.pos), posFull: a.pos || "", tm: tid, from: null, cls: a.cls || "FR", yr: 1, ht: a.ht, wt: a.wt, home: a.home, jersey: a.jersey || "", inj: a.inj || undefined, nodata: 1, s: null, d: { ht: a.ht }, g: { score: 0, pD: 0, pR1: 0, pL: 0, prof: "Undrafted", none: 1 }, comps: [] });
       } }
     log(`ESPN rosters: ${movedHits} moved players matched to last season's stats by a unique name`)
   } else for (const r of Object.values(lastRow)) {

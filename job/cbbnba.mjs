@@ -12,7 +12,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 export function csvLine(s) { const out = []; let cur = "", q = false; for (let i = 0; i < s.length; i++) { const c = s[i]; if (q) { if (c === '"') { if (s[i + 1] === '"') { cur += '"'; i++ } else q = false } else cur += c } else if (c === '"') q = true; else if (c === ",") { out.push(cur); cur = "" } else cur += c } out.push(cur); return out }
 /* one season's box scores → { espnId: [name, team, gp, gs, min, pts, reb, ast, stl, blk, tov, fgm, fga, tpm, tpa, ftm, fta] } (regular season + playoffs kept apart: playoffs in p) */
 /* the season's real teams: 20+ games in the file (All-Star sides play 1–3) */
-const realTeams = rows => { const G = {}; for (const r of rows) (G[r.team_abbreviation] = G[r.team_abbreviation] || new Set()).add(r.game_id); return new Set(Object.keys(G).filter(t => G[t].size >= 20)) };
+/* (early in a season every team has only a few games, so the bar is half the busiest team's count, capped at 20) */
+const realTeams = rows => { const G = {}; for (const r of rows) (G[r.team_abbreviation] = G[r.team_abbreviation] || new Set()).add(r.game_id); const bar = Math.min(20, Math.max(1, ...Object.values(G).map(x => x.size)) / 2); return new Set(Object.keys(G).filter(t => G[t].size >= bar)) };
 /* the NBA Cup final (Oct 25): the files code it as a regular-season game, so both finalists show 83; the league doesn't count it. It's the
    December game between two teams that both reach 83, on a night with no other game. Input: [team, gameId, "YYYY-MM-DD", seasonType] */
 export function cupFinalIds(G4) { const T = {}, byD = {}, gm = {}; for (const [t, g, d, ty] of G4) { if (+ty !== 2) continue; (T[t] = T[t] || new Set()).add(g); (byD[d] = byD[d] || new Set()).add(g); (gm[g] = gm[g] || { d, t: new Set() }).t.add(t) }
@@ -26,7 +27,7 @@ export function seasonFromCsv(text) {
   /* All-Star games (Oct 25 — the 2026 file codes the three-team All-Star tournament as regular season, so Edwards showed 64 games, ESPN
      61): a real team plays 40+ games a season, an All-Star side 1–3, so any team with fewer than 20 games in the file is left out */
   const gid = H.indexOf("game_id"), TG = {}; if (gid >= 0) for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); (TG[f[I.tm]] = TG[f[I.tm]] || new Set()).add(f[gid]) }
-  const realTeam = t => gid < 0 || (TG[t] && TG[t].size >= 20);
+  const BAR = Math.min(20, Math.max(1, ...Object.values(TG).map(x => x.size)) / 2), realTeam = t => gid < 0 || (TG[t] && TG[t].size >= BAR);
   const CUP = gid >= 0 && ix("game_date") >= 0 ? cupFinalIds(lines.slice(1).filter(Boolean).map(l => { const f = csvLine(l); return [f[I.tm], f[gid], String(f[ix("game_date")] || "").slice(0, 10), I.type >= 0 ? f[I.type] : 2] })) : new Set();
   const out = {}, gd = ix("game_date"), ymd = f => +String(f[gd] || "").slice(0, 10).replace(/-/g, ""), TD = {};
   if (gd >= 0) for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); if (!realTeam(f[I.tm]) || (I.type >= 0 && +f[I.type] !== 2)) continue; const d = ymd(f); if (d) (TD[f[I.tm]] = TD[f[I.tm]] || new Set()).add(d) }

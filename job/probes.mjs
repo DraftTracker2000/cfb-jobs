@@ -7,6 +7,7 @@ export const PROBES = [
   { name: "nba-statsapi", node: "const o={ok:false,t:[]};const H={\"User-Agent\":\"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36\",\"Referer\":\"https://www.nba.com/\",\"Origin\":\"https://www.nba.com\",\"Accept\":\"application/json, text/plain, */*\",\"x-nba-stats-origin\":\"stats\",\"x-nba-stats-token\":\"true\"};\nfor(const u of [\"https://stats.nba.com/stats/commonallplayers?LeagueID=00&Season=2025-26&IsOnlyCurrentSeason=0\",\"https://stats.nba.com/stats/playercareerstats?PlayerID=1449&PerMode=Totals&LeagueID=00\",\"https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/1009/stats\"]){try{const ac=new AbortController();setTimeout(()=>ac.abort(),30000);const r=await fetch(u,{headers:H,signal:ac.signal});const t=await r.text();const x={u,st:r.status,len:t.length,head:t.slice(0,500)};try{const j=JSON.parse(t);if(j.resultSets){x.sets=j.resultSets.map(z=>[z.name,z.headers.slice(0,14),z.rowSet.length,z.rowSet.slice(0,2)])}}catch(e){}o.t.push(x);if(r.ok)o.ok=true}catch(e){o.t.push({u,err:String(e.message||e)})}}return o" },
   { name: "nba-careers-test", mod: "cbbnbatrades" },
   { name: "nbainj", mod: "nbainjprobe" },
+  { name: "nbafingers", mod: "nbainjprobe", env: { FINGERS: "1" } },
   { name: "injwatch0", mod: "injwatch", env: { PI: "0" } },
   { name: "injwatch1", mod: "injwatch", env: { PI: "1" } },
   { name: "injwatch2", mod: "injwatch", env: { PI: "2" } },

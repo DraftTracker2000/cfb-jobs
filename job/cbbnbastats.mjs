@@ -138,6 +138,17 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
       for (const c of Object.values(CP.coaches)) { const st = (c.wiki && c.wiki.stops) || []; const nb = st.map(s => teamOf(s[1])).filter(Boolean); if (nb.length && c.nm && !names[c.nm]) names[c.nm] = { list: nb, cur: false } } break }
     await buildNbaCoaches(K, names, log, curNba); files++ } catch (e) { log("nbastats coach records: " + e.message) }
   for (const y of Object.keys(K.s)) if (+y < curNba - 2) delete K.s[y];
+  /* every defender-vs-scorer pair (Oct 25 — Sam: the NBA Compare should show how two players guard each other): NBA.com's season
+     matchups, all pairs with a minute or more of guarding, by season since 2017–18 → p2000_cbb-nbamu
+     { v, cols, got: [finished seasons], s: { season: { defenderKey: [[scorerKey, sec, pts, fgm, fga, 3pm, 3pa, partialPoss]] } } }.
+     Finished seasons are read once; the one being played is re-read each run. */
+  try { let MU = await getPack("p2000_cbb-nbamu").catch(() => null); if (!MU || MU.v !== 1) MU = { v: 1, cols: ["scorer", "sec", "pts", "fgm", "fga", "fg3m", "fg3a", "poss"], got: [], s: {} };
+    const espnAll = await crosswalk([...Array(curNba - 2016).keys()].map(i => 2018 + i).filter(y => y <= curNba)).catch(() => ({})), kk = id => espnAll[id] || "n" + id; let changed = 0;
+    for (let y = 2018; y <= curNba; y++) { if (MU.got.includes(y) && !(y === curNba && live)) continue;
+      const rows = await readParquet(REL(`nba_stats_matchups/leagueseasonmatchups_regular-season_totals_${y}.parquet`)).catch(() => null); if (!rows || !rows.length) continue;
+      const D = {}; for (const r of rows) { const sec = n(r.matchup_time_sec); if (sec < 60) continue; (D[kk(n(r.def_player_id))] = D[kk(n(r.def_player_id))] || []).push([kk(n(r.off_player_id)), Math.round(sec), n(r.player_pts), n(r.matchup_fgm), n(r.matchup_fga), n(r.matchup_fg3_m), n(r.matchup_fg3_a), Math.round(10 * n(r.partial_poss)) / 10]) }
+      MU.s[y] = D; changed++; if (!(y === curNba && live) && !MU.got.includes(y)) MU.got.push(y) }
+    if (changed) { await putPack("p2000_cbb-nbamu", MU); log(`nba matchups: ${changed} season(s) read · ${Object.keys(MU.s).length} on file`) } } catch (e) { log("nba matchups: " + e.message) }
   if (files) await putPack("p2000_cbb-nbastats", K);
   return K;
 }

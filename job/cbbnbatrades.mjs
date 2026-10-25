@@ -108,11 +108,30 @@ export function parseNbaCareer(w, nowStart) {
 /* how decorated an NBA career was: the infobox highlights that are NBA honors (All-Star picks, All-NBA, titles, awards — not college) — the chain game's
    two ends are players people know */
 export function nbaHonors(w) { const k = String(w).search(/\n\s*\|\s*highlights\s*=/); if (k < 0) return 0; const rest = w.slice(k + 1), e = rest.search(/\n\s*\|\s*[a-z_]+\s*=|\n\}\}/); const h = e < 0 ? rest : rest.slice(0, e); return h.split("\n").filter(l => /^\s*\*/.test(l) && /NBA|All-Star|Hall of Fame/i.test(l) && !/NCAA|All-American|college|G League|D-League|WNBA|EuroLeague|FIBA|Olympic/i.test(l)).length }
+/* his NBA honors with their seasons (Oct 24 — Sam: "for team pages on the history tab it would have the award counts mvps. all-pro's etc
+   and then those would be the players that are added to those team pages"): each highlights line read for the honor and its years —
+   {{nbay|1994|end}} = the 1994–95 season, {{nbafy|1981}} = the 1981 Finals (1980–81), {{nasg|1995}} = the 1995 All-Star Game (1994–95),
+   a plain year = the season ending that year; a range ("{{nasg|1995}}–{{nasg|1998}}") is every season in it. Seasons by start year.
+   Kinds: mvp, fmvp, champ, allstar, nba1/nba2/nba3 (All-NBA teams), def (All-Defensive), dpoy, roy, smoy, mip, scoring, hof. */
+const AW_KIND = [[/Finals Most Valuable|Finals MVP/i, "fmvp"], [/All-Star Game Most Valuable|All-Star MVP/i, null], [/Most Valuable Player|\bMVP\b/i, "mvp"], [/NBA champion/i, "champ"],
+  [/All-Star/i, "allstar"], [/All-NBA First/i, "nba1"], [/All-NBA Second/i, "nba2"], [/All-NBA Third/i, "nba3"], [/All-NBA Team/i, "nba1"], [/All-Defensive/i, "def"], [/Defensive Player of the Year/i, "dpoy"],
+  [/All-Rookie/i, null], [/Rookie of the Year/i, "roy"], [/Sixth Man/i, "smoy"], [/Most Improved/i, "mip"], [/scoring champion|points leader/i, "scoring"], [/Hall of Fame/i, "hof"]];
+export function nbaAwards(w) { const k = String(w).search(/\n\s*\|\s*highlights\s*=/); if (k < 0) return []; const rest = w.slice(k + 1), e = rest.search(/\n\s*\|\s*[a-z_]+\s*=|\n\}\}/), h = e < 0 ? rest : rest.slice(0, e), out = [];
+  for (const l of h.split("\n")) { if (!/^\s*\*/.test(l) || /NCAA|All-American|college|G League|D-League|WNBA|EuroLeague|FIBA|Olympic|ABA\b/i.test(l)) continue;
+    const kd = AW_KIND.find(([re]) => re.test(l)); if (!kd || !kd[1]) continue; const kind = kd[1];
+    if (kind === "hof") { const y = (l.match(/(19|20)\d{2}/) || [])[0]; out.push([kind, y ? +y : 0]); continue }
+    const par = l.slice(l.indexOf("(") >= 0 ? l.indexOf("(") : l.length); const marks = [];
+    for (const m of par.matchAll(/\{\{\s*(nbay|nbafy|nasg)\s*\|\s*(\d{4})[^}]*\}\}|\b((?:19|20)\d{2})\b|([–-])/gi)) {
+      if (m[4]) { marks.push("-"); continue } const y = m[2] ? +m[2] : +m[3]; const t = (m[1] || "").toLowerCase();
+      marks.push(t === "nbay" ? y : t ? y - 1 : y - 1) }
+    const S = []; for (let i = 0; i < marks.length; i++) { if (marks[i] === "-") continue; if (marks[i + 1] === "-" && typeof marks[i + 2] === "number") { for (let y = marks[i]; y <= marks[i + 2] && y - marks[i] < 25; y++) S.push(y); i += 2 } else S.push(marks[i]) }
+    for (const y of [...new Set(S)]) out.push([kind, y]) }
+  return out }
 export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   const now = new Date(), nowStart = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, cats = [...new Set(Object.keys(NBA_FR))].map(t => `Category:${t} players`);
   /* the names first (500 a read, each player once however many teams he played for), then the top of each page — the infobox —
      fifty players a read */
-  const P = {}, HN = {}, T = new Set(); let reads = 0; const miss = [];
+  const P = {}, HN = {}, AW = {}, T = new Set(); let reads = 0; const miss = [];
   const call = async q => { for (let a = 0; a < 4; a++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", ...q }), { headers: WUA }); reads++; if (r.ok) { const j = await r.json(); if (!j.error) return j; log(`nba careers: ${j.error.code} ${j.error.info}`) } else log(`nba careers: ${r.status}`) } catch (e) { log(`nba careers: ${e.message}`) } await new Promise(z => setTimeout(z, 3000 * (a + 1))) } return null };
   /* a category whose listing fails is tried again (Oct 24: the Lakers' and Pistons' lists failed once, and Kobe, Magic and Isiah — one team
      each — went missing) */
@@ -125,7 +144,7 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
     for (let g = 0; g < 20; g++) { let j = await call({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", ...(sec ? { rvsection: "0" } : {}), titles: L.join("|"), ...cont });
       if (!j) { failTo.push(...L); break }
       for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots && pg.revisions[0].slots.main.content; if (!w) continue;
-        got++; const C = parseNbaCareer(w, nowStart); if (!C) continue; const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim(); const hn = nbaHonors(w); if (hn) HN[nm] = hn; const cur = P[nm] || []; for (const c of C) if (!cur.some(x => x.join() === c.join())) cur.push(c); P[nm] = cur }
+        got++; const C = parseNbaCareer(w, nowStart); if (!C) continue; const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim(); const hn = nbaHonors(w); if (hn) HN[nm] = hn; const aw = nbaAwards(w); if (aw.length) AW[nm] = aw; const cur = P[nm] || []; for (const c of C) if (!cur.some(x => x.join() === c.join())) cur.push(c); P[nm] = cur }
       if (!j.continue) break; cont = j.continue }
     await new Promise(z => setTimeout(z, 400)); return got };
   /* fifty a read; any read that fails is tried again ten at a time, then one at a time */
@@ -133,7 +152,7 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   let f2 = []; for (let k = 0; k < failed.length; k += 10) pages += await batch(failed.slice(k, k + 10), f2);
   let f3 = []; for (const t of f2) pages += await batch([t], f3);
   log(`nba careers: ${pages} of ${titles.length} pages read${f3.length ? `, ${f3.length} never came back` : ""}`);
-  await putPack("p2000_cbb-nbacareers", { v: 5, t: Date.now(), p: P, h: HN }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
+  await putPack("p2000_cbb-nbacareers", { v: 6, t: Date.now(), p: P, h: HN, aw: AW }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
 }
 /* probe (MODE=probe, PROBE=nba-careers-test): a fifty-page read with Kobe and Magic in it */
 export async function run() { const r0 = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", list: "categorymembers", cmtitle: "Category:Los Angeles Lakers players", cmlimit: "500", cmnamespace: "0" }), { headers: WUA });

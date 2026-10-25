@@ -94,9 +94,9 @@ export async function buildNbaInj({ getPack, putPack, log = console.log, curNba,
   const left = days.length - todo.length; log(`nba injury reports: ${read} read, ${rows} rows, ${miss} days with none, ${Object.keys(P.p).length} players${left > 0 ? ` · ${left} days still to read` : ""}`);
   return { read, rows, miss, left } }
 
-/* probe: one report of each style, grouped by team so a wrong team or date shows */
-export async function run() { const out = [];
-  for (const f of ["2022-01-15_05PM", "2024-03-15_05PM", "2026-03-10_05_00PM"]) { const r = await fetch(BASE + f + ".pdf", UA); const R = nbaInjRows(Buffer.from(await r.arrayBuffer())); const G = {};
-    for (const x of R) (G[x.date + " " + x.team] = G[x.date + " " + x.team] || []).push(x.player.split(",")[0] + ":" + (ST[String(x.status).toLowerCase()] || x.status[0] || "?"));
-    out.push({ f, n: R.length, g: Object.entries(G).slice(0, 14).map(([k, v]) => k.replace(/\/20\d\d/, "") + " = " + v.join(" ")) }) }
+/* probe: what the server answers for a few days the first nightly read missed */
+export async function run() { const out = {};
+  for (const d of ["2026-03-10", "2026-01-15", "2025-12-10", "2025-11-20", "2025-03-10", "2024-01-10"]) { const R = [];
+    for (const t of ["05_00PM", "05PM", "01PM"]) { try { const r = await fetch(`${BASE}${d}_${t}.pdf`, UA); R.push(t + ":" + r.status + (r.ok ? ":" + nbaInjRows(Buffer.from(await r.arrayBuffer())).length : "")) } catch (e) { R.push(t + ":ERR " + String(e.cause && e.cause.code || e.message).slice(0, 40)) } }
+    out[d] = R.join(" ") }
   return out }

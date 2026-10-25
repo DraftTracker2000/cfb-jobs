@@ -17,6 +17,7 @@ export const PROBES = [
   { name: "nba-careers-test", mod: "cbbnbatrades" },
   { name: "nbainj", mod: "nbainjprobe" },
   { name: "stylelab", mod: "stylelab" },
+  { name: "combtest", mod: "combtest" },
   { name: "nbainjparse", mod: "cbbnbainj" },
   { name: "nbaraw-old", mod: "nbainjprobe", env: { RAW: "2024-03-15_05PM", OFF: "0" } },
   { name: "nbaraw22", mod: "nbainjprobe", env: { RAW: "2022-01-15_05PM", OFF: "-1" } },

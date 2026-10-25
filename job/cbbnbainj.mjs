@@ -84,7 +84,7 @@ export async function buildNbaInj({ getPack, putPack, log = console.log, curNba,
     if (d > today) continue; const k = ymd(d), age = (today - d) / 864e5; if (P.done[k] === 1 && age > 1.2) continue; if (P.done[k] <= -4) continue; days.push(new Date(d)) }
   let read = 0, rows = 0, miss = 0, streak = 0, stopped = false; const todo = days.slice(0, MAXD), CODES = {};
   const one = async d => { const iso = d.toISOString().slice(0, 10), k = ymd(d), newStyle = k >= "20251211";   /* the 15-minute file names start mid-December 2025 */
-    for (const tm of newStyle ? TIMES : TIMES.filter(t => !t.includes("_")).concat(TIMES.filter(t => t.includes("_")))) {
+    for (const tm of newStyle ? ["05_00PM", "05_30PM", "04_30PM", "06_00PM"] : ["05PM", "06PM", "04PM", "01PM"]) {   /* only that era's file names: fewer misses for the server to count against us */
       let r; try { r = await fetch(`${BASE}${iso}_${tm}.pdf`, UA) } catch (e) { CODES.err = (CODES.err || 0) + 1; continue } CODES[r.status] = (CODES[r.status] || 0) + 1; if (!r.ok) { await r.arrayBuffer().catch(() => {}); continue }   /* an unread "not found" holds its connection open; a few hundred of them stalled the first run (Oct 25) */
       const R = nbaInjRows(Buffer.from(await r.arrayBuffer())); if (!R.length) { CODES.empty = (CODES.empty || 0) + 1; continue } read++; streak = 0;
       /* this report replaces what an earlier read of the same day said */

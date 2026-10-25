@@ -11,13 +11,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 /* a CSV line → fields (quotes and commas inside quotes handled) */
 export function csvLine(s) { const out = []; let cur = "", q = false; for (let i = 0; i < s.length; i++) { const c = s[i]; if (q) { if (c === '"') { if (s[i + 1] === '"') { cur += '"'; i++ } else q = false } else cur += c } else if (c === '"') q = true; else if (c === ",") { out.push(cur); cur = "" } else cur += c } out.push(cur); return out }
 /* one season's box scores → { espnId: [name, team, gp, gs, min, pts, reb, ast, stl, blk, tov, fgm, fga, tpm, tpa, ftm, fta] } (regular season + playoffs kept apart: playoffs in p) */
+/* the season's real teams: 20+ games in the file (All-Star sides play 1–3) */
+const realTeams = rows => { const G = {}; for (const r of rows) (G[r.team_abbreviation] = G[r.team_abbreviation] || new Set()).add(r.game_id); return new Set(Object.keys(G).filter(t => G[t].size >= 20)) };
 export function seasonFromCsv(text) {
   const lines = text.split(/\r?\n/); const H = csvLine(lines[0]).map(h => h.trim().toLowerCase()); const ix = n => H.indexOf(n);
   const I = { id: ix("athlete_id"), nm: ix("athlete_display_name"), tm: ix("team_abbreviation"), min: ix("minutes"), pts: ix("points"), reb: ix("rebounds"), ast: ix("assists"), stl: ix("steals"), blk: ix("blocks"), tov: ix("turnovers"),
     fgm: ix("field_goals_made"), fga: ix("field_goals_attempted"), tpm: ix("three_point_field_goals_made"), tpa: ix("three_point_field_goals_attempted"), ftm: ix("free_throws_made"), fta: ix("free_throws_attempted"), st: ix("starter"), dnp: ix("did_not_play"), type: ix("season_type") };
   if (I.id < 0 || I.min < 0) throw new Error("NBA box score columns changed: " + H.slice(0, 20).join(","));
+  /* All-Star games (Oct 25 — the 2026 file codes the three-team All-Star tournament as regular season, so Edwards showed 64 games, ESPN
+     61): a real team plays 40+ games a season, an All-Star side 1–3, so any team with fewer than 20 games in the file is left out */
+  const gid = H.indexOf("game_id"), TG = {}; if (gid >= 0) for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); (TG[f[I.tm]] = TG[f[I.tm]] || new Set()).add(f[gid]) }
+  const realTeam = t => gid < 0 || (TG[t] && TG[t].size >= 20);
   const out = {};
-  for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); const id = f[I.id]; if (!id) continue;
+  for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); const id = f[I.id]; if (!id) continue; if (!realTeam(f[I.tm])) continue;
     if (I.dnp >= 0 && /true/i.test(f[I.dnp])) continue; const min = +f[I.min] || 0; if (!min) continue;
     /* Oct 25 (Sam: Anthony Edwards 64 games in 2025–26, ESPN 61): only the regular season (2) and the playoffs (3) count — preseason (1),
        the play-in (5) and anything else were being added to the regular season */
@@ -59,7 +65,7 @@ export function nbaTag(seasons, curY, rk = null, latest = null) {
 
 export async function buildNba({ getPack, putPack, log, full, curNba, live, sidToCbbd, draftById, nameMatch }) {
   let NH = full ? null : await getPack("p2000_cbb-nbahist").catch(() => null);
-  if (!NH || !NH.seasons || NH.v !== 2) NH = { v: 2, seasons: {} };   /* v2 (Oct 25): re-read every season without preseason and play-in games */
+  if (!NH || !NH.seasons || NH.v !== 3) NH = { v: 3, seasons: {} };   /* v3 (Oct 25): re-read every season without preseason, play-in or All-Star games */
   const want = []; for (let y = 2009; y <= curNba; y++) if (!NH.seasons[y] || (live && y === curNba)) want.push(y);
   for (const y of want) {
     let txt = null; for (let k = 0; k < 3 && !txt; k++) { try { const r = await fetch(URL_OF(y), { redirect: "follow" }); if (r.status === 404) break; if (r.ok) txt = await r.text() } catch { } if (!txt) await sleep(2000) }
@@ -270,7 +276,7 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
   /* game logs (this season once it has games, else last season): [date, team, opp, home 1/0, min, pts, reb, ast, stl, blk, tov, fgm, fga, tpm, tpa, ftm, fta, +/-, started] */
   try { const LG0 = await getPack(`p${S}_cbb-nbalogs`).catch(() => null);
     for (const y of [curNba, curNba - 1]) { if (y < curNba && LG0 && LG0.season === y && LG0.p && LG0.v === 2) { log(`nba logs ${y}: kept (season finished)`); break }   /* a finished season's logs never change (Oct 17) */
-      const txt = await getCsv(REL("espn_nba_player_boxscores", `player_box_${y}.csv`)); if (!txt) continue; const R = rowsOf(txt).filter(r => [2, 3, 5].includes(+r.season_type) && +r.minutes > 0); if (R.length < 120) continue;   /* Oct 21 audit: playoffs and play-in count too, and the new season takes over after about two nights (was 500 rows, 3–4 nights) */
+      const txt = await getCsv(REL("espn_nba_player_boxscores", `player_box_${y}.csv`)); if (!txt) continue; const R0 = rowsOf(txt), RT = realTeams(R0), R = R0.filter(r => [2, 3, 5].includes(+r.season_type) && +r.minutes > 0 && RT.has(r.team_abbreviation)); if (R.length < 120) continue;   /* Oct 21 audit: playoffs and play-in count too, and the new season takes over after about two nights (was 500 rows, 3–4 nights) */
       const P = {}; for (const r of R) (P[r.athlete_id] = P[r.athlete_id] || []).push([String(r.game_date || "").slice(0, 10), r.team_abbreviation, r.opponent_team_abbreviation, /home/i.test(r.home_away) ? 1 : 0, Math.round(+r.minutes), +r.points || 0, +r.rebounds || 0, +r.assists || 0, +r.steals || 0, +r.blocks || 0, +r.turnovers || 0, +r.field_goals_made || 0, +r.field_goals_attempted || 0, +r.three_point_field_goals_made || 0, +r.three_point_field_goals_attempted || 0, +r.free_throws_made || 0, +r.free_throws_attempted || 0, r.plus_minus === "" || r.plus_minus == null ? null : +r.plus_minus, /true/i.test(r.starter) ? 1 : 0, +r.offensive_rebounds || 0]);
       for (const k in P) P[k].sort((a, b) => a[0].localeCompare(b[0]));
       /* keep last season's full logs when this season takes over — the nightly matchup lists are tuned on them (Oct 22) */
@@ -281,7 +287,7 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
      one is young): p2000_cbb-nbaprev = { season, cols, p: { espnId: [games, min, pts, reb, oreb, ast, stl, blk, fgm, fga, tpm, tpa, ftm, fta] a game } }, built once */
   try { const PV = await getPack("p2000_cbb-nbaprev").catch(() => null), y = curNba - 1;
     if (!PV || PV.season !== y) { const txt = await getCsv(REL("espn_nba_player_boxscores", `player_box_${y}.csv`));
-      if (txt) { const A = {}; for (const r of rowsOf(txt)) { if (+r.season_type !== 2 || !(+r.minutes > 0)) continue; const a = A[r.athlete_id] = A[r.athlete_id] || new Array(14).fill(0); a[0]++;
+      if (txt) { const A = {}, R1 = rowsOf(txt), RT1 = realTeams(R1); for (const r of R1) { if (+r.season_type !== 2 || !(+r.minutes > 0) || !RT1.has(r.team_abbreviation)) continue; const a = A[r.athlete_id] = A[r.athlete_id] || new Array(14).fill(0); a[0]++;
           [r.minutes, r.points, r.rebounds, r.offensive_rebounds, r.assists, r.steals, r.blocks, r.field_goals_made, r.field_goals_attempted, r.three_point_field_goals_made, r.three_point_field_goals_attempted, r.free_throws_made, r.free_throws_attempted].forEach((v, i) => a[i + 1] += +v || 0) }
         const P = {}; for (const [id, a] of Object.entries(A)) if (a[0] >= 5) P[id] = [a[0], ...a.slice(1).map(v => Math.round(10 * v / a[0]) / 10)];
         await putPack("p2000_cbb-nbaprev", { season: y, cols: ["g", "min", "pts", "reb", "oreb", "ast", "stl", "blk", "fgm", "fga", "tpm", "tpa", "ftm", "fta"], p: P }); log(`nba prev ${y}: ${Object.keys(P).length} players`) } } } catch (e) { log("nba prev: " + e.message) }

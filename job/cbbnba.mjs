@@ -244,9 +244,17 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
     const mpg = cm == null && lm == null ? 0 : w * (cm || 0) + (1 - w) * (lm || 0); if (mpg >= 12) (X.rot = X.rot || []).push([String(r.athlete_id), r.display_name, Math.round(10 * mpg) / 10]) }
   if (ros) for (const r of rowsOf(ros)) { const X = T[r.team_abbreviation]; if (!X) continue; const P = byE[r.athlete_id], ls = lastS[r.athlete_id];
     (X.ros = X.ros || []).push([r.athlete_id, r.display_name, r.position_abbreviation, r.height, +r.experience_years || 0, P ? P.cid : null, ls && ls[2] ? Math.round(10 * ls[5] / ls[2]) / 10 : null, P ? P.tag.t : null, ls ? ls[2] : 0, colOfEspn(String(r.athlete_id)), String(r.date_of_birth || "").slice(0, 10) || null, ...rosExtra(r)]) }   /* [9] college team id, [10] birth date (Oct 12); [11] weight, [12] jersey, [13] from, [14] position name (Oct 12, the profile header) */
+  /* a pick is locked once the game tips off (Oct 25 — Sam: "just make us airtight"): every run used to work out every game's pick again
+     with the latest ratings, so a finished game's pick already knew how it went. Now a game that has started keeps the pick the last run
+     before tip-off made; only games still to play are worked out again */
+  const PREV = getPack ? await getPack(`p${S}_cbb-nbagames`).catch(() => null) : null, LOCK = {};
+  if (PREV && Array.isArray(PREV.games)) for (const x of PREV.games) if (x && x[8] != null) LOCK[x[0]] = [x[8], x[9]];
+  const now = Date.now(); let locked = 0;
   const games = []; for (const g of rowsOf(sched)) { const st = +g.season_type; if (st !== 2 && st !== 3 && st !== 5) continue;   /* 5 = play-in (Oct 21 audit) */ const h = g.home_abbreviation, a = g.away_abbreviation; if (!T[h] || !T[a]) continue;
-    const pk = nbaPick({ net: T[h].pnet }, { net: T[a].pnet }, /true/i.test(g.neutral_site)); games.push([+g.id, g.date, h, a, /true/i.test(g.status_type_completed) ? +g.home_score : null, /true/i.test(g.status_type_completed) ? +g.away_score : null, g.status_type_state, g.broadcast_name || g.broadcast || "", pk.p, pk.m, st === 3 ? 1 : 0]) }
-  games.sort((x, y) => x[1].localeCompare(y[1]));
+    let pk = nbaPick({ net: T[h].pnet }, { net: T[a].pnet }, /true/i.test(g.neutral_site));
+    if (Date.parse(g.date) <= now && LOCK[+g.id]) { pk = { p: LOCK[+g.id][0], m: LOCK[+g.id][1] }; locked++ }
+    games.push([+g.id, g.date, h, a, /true/i.test(g.status_type_completed) ? +g.home_score : null, /true/i.test(g.status_type_completed) ? +g.away_score : null, g.status_type_state, g.broadcast_name || g.broadcast || "", pk.p, pk.m, st === 3 ? 1 : 0]) }
+  games.sort((x, y) => x[1].localeCompare(y[1])); log(`nba games: ${locked} picks kept from before tip-off`);
   /* shot zones, close games and the series from the play-by-play: last season's is cached (it won't change); this season's is
      re-read each run and takes over once there are 150 games */
   let last = getPack ? await getPack(`p2000_cbb-nbapbp${curNba - 1}`).catch(() => null) : null;

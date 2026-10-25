@@ -105,9 +105,9 @@ export function parseNbaCareer(w, nowStart) {
     const s0 = a.s, s1 = marks.length === 1 ? a.s : b.plain ? Math.max(s0, b.s - 1) : b.s; out.push([fr, s0, s1]) }
   return out.length ? out : null;
 }
-/* how decorated a career was: the bullet lines in the infobox's highlights (All-Star picks, All-NBA, titles, awards) — the chain game's
+/* how decorated an NBA career was: the infobox highlights that are NBA honors (All-Star picks, All-NBA, titles, awards — not college) — the chain game's
    two ends are players people know */
-export function nbaHonors(w) { const k = String(w).search(/\n\s*\|\s*highlights\s*=/); if (k < 0) return 0; const rest = w.slice(k + 1), e = rest.search(/\n\s*\|\s*[a-z_]+\s*=|\n\}\}/); const h = e < 0 ? rest : rest.slice(0, e); return (h.match(/\n\s*\*/g) || []).length }
+export function nbaHonors(w) { const k = String(w).search(/\n\s*\|\s*highlights\s*=/); if (k < 0) return 0; const rest = w.slice(k + 1), e = rest.search(/\n\s*\|\s*[a-z_]+\s*=|\n\}\}/); const h = e < 0 ? rest : rest.slice(0, e); return h.split("\n").filter(l => /^\s*\*/.test(l) && /NBA|All-Star|Hall of Fame/i.test(l) && !/NCAA|All-American|college|G League|D-League|WNBA|EuroLeague|FIBA|Olympic/i.test(l)).length }
 export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   const now = new Date(), nowStart = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, cats = [...new Set(Object.keys(NBA_FR))].map(t => `Category:${t} players`);
   /* the names first (500 a read, each player once however many teams he played for), then the top of each page — the infobox —
@@ -133,7 +133,7 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   let f2 = []; for (let k = 0; k < failed.length; k += 10) pages += await batch(failed.slice(k, k + 10), f2);
   let f3 = []; for (const t of f2) pages += await batch([t], f3);
   log(`nba careers: ${pages} of ${titles.length} pages read${f3.length ? `, ${f3.length} never came back` : ""}`);
-  await putPack("p2000_cbb-nbacareers", { v: 4, t: Date.now(), p: P, h: HN }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
+  await putPack("p2000_cbb-nbacareers", { v: 5, t: Date.now(), p: P, h: HN }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
 }
 /* probe (MODE=probe, PROBE=nba-careers-test): a fifty-page read with Kobe and Magic in it */
 export async function run() { const r0 = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", list: "categorymembers", cmtitle: "Category:Los Angeles Lakers players", cmlimit: "500", cmnamespace: "0" }), { headers: WUA });

@@ -237,7 +237,11 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
      has 3 games, otherwise last season's with 10+) — [espnId, name, minutes a game] */
   const curS = (NH && NH.seasons && NH.seasons[curNba]) || {};
   if (ros) for (const r of rowsOf(ros)) { const X = T[r.team_abbreviation]; if (!X) continue; const c = curS[r.athlete_id], l = lastS[r.athlete_id];
-    const mpg = c && c[2] >= 3 ? c[4] / c[2] : l && l[2] >= 10 ? l[4] / l[2] : 0; if (mpg >= 12) (X.rot = X.rot || []).push([String(r.athlete_id), r.display_name, Math.round(10 * mpg) / 10]) }
+    /* (Oct 25 — Sam: "rotation data is also starting to come in for NBA, we at least know what it looks like starting rotation wise so we
+       need to make sure it is switching over"): this season counts from his first game, a third more each game until it's all of it at 3
+       games; a player with no real line last season (hurt, a rookie, overseas) goes straight to this season's minutes */
+    const cm = c && c[2] >= 1 ? c[4] / c[2] : null, lm = l && l[2] >= 10 ? l[4] / l[2] : null, w = cm == null ? 0 : lm == null ? 1 : Math.min(1, c[2] / 3);
+    const mpg = cm == null && lm == null ? 0 : w * (cm || 0) + (1 - w) * (lm || 0); if (mpg >= 12) (X.rot = X.rot || []).push([String(r.athlete_id), r.display_name, Math.round(10 * mpg) / 10]) }
   if (ros) for (const r of rowsOf(ros)) { const X = T[r.team_abbreviation]; if (!X) continue; const P = byE[r.athlete_id], ls = lastS[r.athlete_id];
     (X.ros = X.ros || []).push([r.athlete_id, r.display_name, r.position_abbreviation, r.height, +r.experience_years || 0, P ? P.cid : null, ls && ls[2] ? Math.round(10 * ls[5] / ls[2]) / 10 : null, P ? P.tag.t : null, ls ? ls[2] : 0, colOfEspn(String(r.athlete_id)), String(r.date_of_birth || "").slice(0, 10) || null, ...rosExtra(r)]) }   /* [9] college team id, [10] birth date (Oct 12); [11] weight, [12] jersey, [13] from, [14] position name (Oct 12, the profile header) */
   const games = []; for (const g of rowsOf(sched)) { const st = +g.season_type; if (st !== 2 && st !== 3 && st !== 5) continue;   /* 5 = play-in (Oct 21 audit) */ const h = g.home_abbreviation, a = g.away_abbreviation; if (!T[h] || !T[a]) continue;

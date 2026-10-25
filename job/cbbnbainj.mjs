@@ -103,7 +103,7 @@ export async function buildNbaInj({ getPack, putPack, log = console.log, curNba,
 
 /* probe: one report of each style, grouped by team so a wrong team or date shows */
 export async function run() { const out = [];
-  for (const f of ["2022-01-15_05PM", "2025-03-10_05PM", "2026-03-10_05_00PM"]) { const r = await fetch(BASE + f + ".pdf", UA); const R = nbaInjRows(Buffer.from(await r.arrayBuffer())); const G = {};
+  for (const f of ["2021-11-15_05PM", "2022-12-10_05PM", "2023-11-15_05PM", "2022-04-05_05PM"]) { const r = await fetch(BASE + f + ".pdf", UA); const R = nbaInjRows(Buffer.from(await r.arrayBuffer())); const G = {};
     for (const x of R) (G[x.date + " " + x.team] = G[x.date + " " + x.team] || []).push(x.player.split(",")[0] + ":" + (ST[String(x.status).toLowerCase()] || x.status[0] || "?"));
     out.push({ f, n: R.length, g: Object.entries(G).slice(0, 14).map(([k, v]) => k.replace(/\/20\d\d/, "") + " = " + v.join(" ")) }) }
   return out }

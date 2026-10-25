@@ -70,6 +70,8 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, "");
 
 export async function buildNbaInj({ getPack, putPack, log = console.log, curNba, MAXD = 600 }) {
   const P = (await getPack("p2000_cbb-nbainj").catch(() => null)) || { v: 1, done: {}, T: [], R: [], p: {} };
+  /* v2 (Oct 25): the first run's failed reads were marked "no report"; forget those so they're read again */
+  if ((P.v || 1) < 2) { for (const k in P.done) if (P.done[k] === 0) delete P.done[k]; P.v = 2 }
   const Ti = Object.fromEntries(P.T.map((x, i) => [x, i])), Ri = Object.fromEntries(P.R.map((x, i) => [x, i]));
   const idx = (A, I, v) => I[v] != null ? I[v] : (I[v] = A.push(v) - 1);
   /* the days to read: Oct 15 – Jun 25 of each season from 2021–22, newest first so this season fills in on the first run; today is

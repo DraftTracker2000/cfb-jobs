@@ -72,29 +72,33 @@ export async function buildNbaInj({ getPack, putPack, log = console.log, curNba,
   const P = (await getPack("p2000_cbb-nbainj").catch(() => null)) || { v: 1, done: {}, T: [], R: [], p: {} };
   /* v2 (Oct 25): the first run's failed reads were marked "no report"; forget those so they're read again */
   if ((P.v || 1) < 2) { for (const k in P.done) if (P.done[k] === 0) delete P.done[k]; P.v = 2 }
+  /* v3 (Oct 25): a day only counts as read if its report gave us players — 2021–22 was marked read with nothing in it, and the server's
+     turn-aways in the second run were marked "no report". Forget both; a day without a report is now tried on 4 runs before giving up */
+  if (P.v < 3) { const has = new Set(); for (const nm in P.p) for (const z of P.p[nm]) has.add(String(z[0])); for (const k in P.done) if (P.done[k] !== 1 || !has.has(k)) delete P.done[k]; P.v = 3 }
   const Ti = Object.fromEntries(P.T.map((x, i) => [x, i])), Ri = Object.fromEntries(P.R.map((x, i) => [x, i]));
   const idx = (A, I, v) => I[v] != null ? I[v] : (I[v] = A.push(v) - 1);
   /* the days to read: Oct 15 – Jun 25 of each season from 2021–22, newest first so this season fills in on the first run; today is
      re-read every run until tomorrow (late filings), and a day that had no report is tried again for a week */
   const today = new Date(), days = [];
   for (let s = curNba; s >= 2022; s--) for (let d = new Date(Date.UTC(s, 5, 25)); d >= new Date(Date.UTC(s - 1, 9, 15)); d.setUTCDate(d.getUTCDate() - 1)) {
-    if (d > today) continue; const k = ymd(d), age = (today - d) / 864e5; if (P.done[k] === 1 && age > 1.2) continue; if (P.done[k] === 0 && age > 7) continue; days.push(new Date(d)) }
-  let read = 0, rows = 0, miss = 0; const todo = days.slice(0, MAXD), CODES = {};
+    if (d > today) continue; const k = ymd(d), age = (today - d) / 864e5; if (P.done[k] === 1 && age > 1.2) continue; if (P.done[k] <= -4) continue; days.push(new Date(d)) }
+  let read = 0, rows = 0, miss = 0, streak = 0, stopped = false; const todo = days.slice(0, MAXD), CODES = {};
   const one = async d => { const iso = d.toISOString().slice(0, 10), k = ymd(d), newStyle = k >= "20251211";   /* the 15-minute file names start mid-December 2025 */
     for (const tm of newStyle ? TIMES : TIMES.filter(t => !t.includes("_")).concat(TIMES.filter(t => t.includes("_")))) {
       let r; try { r = await fetch(`${BASE}${iso}_${tm}.pdf`, UA) } catch (e) { CODES.err = (CODES.err || 0) + 1; continue } CODES[r.status] = (CODES[r.status] || 0) + 1; if (!r.ok) { await r.arrayBuffer().catch(() => {}); continue }   /* an unread "not found" holds its connection open; a few hundred of them stalled the first run (Oct 25) */
-      const R = nbaInjRows(Buffer.from(await r.arrayBuffer())); read++;
+      const R = nbaInjRows(Buffer.from(await r.arrayBuffer())); if (!R.length) { CODES.empty = (CODES.empty || 0) + 1; continue } read++; streak = 0;
       /* this report replaces what an earlier read of the same day said */
       for (const nm of Object.keys(P.p)) P.p[nm] = P.p[nm].filter(z => z[0] !== +k);
       for (const x of R) { const st = ST[String(x.status).toLowerCase()]; if (!st) continue; const dt = x.date ? +(x.date.slice(6) + x.date.slice(0, 2) + x.date.slice(3, 5)) : +k;
         const L = P.p[name(x.player)] = (P.p[name(x.player)] || []).filter(z => z[0] !== dt); L.push([dt, idx(P.T, Ti, x.team), st, idx(P.R, Ri, x.reason || "")]); rows++ }
       P.done[k] = 1; return }
-    P.done[k] = 0; miss++ };
+    P.done[k] = (P.done[k] < 0 ? P.done[k] : 0) - 1; miss++; streak++ };
   /* one at a time with a short pause (Oct 25: six at once read 7 of 600 days — the league's server turns away bursts) */
-  for (const d of todo) { await one(d); await new Promise(z => setTimeout(z, 120)) }
+  /* a long run of days with nothing usually means the server has started turning us away: stop, keep what's read, finish next run */
+  for (const d of todo) { await one(d); if (streak >= 25) { stopped = true; break } await new Promise(z => setTimeout(z, 250)) }
   for (const nm in P.p) P.p[nm].sort((a, b) => a[0] - b[0]);
   P.t = Date.now(); await putPack("p2000_cbb-nbainj", P);
-  const left = days.length - todo.length; console.log(`::notice title=nba injury reports::${read} read · ${miss} days without one · answers ${JSON.stringify(CODES)} · ${left} days left`); log(`nba injury reports: ${read} read, ${rows} rows, ${miss} days with none, ${Object.keys(P.p).length} players${left > 0 ? ` · ${left} days still to read` : ""}`);
+  const left = days.length - todo.length; console.log(`::notice title=nba injury reports::${read} read · ${miss} days without one · answers ${JSON.stringify(CODES)} · ${left} days left${stopped ? " · stopped early (turned away)" : ""}`); log(`nba injury reports: ${read} read, ${rows} rows, ${miss} days with none, ${Object.keys(P.p).length} players${left > 0 ? ` · ${left} days still to read` : ""}`);
   return { read, rows, miss, left } }
 
 /* probe: one report of each style, grouped by team so a wrong team or date shows */

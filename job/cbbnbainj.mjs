@@ -68,7 +68,7 @@ export function nbaInjRows(buf) {
 const name = s => { const m = String(s).match(/^(.+?),\s*(.+)$/); return (m ? `${m[2]} ${m[1]}` : String(s)).replace(/\s+/g, " ").trim() };
 const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, "");
 
-export async function buildNbaInj({ getPack, putPack, log = console.log, curNba, MAXD = 600 }) {
+export async function buildNbaInj({ getPack, putPack, log = console.log, curNba, MAXD = 350 }) {
   const P = (await getPack("p2000_cbb-nbainj").catch(() => null)) || { v: 1, done: {}, T: [], R: [], p: {} };
   /* v2 (Oct 25): the first run's failed reads were marked "no report"; forget those so they're read again */
   if ((P.v || 1) < 2) { for (const k in P.done) if (P.done[k] === 0) delete P.done[k]; P.v = 2 }
@@ -79,10 +79,10 @@ export async function buildNbaInj({ getPack, putPack, log = console.log, curNba,
   const today = new Date(), days = [];
   for (let s = curNba; s >= 2022; s--) for (let d = new Date(Date.UTC(s, 5, 25)); d >= new Date(Date.UTC(s - 1, 9, 15)); d.setUTCDate(d.getUTCDate() - 1)) {
     if (d > today) continue; const k = ymd(d), age = (today - d) / 864e5; if (P.done[k] === 1 && age > 1.2) continue; if (P.done[k] === 0 && age > 7) continue; days.push(new Date(d)) }
-  let read = 0, rows = 0, miss = 0; const todo = days.slice(0, MAXD);
+  let read = 0, rows = 0, miss = 0; const todo = days.slice(0, MAXD), CODES = {};
   const one = async d => { const iso = d.toISOString().slice(0, 10), k = ymd(d), newStyle = k >= "20251211";   /* the 15-minute file names start mid-December 2025 */
     for (const tm of newStyle ? TIMES : TIMES.filter(t => !t.includes("_")).concat(TIMES.filter(t => t.includes("_")))) {
-      let r; try { r = await fetch(`${BASE}${iso}_${tm}.pdf`, UA) } catch (e) { continue } if (!r.ok) { await r.arrayBuffer().catch(() => {}); continue }   /* an unread "not found" holds its connection open; a few hundred of them stalled the first run (Oct 25) */
+      let r; try { r = await fetch(`${BASE}${iso}_${tm}.pdf`, UA) } catch (e) { CODES.err = (CODES.err || 0) + 1; continue } CODES[r.status] = (CODES[r.status] || 0) + 1; if (!r.ok) { await r.arrayBuffer().catch(() => {}); continue }   /* an unread "not found" holds its connection open; a few hundred of them stalled the first run (Oct 25) */
       const R = nbaInjRows(Buffer.from(await r.arrayBuffer())); read++;
       /* this report replaces what an earlier read of the same day said */
       for (const nm of Object.keys(P.p)) P.p[nm] = P.p[nm].filter(z => z[0] !== +k);
@@ -90,10 +90,11 @@ export async function buildNbaInj({ getPack, putPack, log = console.log, curNba,
         const L = P.p[name(x.player)] = (P.p[name(x.player)] || []).filter(z => z[0] !== dt); L.push([dt, idx(P.T, Ti, x.team), st, idx(P.R, Ri, x.reason || "")]); rows++ }
       P.done[k] = 1; return }
     P.done[k] = 0; miss++ };
-  for (let i = 0; i < todo.length; i += 6) await Promise.all(todo.slice(i, i + 6).map(one));
+  /* one at a time with a short pause (Oct 25: six at once read 7 of 600 days — the league's server turns away bursts) */
+  for (const d of todo) { await one(d); await new Promise(z => setTimeout(z, 120)) }
   for (const nm in P.p) P.p[nm].sort((a, b) => a[0] - b[0]);
   P.t = Date.now(); await putPack("p2000_cbb-nbainj", P);
-  const left = days.length - todo.length; log(`nba injury reports: ${read} read, ${rows} rows, ${miss} days with none, ${Object.keys(P.p).length} players${left > 0 ? ` · ${left} days still to read` : ""}`);
+  const left = days.length - todo.length; console.log(`::notice title=nba injury reports::${read} read · ${miss} days without one · answers ${JSON.stringify(CODES)} · ${left} days left`); log(`nba injury reports: ${read} read, ${rows} rows, ${miss} days with none, ${Object.keys(P.p).length} players${left > 0 ? ` · ${left} days still to read` : ""}`);
   return { read, rows, miss, left } }
 
 /* probe: one report of each style, grouped by team so a wrong team or date shows */

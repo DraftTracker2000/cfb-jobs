@@ -15,7 +15,7 @@ export async function run({ site, token, log }) {
       out.push([name, pos, season, team, last, opp, missed, ended ? 1 : 0, back || ""]) } }
   out.sort((a, b) => b[4].localeCompare(a[4]));
   if (process.env.ALL) { const cf = async path => { for (let k = 0; k < 3; k++) { try { const r = await fetch(site + "/api/cfbd?path=" + encodeURIComponent(path), H); if (r.ok) return r.json() } catch (e) {} await new Promise(z => setTimeout(z, 1500)) } return null };
-    const SCH = {}; for (const r of out) { const k = r[2] + "|" + r[3]; if (!SCH[k]) SCH[k] = (await cf(`/games?year=${r[2]}&seasonType=regular&team=${encodeURIComponent(r[3])}`)) || [];
+    const SCH = {}; out.splice(0, +(process.env.FROM || 0)); for (const r of out) { const k = r[2] + "|" + r[3]; if (!SCH[k]) SCH[k] = (await cf(`/games?year=${r[2]}&seasonType=regular&team=${encodeURIComponent(r[3])}`)) || [];
       const G = SCH[k].filter(g => g.startDate).map(g => [String(g.startDate).slice(0, 10), g.homeTeam === r[3] ? g.awayTeam : "@" + g.homeTeam]).sort();
       const after = G.filter(g => g[0] > r[4] && (!r[8] || g[0] < r[8])); r.push(after.slice(0, r[6]).map(g => g[0].slice(5) + " " + g[1]).join(";")) } const t = out.map(r => r.join("|")).join("\n"); for (let i = 0; i < t.length; i += 3500) log(`::notice title=gapall ${String(i / 3500).padStart(3, "0")}::${t.slice(i, i + 3500).replace(/\n/g, "~")}`); return { ok: true, n: out.length } }
   return { ok: true, n: out.length, rows: out.slice(0, +(process.env.N || 40)).map(r => r.join("|")) };

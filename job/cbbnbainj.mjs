@@ -31,7 +31,7 @@ export function nbaInjRows(buf) {
   const s = buf.toString("latin1"), out = []; let i = 0; const pages = [];
   while ((i = s.indexOf("stream", i)) >= 0) { let a = i + 6; if (s[a] === "\r") a++; if (s[a] === "\n") a++; const b = s.indexOf("endstream", a); if (b < 0) break;
     try { const t = inflateSync(buf.subarray(a, b)).toString("latin1"); if (/T[jJ]/.test(t)) pages.push(t) } catch (e) {} i = b + 9 }
-  let last = null, cols = null;
+  let last = null, cols = null, lastTeam = "", lastDate = "";   /* a team or date cell doesn't repeat on the next page: carry it over */
   for (const t of pages) { const down = /1 0 0 -1 0 [\d.]+ cm/.test(t), B = [];
     for (const bt of t.matchAll(/BT([\s\S]*?)ET/g)) { const body = bt[1]; let x = null, y = null, words = [];
       if (/\/F0 -22 Tf/.test(body)) continue;
@@ -54,8 +54,15 @@ export function nbaInjRows(buf) {
       if (pl) { if (q.c === "status") pl.status = q.txt; else pl.reason.push([q.y, q.txt]) }
       else if (q.c === "reason" && last && (!P.length || q.y < Math.min(...P.map(z => z.y)))) last.reason += " " + q.txt }
     P.sort((p, q) => p.y - q.y);
-    for (const pl of P) { const tm = above(pl, T) || near(pl, T, 999), dt = above(pl, D) || near(pl, D, 999);
-      last = { date: dt ? dt.txt : "", team: tm ? tm.txt : "", player: pl.txt, status: pl.status, reason: pl.reason.sort((p, q) => p[0] - q[0]).map(z => z[1]).join(" ") }; out.push(last) } }
+    /* merged cells (2021–22 centers the team in a cell several rows tall): the cell's rectangle says which rows it covers */
+    const R = [...t.matchAll(/(-?[\d.]+) (-?[\d.]+) ([\d.]+) ([\d.]+) re/g)].map(m => { const x = +m[1], y0 = +m[2], h = +m[4]; return down ? { x, a: y0, b: y0 + h } : { x, a: -(y0 + h), b: -y0 } });
+    const cellOf = (lab, colx) => R.filter(r => r.x <= lab.x && r.x >= colx - 14 && lab.y >= r.a - 1 && lab.y <= r.b + 1 && r.b - r.a > 1).sort((p, q) => (q.b - q.a) - (p.b - p.a))[0];
+    const tx = (cols.find(c => c[1] === "team") || [0])[0], dx = (cols.find(c => c[1] === "date") || [0])[0];
+    const span = (L, colx) => L.map(l => ({ l, c: cellOf(l, colx) }));
+    const TS = span(T, tx), DS = span(D, dx);
+    const pick = (pl, S, L) => { const inCell = S.find(z => z.c && z.c.b - z.c.a > 30 && pl.y >= z.c.a - 1 && pl.y <= z.c.b + 1); return inCell ? inCell.l : above(pl, L) };
+    for (const pl of P) { const tm = pick(pl, TS, T), dt = pick(pl, DS, D); if (tm) lastTeam = tm.txt; if (dt) lastDate = dt.txt;
+      last = { date: lastDate, team: lastTeam, player: pl.txt, status: pl.status, reason: pl.reason.sort((p, q) => p[0] - q[0]).map(z => z[1]).join(" ") }; out.push(last) } }
   return out }
 
 const name = s => { const m = String(s).match(/^(.+?),\s*(.+)$/); return (m ? `${m[2]} ${m[1]}` : String(s)).replace(/\s+/g, " ").trim() };
@@ -87,8 +94,9 @@ export async function buildNbaInj({ getPack, putPack, log = console.log, curNba,
   const left = days.length - todo.length; log(`nba injury reports: ${read} read, ${rows} rows, ${miss} days with none, ${Object.keys(P.p).length} players${left > 0 ? ` · ${left} days still to read` : ""}`);
   return { read, rows, miss, left } }
 
-/* probe: one old-style and one new-style report, parsed */
+/* probe: one report of each style, grouped by team so a wrong team or date shows */
 export async function run() { const out = [];
-  for (const f of ["2024-03-15_05PM", "2026-03-10_05_00PM", "2022-01-15_05PM"]) { const r = await fetch(BASE + f + ".pdf", UA); const R = nbaInjRows(Buffer.from(await r.arrayBuffer()));
-    out.push({ f, n: R.length, teams: new Set(R.map(x => x.team)).size, st: R.reduce((a, x) => (a[x.status] = (a[x.status] || 0) + 1, a), {}), sample: R.filter((x, i) => i % Math.ceil(R.length / 7) === 0 || /Finger|Rest|Management/i.test(x.reason)).slice(0, 12).map(x => [x.date, x.team, x.player, x.status, x.reason]) }) }
+  for (const f of ["2022-01-15_05PM", "2024-03-15_05PM", "2026-03-10_05_00PM"]) { const r = await fetch(BASE + f + ".pdf", UA); const R = nbaInjRows(Buffer.from(await r.arrayBuffer())); const G = {};
+    for (const x of R) (G[x.date + " " + x.team] = G[x.date + " " + x.team] || []).push(x.player.split(",")[0] + ":" + (ST[String(x.status).toLowerCase()] || x.status[0] || "?"));
+    out.push({ f, n: R.length, g: Object.entries(G).slice(0, 14).map(([k, v]) => k.replace(/\/20\d\d/, "") + " = " + v.join(" ")) }) }
   return out }

@@ -17,6 +17,7 @@ export const PROBES = [
   { name: "nbatimes", mod: "nbainjprobe", env: { TIMES: "1" } },
   { name: "nbafingers", mod: "nbainjprobe", env: { FINGERS: "1" } },
   { name: "combdump", mod: "combdump", cap: 1 },
+  { name: "gapall", mod: "gaplist", env: { DONE: "", ALL: "1" } },
   { name: "gaplist", mod: "gaplist", env: { DONE: "Carnell Tate,Elijah Sarratt,Omari Evans,Behren Morton,Denzel Boston,DJ Herman,Noah Whittington,Oscar Delp,Colbie Young,DJ Uiagalelei,Tory Horton,Graham Mertz,Bryson Green,Jackson Acker,Jalen Royals,Deion Burks,Bryson Nesbit,Emmanuel Henderson,Eli Raridon,Trevor Etienne,Tre Harris,Lake McRee,Noah Thomas,Miles Kitselman,Josh Cuevas,Khalil Dinkins,Hayden Large,Tanner Arkin,Will Kacmarek,Evan Svoboda,Matthew Caldwell,Nick DeGennaro,Patrick Gurd,John Michael Gyllenborg,Dalen Cambre,Will Pauling,Cyrus Allen,Mark Redman,Bryce Pierre,Jimmy Horn Jr.,Drake Dabney,Tyrone Broden,Tez Johnson,Jaren Kanak,Jaden Bradley,Luke Lachey,Emmanuel Henderson Jr.,Cole Payton,Ja'Quinden Jackson,Marlin Klein,Dalevon Campbell,Garrett Greene,Haynes King,Terrance Ferguson,Montrell Johnson Jr.,Marshall Lang,Robbie Ouzts", N: "70" } },
   { name: "injwatch0", mod: "injwatch", env: { PI: "0" } },
   { name: "injwatch1", mod: "injwatch", env: { PI: "1" } },

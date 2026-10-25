@@ -15,26 +15,47 @@ const UA = { headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10
 const BASE = "https://ak-static.cms.nba.com/referee/injury/Injury-Report_";
 const TIMES = ["05_00PM", "05_30PM", "04_30PM", "06_00PM", "05PM", "06PM", "04PM", "01PM"];
 const ST = { out: "O", doubtful: "D", questionable: "Q", probable: "P" };
-const COLX = [[115, "date"], [195, "time"], [260, "match"], [420, "team"], [581, "player"], [662, "status"], [9999, "reason"]];
 
-/* the text of a PDF: each table cell is its own BT…ET block, drawn at an absolute x,y with the words after it offset from there */
+/* the text of a PDF. Every table cell is its own text block (BT…ET) placed at an x,y; the header row ("Game Date … Player Name …
+   Current Status … Reason") says where each column starts, so a block goes to the column whose header is just left of it. Rows are
+   matched by height: a status or reason belongs to the player on the same line (a wrapped reason sits a few points above or below him),
+   and a reason at the very top of a page with no player beside it is the end of the last one on the page before. Team and date cells
+   span several rows (merged cells), so each player takes the nearest team and date at or above his line.
+   2021–22's reports draw with a subset font (two bytes a letter, the code 29 below the letter); later ones use plain text. */
+function pdfStr(raw) { let o = ""; for (let i = 0; i < raw.length; i++) { const c = raw[i]; if (c !== "\\") { o += c; continue } const n = raw[++i];
+    if (/[0-7]/.test(n)) { let d = n; while (d.length < 3 && /[0-7]/.test(raw[i + 1])) d += raw[++i]; o += String.fromCharCode(parseInt(d, 8)) } else o += ({ n: "\n", r: "\r", t: "\t", b: "\b", f: "\f" })[n] || n }
+  if (o.length >= 2 && o.length % 2 === 0 && [...o].every((ch, j) => j % 2 || ch.charCodeAt(0) === 0)) { let t = ""; for (let j = 1; j < o.length; j += 2) t += String.fromCharCode(o.charCodeAt(j) + 29); return t }
+  return o }
+const HEAD = [[/^Game Date/, "date"], [/^Game Time/, "time"], [/^Matchup/, "match"], [/^Team$/, "team"], [/^Player( Name)?$/, "player"], [/^Current( Status)?$/, "status"], [/^Reason$/, "reason"]];
 export function nbaInjRows(buf) {
-  const s = buf.toString("latin1"), out = []; let i = 0, cur = null, date = "", team = "";
-  const pages = [];
+  const s = buf.toString("latin1"), out = []; let i = 0; const pages = [];
   while ((i = s.indexOf("stream", i)) >= 0) { let a = i + 6; if (s[a] === "\r") a++; if (s[a] === "\n") a++; const b = s.indexOf("endstream", a); if (b < 0) break;
-    try { const t = inflateSync(buf.subarray(a, b)).toString("latin1"); if (/\bTj\b/.test(t) && /Td/.test(t)) pages.push(t) } catch (e) {} i = b + 9 }
-  for (const t of pages) {
-    for (const bt of t.matchAll(/BT([\s\S]*?)ET/g)) { const body = bt[1]; let x = null, y = null, words = [], big = /\/F0 -22 Tf/.test(body);
-      for (const m of body.matchAll(/(-?[\d.]+) (-?[\d.]+) Td|\(((?:\\.|[^\\)])*)\) Tj/g)) {
-        if (m[1] != null) { if (x == null) { x = +m[1]; y = +m[2] } } else words.push(m[3].replace(/\\([()\\])/g, "$1")) }
-      if (big || x == null || !words.length) continue; const txt = words.join(" ").replace(/\s+/g, " ").trim(); if (/^Page \d+ of \d+$/.test(txt)) continue;
-      const col = COLX.find(([lim]) => x < lim)[1];
-      if (col === "date") { if (/^\d\d\/\d\d\/\d{4}$/.test(txt)) date = txt; continue }
-      if (col === "team") { team = txt; continue }
-      if (col === "player") { if (/NOT YET SUBMITTED/i.test(txt)) { cur = null; continue } cur = { date, team, player: txt, status: "", reason: "" }; out.push(cur); continue }
-      if (col === "status" && cur) { cur.status = txt; continue }
-      if (col === "reason") { if (/NOT YET SUBMITTED/i.test(txt)) { cur = null; continue } if (cur) cur.reason = cur.reason ? cur.reason + " " + txt : txt }
-    } }
+    try { const t = inflateSync(buf.subarray(a, b)).toString("latin1"); if (/T[jJ]/.test(t)) pages.push(t) } catch (e) {} i = b + 9 }
+  let last = null, cols = null;
+  for (const t of pages) { const down = /1 0 0 -1 0 [\d.]+ cm/.test(t), B = [];
+    for (const bt of t.matchAll(/BT([\s\S]*?)ET/g)) { const body = bt[1]; let x = null, y = null, words = [];
+      if (/\/F0 -22 Tf/.test(body)) continue;
+      for (const m of body.matchAll(/[-\d.]+ [-\d.]+ [-\d.]+ [-\d.]+ (-?[\d.]+) (-?[\d.]+) Tm|(-?[\d.]+) (-?[\d.]+) Td|\(((?:\\.|[^\\)])*)\)\s*Tj|\[((?:\\.|[^\]])*)\]\s*TJ/g)) {
+        if (m[1] != null) { x = +m[1]; y = +m[2] } else if (m[3] != null) { if (x == null) { x = +m[3]; y = +m[4] } else if (!words.length) { x += +m[3]; y += +m[4] } }
+        else if (m[5] != null) words.push(pdfStr(m[5])); else words.push([...m[6].matchAll(/\(((?:\\.|[^\\)])*)\)/g)].map(q => pdfStr(q[1])).join("")) }
+      if (x == null || !words.length) continue; let txt = words.join(" ").replace(/\s+/g, " ").replace(/(\w)- (?=\w)/g, "$1-").trim();
+      if (!txt || /^Page \d+ of \d+$/.test(txt) || /^Injury Report:/.test(txt)) continue; B.push({ x, y: down ? y : -y, txt }) }
+    /* the header row sets the columns (it's on every page) */
+    const H = HEAD.map(([h, k]) => { const z = B.find(q => h.test(q.txt)); return z ? [z.x, k] : null }).filter(Boolean);
+    if (H.length >= 5) { cols = H.sort((p, q) => p[0] - q[0]); const hy = B.find(q => /^Player( Name)?$/.test(q.txt)).y; for (let j = B.length - 1; j >= 0; j--) if (Math.abs(B[j].y - hy) < 3) B.splice(j, 1) }
+    if (!cols) continue;
+    const colOf = x => { let k = cols[0][1]; for (const [cx, kk] of cols) if (x >= cx - 4) k = kk; return k };
+    for (const q of B) q.c = colOf(q.x);
+    const P = B.filter(q => q.c === "player" && !/NOT YET SUBMITTED/i.test(q.txt)).map(q => ({ ...q, status: "", reason: [] })), T = B.filter(q => q.c === "team"), D = B.filter(q => q.c === "date" && /^\d\d\/\d\d\/\d{4}$/.test(q.txt));
+    const near = (q, L, lim) => { let best = null, bd = lim; for (const z of L) { const d = Math.abs(z.y - q.y); if (d < bd) { bd = d; best = z } } return best };
+    const above = (q, L) => { let best = null; for (const z of L) if (z.y <= q.y + 6 && (!best || z.y > best.y)) best = z; return best };
+    for (const q of B) { if (q.c !== "status" && q.c !== "reason") continue; if (/^NOT\b|^YET\b|^SUBMITTED\b/.test(q.txt)) continue;
+      const pl = near(q, P, 16);
+      if (pl) { if (q.c === "status") pl.status = q.txt; else pl.reason.push([q.y, q.txt]) }
+      else if (q.c === "reason" && last && (!P.length || q.y < Math.min(...P.map(z => z.y)))) last.reason += " " + q.txt }
+    P.sort((p, q) => p.y - q.y);
+    for (const pl of P) { const tm = above(pl, T) || near(pl, T, 999), dt = above(pl, D) || near(pl, D, 999);
+      last = { date: dt ? dt.txt : "", team: tm ? tm.txt : "", player: pl.txt, status: pl.status, reason: pl.reason.sort((p, q) => p[0] - q[0]).map(z => z[1]).join(" ") }; out.push(last) } }
   return out }
 
 const name = s => { const m = String(s).match(/^(.+?),\s*(.+)$/); return (m ? `${m[2]} ${m[1]}` : String(s)).replace(/\s+/g, " ").trim() };

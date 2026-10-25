@@ -428,6 +428,37 @@ export async function main() {
   /* the board's fit: every season with a known outcome */
   const W = { dr: fit(train, "dr"), r1: fit(train, "r1"), lot: fit(train, "lot") };
   for (const h of hist) { h.pD = predict(W.dr, h.z); h.pR1 = predict(W.r1, h.z); h.pL = predict(W.lot, h.z); h.m = .25 * h.pD + .45 * h.pR1 + .30 * h.pL }
+  /* the NBA combine (Oct 25 — Sam OK'd it after the backtest, job/combtest.mjs: draft odds gain, NBA minutes don't): for a player who went
+     to that spring's combine, his drafted / first-round / lottery odds are re-weighed with his athletic score (drills) and his length,
+     reach, height and weight — each a percentile within guards, wings or bigs, as the lab's athletic profile rates them. Re-fit every run
+     and kept only for a target where the newest classes, held out, come out better on BOTH AUC and log loss; otherwise the board's own
+     numbers stand. */
+  try { const CB = await getPack("p2000_cbb-combine"); if (CB && CB.rows && CB.rows.length) {
+    const nk = n => String(n || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\b(jr|sr|ii|iii|iv)\b\.?/g, "").replace(/[^a-z]/g, "");
+    const GRP = p => { p = String(p || ""); return !p ? null : /^(PG|SG|G|PG-SG|SG-PG)$/.test(p) ? "G" : /C/.test(p) || /^(PF|PF-SF)$/.test(p) ? "B" : "W" };
+    const MS = [["vMax", r => r[13], 0], ["vStand", r => r[12], 0], ["lane", r => r[14], 1], ["sprint", r => r[15], 1], ["len", r => r[7] != null && r[5] != null ? r[7] - r[5] : null, 0], ["reach", r => r[8], 0], ["ht", r => r[5], 0], ["wt", r => r[6], 0]], DRL = ["vMax", "vStand", "lane", "sprint"];
+    const DS = {}; for (const g of ["G", "W", "B"]) { DS[g] = {}; const G = CB.rows.filter(r => GRP(r[4]) === g); for (const [k, f] of MS) DS[g][k] = G.map(f).filter(v => v != null).sort((a, b) => a - b) }
+    const pc = (g, k, v) => { if (v == null || !g) return null; const A = DS[g][k]; if (!A || A.length < 50) return null; let lo = 0, eq = 0; for (const x of A) { if (x < v) lo++; else if (x === v) eq++ } const q = (lo + eq / 2) / A.length; return MS.find(m => m[0] === k)[2] ? 1 - q : q };
+    const byKey = {}; for (const r of CB.rows) byKey[r[0] + "|" + nk(r[3])] = r;
+    const cfOf = r => { const g = GRP(r[4]), P = {}; for (const [k, f] of MS) P[k] = pc(g, k, f(r)); const d = DRL.filter(k => P[k] != null), ath = d.length >= 3 ? d.reduce((a, k) => a + P[k], 0) / d.length : null, v = k => P[k] == null ? .5 : P[k];
+      return [ath == null ? .5 : ath, ath == null ? 1 : 0, v("len"), v("reach"), v("ht"), v("wt")] };
+    const lgt = p => { p = Math.min(.999, Math.max(.001, p)); return Math.log(p / (1 - p)) }, sg = z => 1 / (1 + Math.exp(-z)), dot = (x, w) => x.reduce((a, v, j) => a + v * w[j], 0);
+    const A2 = hist.filter(h => byKey[h.r.s + "|" + nk(h.r.nm)]); for (const h of A2) { h.cf = cfOf(byKey[h.r.s + "|" + nk(h.r.nm)]); h.b3 = [1, lgt(h.pD), lgt(h.pR1), lgt(h.pL)] }
+    const fitL = (X, y, l2 = .02) => { const k = X[0].length; let w = new Array(k).fill(0); for (let t = 0; t < 40; t++) { const g = new Array(k).fill(0), Hm = Array.from({ length: k }, () => new Array(k).fill(0));
+        for (let i = 0; i < X.length; i++) { const q = sg(dot(X[i], w)), e = q - y[i], v = q * (1 - q); for (let a = 0; a < k; a++) { g[a] += e * X[i][a]; for (let b = 0; b < k; b++) Hm[a][b] += v * X[i][a] * X[i][b] } }
+        for (let a = 1; a < k; a++) { g[a] += l2 * X.length * w[a]; Hm[a][a] += l2 * X.length } const M2 = Hm.map((r, i) => [...r, g[i]]), n = k;
+        for (let c = 0; c < n; c++) { let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M2[r][c]) > Math.abs(M2[p][c])) p = r; [M2[c], M2[p]] = [M2[p], M2[c]]; if (Math.abs(M2[c][c]) < 1e-12) continue; for (let r = 0; r < n; r++) if (r !== c) { const f = M2[r][c] / M2[c][c]; for (let j = c; j <= n; j++) M2[r][j] -= f * M2[c][j] } }
+        const d = M2.map((r, i) => Math.abs(r[i]) < 1e-12 ? 0 : r[n] / r[i]); w = w.map((x, j) => x - d[j]); if (d.reduce((a, x) => a + Math.abs(x), 0) < 1e-8) break } return w };
+    const llf = (P, y) => -P.reduce((a, q, i) => { q = Math.min(.999, Math.max(.001, q)); return a + (y[i] ? Math.log(q) : Math.log(1 - q)) }, 0) / P.length;
+    const known = A2.filter(h => h.r.s <= KNOWN_TO), ys = [...new Set(known.map(h => h.r.s))].sort((a, b) => a - b), cut = ys[Math.floor(ys.length * .6)];
+    const CMB = { n: A2.length, known: known.length, test: `${cut}–${KNOWN_TO}` };
+    for (const [key, pf] of [["dr", "pD"], ["r1", "pR1"], ["lot", "pL"]]) { const tr = known.filter(h => h.r.s < cut), te = known.filter(h => h.r.s >= cut); if (tr.length < 150 || te.length < 60) { CMB[key] = { skip: 1 }; continue }
+      const yv = te.map(h => h[key]), wb = fitL(tr.map(h => h.b3), tr.map(h => h[key])), wc = fitL(tr.map(h => [...h.b3, ...h.cf]), tr.map(h => h[key]));
+      const pb = te.map(h => sg(dot(h.b3, wb))), pcm = te.map(h => sg(dot([...h.b3, ...h.cf], wc))), r3x = v => Math.round(1000 * v) / 1000;
+      const R = { base: [r3x(auc(pb, yv)), r3x(llf(pb, yv))], comb: [r3x(auc(pcm, yv)), r3x(llf(pcm, yv))] }; R.adopted = R.comb[0] > R.base[0] && R.comb[1] < R.base[1]; CMB[key] = R;
+      if (R.adopted) { const wa = fitL(known.map(h => [...h.b3, ...h.cf]), known.map(h => h[key])); for (const h of A2) { h[pf] = sg(dot([...h.b3, ...h.cf], wa)); h.cmb = 1 } } }
+    for (const h of A2) if (h.cmb) { if (h.pR1 > h.pD) h.pR1 = h.pD; if (h.pL > h.pR1) h.pL = h.pR1; h.m = .25 * h.pD + .45 * h.pR1 + .30 * h.pL }
+    test.combine = CMB; log(`combine in the draft odds: ${JSON.stringify(CMB)}`); console.log(`::notice title=combine in the draft odds::${JSON.stringify(CMB)}`) } } catch (e) { log("combine in the draft odds: " + e.message) }
   /* the 0–100 grade: percentile of the combined chance among every player-season since 2012 */
   const allM = hist.filter(h => h.r.min >= 150).map(h => h.m).sort((a, b) => a - b);
   const pct0 = m => { let lo = 0, hi = allM.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (allM[mid] < m) lo = mid + 1; else hi = mid } return 100 * lo / allM.length };
@@ -492,7 +523,7 @@ export async function main() {
       rec: rc ? { r: r3(rc[2]), st: rc[3], rk: rc[4] } : null,
       s: { g: r.g, gs: r.gs, min: r.min, pts: r.pts, reb: r.reb, orb: r.orb, ast: r.ast, stl: r.stl, blk: r.blk, tov: r.tov, pf: r.pf, fgm: r.fgm, fga: r.fga, tpm: r.tpm, tpa: r.tpa, ftm: r.ftm, fta: r.fta, usg: r1(r.usg), ortg: r1(r.ortg), drtg: r1(r.drtg), porp: r1(r.porp), ws: r1(r.ws), ws40: r3(r.ws40), wso: r1(r.wso), wsd: r1(r.wsd) },
       d: Object.fromEntries(BAND_STATS.map(k => [k, r3(h.d[k])])),
-      g: { score: grade(h.m), pD: r3(h.pD), pR1: r3(h.pR1), pL: r3(h.pL), prof: profileOf(h) },
+      g: { score: grade(h.m), pD: r3(h.pD), pR1: r3(h.pR1), pL: r3(h.pL), prof: profileOf(h), ...(h.cmb ? { cmb: 1 } : {}) },
       comps: r.min >= 250 ? comps(h) : [], p5: h.d.p5, car: CAR[r.id] || null, ...extra } };
   const recGrade = rc => { const z = RZ([rc.rating || 0, Math.log(rc.ranking || 300), rc.stars || 0]); const pD = predict(RW.dr, z), pR1 = predict(RW.r1, z), pL = predict(RW.lot, z), m = .25 * pD + .45 * pR1 + .30 * pL;
     return { score: grade(m), pD: r3(pD), pR1: r3(pR1), pL: r3(pL), prof: profileOf({ pD, pR1, pL }), recOnly: 1 } };

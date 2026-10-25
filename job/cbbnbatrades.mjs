@@ -113,7 +113,7 @@ export function nbaHonors(w) { const k = String(w).search(/\n\s*\|\s*highlights\
    {{nbay|1994|end}} = the 1994–95 season, {{nbafy|1981}} = the 1981 Finals (1980–81), {{nasg|1995}} = the 1995 All-Star Game (1994–95),
    a plain year = the season ending that year; a range ("{{nasg|1995}}–{{nasg|1998}}") is every season in it. Seasons by start year.
    Kinds: mvp, fmvp, champ, allstar, nba1/nba2/nba3 (All-NBA teams), def (All-Defensive), dpoy, roy, smoy, mip, scoring, hof. */
-const AW_KIND = [[/Conference Finals/i, null], [/Finals Most Valuable|Finals MVP/i, "fmvp"], [/All-Star Game (?:Most Valuable|MVP)|All-Star MVP/i, null], [/Most Valuable Player|\bMVP\b/i, "mvp"], [/NBA champion/i, "champ"],
+const AW_KIND = [[/Conference Finals|NBA Cup|In-Season Tournament/i, null], [/Finals Most Valuable|Finals MVP/i, "fmvp"], [/All-Star Game (?:Most Valuable|MVP)|All-Star MVP/i, null], [/Most Valuable Player|\bMVP\b/i, "mvp"], [/NBA champion/i, "champ"],
   [/All-Star/i, "allstar"], [/All-NBA First/i, "nba1"], [/All-NBA Second/i, "nba2"], [/All-NBA Third/i, "nba3"], [/All-NBA Team/i, "nba1"], [/All-Defensive/i, "def"], [/Defensive Player of the Year/i, "dpoy"],
   [/All-Rookie/i, null], [/Rookie of the Year/i, "roy"], [/Sixth Man/i, "smoy"], [/Most Improved/i, "mip"], [/scoring champion|points leader/i, "scoring"], [/Hall of Fame/i, "hof"]];
 export function nbaAwards(w) { const k = String(w).search(/\n\s*\|\s*highlights\s*=/); if (k < 0) return []; const rest = w.slice(k + 1), e = rest.search(/\n\s*\|\s*[a-z_]+\s*=|\n\}\}/), out = [];
@@ -161,6 +161,6 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   await putPack("p2000_cbb-nbacareers", { v: 7, t: Date.now(), p: P, h: HN, aw: AW }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
 }
 /* probe (MODE=probe, PROBE=nba-careers-test): the infobox honors of a few players, raw and as read */
-export async function run() { const L = ["Bill Russell"];
+export async function run() { const L = ["Magic Johnson", "LeBron James"];
   const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", prop: "revisions", rvprop: "content", rvslots: "main", rvsection: "0", titles: L.join("|") }), { headers: WUA }); const j = await r.json();
   return (j.query.pages || []).map(p => { const w = p.revisions[0].slots.main.content, k = w.search(/\n\s*\|\s*highlights\s*=/); return { t: p.title, hof: (w.match(/\n\s*\|\s*(?:bbhof|hof\w*|halloffame|hof_player)\s*=[^\n]*/gi) || []).join(" ").slice(0, 300), hl: k < 0 ? null : w.slice(k, k + 2500).replace(/\[\[[^\]|]*\|/g, "[["), aw: nbaAwards(w) } }) }

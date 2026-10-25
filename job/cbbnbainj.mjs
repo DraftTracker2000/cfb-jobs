@@ -78,9 +78,9 @@ export async function buildNbaInj({ getPack, putPack, log = console.log, curNba,
   for (let s = curNba; s >= 2022; s--) for (let d = new Date(Date.UTC(s, 5, 25)); d >= new Date(Date.UTC(s - 1, 9, 15)); d.setUTCDate(d.getUTCDate() - 1)) {
     if (d > today) continue; const k = ymd(d), age = (today - d) / 864e5; if (P.done[k] === 1 && age > 1.2) continue; if (P.done[k] === 0 && age > 7) continue; days.push(new Date(d)) }
   let read = 0, rows = 0, miss = 0; const todo = days.slice(0, MAXD);
-  const one = async d => { const iso = d.toISOString().slice(0, 10), k = ymd(d), newStyle = k >= "20251201";
+  const one = async d => { const iso = d.toISOString().slice(0, 10), k = ymd(d), newStyle = k >= "20251211";   /* the 15-minute file names start mid-December 2025 */
     for (const tm of newStyle ? TIMES : TIMES.filter(t => !t.includes("_")).concat(TIMES.filter(t => t.includes("_")))) {
-      let r; try { r = await fetch(`${BASE}${iso}_${tm}.pdf`, UA) } catch (e) { continue } if (!r.ok) continue;
+      let r; try { r = await fetch(`${BASE}${iso}_${tm}.pdf`, UA) } catch (e) { continue } if (!r.ok) { await r.arrayBuffer().catch(() => {}); continue }   /* an unread "not found" holds its connection open; a few hundred of them stalled the first run (Oct 25) */
       const R = nbaInjRows(Buffer.from(await r.arrayBuffer())); read++;
       /* this report replaces what an earlier read of the same day said */
       for (const nm of Object.keys(P.p)) P.p[nm] = P.p[nm].filter(z => z[0] !== +k);
@@ -94,9 +94,9 @@ export async function buildNbaInj({ getPack, putPack, log = console.log, curNba,
   const left = days.length - todo.length; log(`nba injury reports: ${read} read, ${rows} rows, ${miss} days with none, ${Object.keys(P.p).length} players${left > 0 ? ` · ${left} days still to read` : ""}`);
   return { read, rows, miss, left } }
 
-/* probe: what the server answers for a few days the first nightly read missed */
-export async function run() { const out = {};
-  for (const d of ["2026-03-10", "2026-01-15", "2025-12-10", "2025-11-20", "2025-03-10", "2024-01-10"]) { const R = [];
-    for (const t of ["05_00PM", "05PM", "01PM"]) { try { const r = await fetch(`${BASE}${d}_${t}.pdf`, UA); R.push(t + ":" + r.status + (r.ok ? ":" + nbaInjRows(Buffer.from(await r.arrayBuffer())).length : "")) } catch (e) { R.push(t + ":ERR " + String(e.cause && e.cause.code || e.message).slice(0, 40)) } }
-    out[d] = R.join(" ") }
+/* probe: one report of each style, grouped by team so a wrong team or date shows */
+export async function run() { const out = [];
+  for (const f of ["2022-01-15_05PM", "2025-03-10_05PM", "2026-03-10_05_00PM"]) { const r = await fetch(BASE + f + ".pdf", UA); const R = nbaInjRows(Buffer.from(await r.arrayBuffer())); const G = {};
+    for (const x of R) (G[x.date + " " + x.team] = G[x.date + " " + x.team] || []).push(x.player.split(",")[0] + ":" + (ST[String(x.status).toLowerCase()] || x.status[0] || "?"));
+    out.push({ f, n: R.length, g: Object.entries(G).slice(0, 14).map(([k, v]) => k.replace(/\/20\d\d/, "") + " = " + v.join(" ")) }) }
   return out }

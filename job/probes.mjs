@@ -13,6 +13,7 @@ export const PROBES = [
   { name: "nbaraw-old2", mod: "nbainjprobe", env: { RAW: "2024-03-15_05PM", OFF: "6000" } },
   { name: "nbaraw-new", mod: "nbainjprobe", env: { RAW: "2026-03-10_05_00PM", OFF: "0" } },
   { name: "nbaraw-new2", mod: "nbainjprobe", env: { RAW: "2026-03-10_05_00PM", OFF: "6000" } },
+  { name: "nbatimes", mod: "nbainjprobe", env: { TIMES: "1" } },
   { name: "nbafingers", mod: "nbainjprobe", env: { FINGERS: "1" } },
   { name: "injwatch0", mod: "injwatch", env: { PI: "0" } },
   { name: "injwatch1", mod: "injwatch", env: { PI: "1" } },

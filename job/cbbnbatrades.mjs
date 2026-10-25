@@ -154,11 +154,7 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   log(`nba careers: ${pages} of ${titles.length} pages read${f3.length ? `, ${f3.length} never came back` : ""}`);
   await putPack("p2000_cbb-nbacareers", { v: 6, t: Date.now(), p: P, h: HN, aw: AW }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
 }
-/* probe (MODE=probe, PROBE=nba-careers-test): a fifty-page read with Kobe and Magic in it */
-export async function run() { const r0 = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", list: "categorymembers", cmtitle: "Category:Los Angeles Lakers players", cmlimit: "500", cmnamespace: "0" }), { headers: WUA });
-  const T = ((await r0.json()).query.categorymembers || []).map(m => m.title), k = T.indexOf("Kobe Bryant"), L = T.slice(Math.max(0, k - 25), k + 25); if (!L.includes("Magic Johnson")) L[0] = "Magic Johnson";
-  const out = []; let cont = {};
-  for (let g = 0; g < 10; g++) { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", prop: "revisions", rvprop: "content", rvslots: "main", rvsection: "0", titles: L.join("|"), ...cont }), { headers: WUA }); const j = await r.json();
-    out.push({ st: r.status, err: j.error && j.error.code, cont: j.continue, n: ((j.query || {}).pages || []).length, withRev: ((j.query || {}).pages || []).filter(p => p.revisions).length, kobe: ((j.query || {}).pages || []).filter(p => /Kobe Bryant|Magic Johnson/.test(p.title)).map(p => ({ t: p.title, rev: !!p.revisions, missing: p.missing, invalid: p.invalid, car: p.revisions ? parseNbaCareer(p.revisions[0].slots.main.content, 2026) : null })) });
-    if (!j.continue) break; cont = j.continue }
-  return { ok: true, k, out } }
+/* probe (MODE=probe, PROBE=nba-careers-test): the infobox honors of a few players, raw and as read */
+export async function run() { const L = ["Bill Russell", "Bob Cousy", "Kevin McHale", "Jayson Tatum", "Carlos Arroyo", "Michael Jordan"];
+  const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", prop: "revisions", rvprop: "content", rvslots: "main", rvsection: "0", titles: L.join("|") }), { headers: WUA }); const j = await r.json();
+  return (j.query.pages || []).map(p => { const w = p.revisions[0].slots.main.content, k = w.search(/\n\s*\|\s*highlights\s*=/); return { t: p.title, hof: (w.match(/\n\s*\|\s*(?:bbhof|hof\w*|halloffame|hof_player)\s*=[^\n]*/gi) || []).join(" ").slice(0, 300), hl: k < 0 ? null : w.slice(k, k + 1500), aw: nbaAwards(w) } }) }

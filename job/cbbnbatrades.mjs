@@ -110,11 +110,13 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   /* the names first (500 a read, each player once however many teams he played for), then the top of each page — the infobox —
      fifty players a read */
   const P = {}, T = new Set(); let reads = 0; const miss = [];
-  const call = async q => { for (let a = 0; a < 4; a++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", ...q }), { headers: WUA }); reads++; if (r.ok) { const j = await r.json(); if (!j.error) return j; log(`nba careers: ${j.error.code} ${j.error.info}`); return null } } catch (e) { } await new Promise(z => setTimeout(z, 2500 * (a + 1))) } return null };
-  for (const cat of cats) { let cont = {}, n = 0;
+  const call = async q => { for (let a = 0; a < 4; a++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", ...q }), { headers: WUA }); reads++; if (r.ok) { const j = await r.json(); if (!j.error) return j; log(`nba careers: ${j.error.code} ${j.error.info}`) } else log(`nba careers: ${r.status}`) } catch (e) { log(`nba careers: ${e.message}`) } await new Promise(z => setTimeout(z, 3000 * (a + 1))) } return null };
+  /* a category whose listing fails is tried again (Oct 24: the Lakers' and Pistons' lists failed once, and Kobe, Magic and Isiah — one team
+     each — went missing) */
+  for (const cat of cats) for (let tryN = 0; tryN < 3; tryN++) { let cont = {}, n = 0, ok = true;
     for (let g = 0; g < 40; g++) { const j = await call({ action: "query", list: "categorymembers", cmtitle: cat, cmlimit: "500", cmnamespace: "0", ...cont }); if (!j) break;
       for (const m of (j.query && j.query.categorymembers) || []) { T.add(m.title); n++ } if (!j.continue) break; cont = j.continue }
-    if (!n) miss.push(cat); await new Promise(z => setTimeout(z, 150)) }
+    await new Promise(z => setTimeout(z, 300)); if (n) break; if (tryN === 2) miss.push(cat); else await new Promise(z => setTimeout(z, 5000)) }
   const titles = [...T]; let sec = true, failed = [];
   const batch = async (L, failTo) => { let cont = {}, got = 0;
     for (let g = 0; g < 20; g++) { let j = await call({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", ...(sec ? { rvsection: "0" } : {}), titles: L.join("|"), ...cont });
@@ -128,7 +130,7 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   let f2 = []; for (let k = 0; k < failed.length; k += 10) pages += await batch(failed.slice(k, k + 10), f2);
   let f3 = []; for (const t of f2) pages += await batch([t], f3);
   log(`nba careers: ${pages} of ${titles.length} pages read${f3.length ? `, ${f3.length} never came back` : ""}`);
-  await putPack("p2000_cbb-nbacareers", { v: 2, t: Date.now(), p: P }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.slice(0, 12).join(", ")}` : ""}`); return P;
+  await putPack("p2000_cbb-nbacareers", { v: 3, t: Date.now(), p: P }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
 }
 /* probe (MODE=probe, PROBE=nba-careers-test): a fifty-page read with Kobe and Magic in it */
 export async function run() { const r0 = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", list: "categorymembers", cmtitle: "Category:Los Angeles Lakers players", cmlimit: "500", cmnamespace: "0" }), { headers: WUA });

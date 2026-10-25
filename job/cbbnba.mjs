@@ -300,6 +300,11 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
       /* keep last season's full logs when this season takes over — the nightly matchup lists are tuned on them (Oct 22) */
       if (LG0 && LG0.p && LG0.season === y - 1 && y === curNba) await putPack("p2000_cbb-nbalogs-prev", LG0).catch(e => log("nba logs prev: " + e.message));
       await putPack(`p${S}_cbb-nbalogs`, { season: y, cols: ["date", "team", "opp", "home", "min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "pm", "start", "oreb"], p: P, v: 2 });
+      /* last season's kept logs held the All-Star games (Oct 25): rebuilt once from the file without them (v3) */
+      if (y === curNba) { const PV0 = await getPack("p2000_cbb-nbalogs-prev").catch(() => null); if (PV0 && PV0.p && PV0.v !== 3) { const tx = await getCsv(REL("espn_nba_player_boxscores", `player_box_${y - 1}.csv`)).catch(() => null);
+        if (tx) { const Q0 = rowsOf(tx), QT = realTeams(Q0), OK = {}; for (const r of Q0) if ([2, 3, 5].includes(+r.season_type) && +r.minutes > 0 && QT.has(r.team_abbreviation)) (OK[r.athlete_id] = OK[r.athlete_id] || new Set()).add(String(r.game_date || "").slice(0, 10) + "|" + r.team_abbreviation);
+          const keep = {}; for (const [id, L] of Object.entries(PV0.p)) keep[id] = L.filter(g => OK[id] && OK[id].has(g[0] + "|" + g[1]));
+          await putPack("p2000_cbb-nbalogs-prev", { ...PV0, p: keep, v: 3 }).catch(e => log("nba logs prev: " + e.message)); log("nba logs prev: All-Star games taken out") } } }
       log(`nba logs ${y}: ${Object.keys(P).length} players`); break } } catch (e) { log("nba logs: " + e.message) }
   /* last season's per-game lines with offensive rebounds (Oct 21 — the nightly matchup lists need a full season behind each player while this
      one is young): p2000_cbb-nbaprev = { season, cols, p: { espnId: [games, min, pts, reb, oreb, ast, stl, blk, fgm, fga, tpm, tpa, ftm, fta] a game } }, built once */

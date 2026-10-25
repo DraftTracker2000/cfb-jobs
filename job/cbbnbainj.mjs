@@ -87,7 +87,7 @@ export async function buildNbaInj({ getPack, putPack, log = console.log, curNba,
       /* this report replaces what an earlier read of the same day said */
       for (const nm of Object.keys(P.p)) P.p[nm] = P.p[nm].filter(z => z[0] !== +k);
       for (const x of R) { const st = ST[String(x.status).toLowerCase()]; if (!st) continue; const dt = x.date ? +(x.date.slice(6) + x.date.slice(0, 2) + x.date.slice(3, 5)) : +k;
-        (P.p[name(x.player)] = P.p[name(x.player)] || []).push([dt, idx(P.T, Ti, x.team), st, idx(P.R, Ri, x.reason || "")]); rows++ }
+        const L = P.p[name(x.player)] = (P.p[name(x.player)] || []).filter(z => z[0] !== dt); L.push([dt, idx(P.T, Ti, x.team), st, idx(P.R, Ri, x.reason || "")]); rows++ }
       P.done[k] = 1; return }
     P.done[k] = 0; miss++ };
   for (let i = 0; i < todo.length; i += 6) await Promise.all(todo.slice(i, i + 6).map(one));

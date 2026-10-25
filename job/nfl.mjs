@@ -894,6 +894,40 @@ export function packProblem(name, o) {
   return null;
 }
 /* ── the run ── */
+
+/* In-game injuries from ESPN's game pages (Oct 25 — Sam: they "should tie back to profile and mini profile injury report ONLY if they are
+   declared out for the game. not if they return … a player with a concussion mid game you can assume they were declared out if there is
+   no data saying they returned … a concussion count would be really good"). For every finished game of the season (nflverse game id →
+   ESPN event id from the schedule), ESPN's public summary: the play text ("X was injured during the play. His return is Out/Questionable…",
+   "Injury Update: X has returned to the game"), and ESPN's game injury list (entries dated after kickoff: status and type). Each man is
+   matched through the game's box score (team + first initial + last name, one man only) to his ESPN id, then to his gsis id.
+   → p<Y>_nfl-ingame-<S>: { s, cols, p: { gsis: { nflverseGameId: [quarter, status, type, returned 0/1, out 0/1] } }, done: [game ids] }
+   out = declared out (status Out), or a concussion with no return. Finished games are read once. */
+export async function inGame(s, prev, espnToGsis, log = console.log) {
+  const SUMU = id => `https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${id}`;
+  const t = (await get("schedules/games.csv.gz", log)) || (await get("schedules/games.csv", log)); const G = [];
+  rows(t, ["game_id", "season", "espn", "home_score", "game_type"], o => { if (+o.season === s && o.home_score !== "" && o.home_score != null && o.espn) G.push([o.game_id, String(Math.round(+o.espn))]) });
+  const out = prev && prev.s === s && prev.p ? prev : { s, cols: ["quarter", "status", "type", "returned", "out"], p: {}, done: [] }; const done = new Set(out.done || []); let read = 0, fail = 0;
+  const nk = v => String(v || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "");
+  for (const [gid, eid] of G) { if (done.has(gid)) continue;
+    let j = null; try { const r = await fetch(SUMU(eid)); if (r.ok) j = await r.json() } catch { } if (!j) { fail++; continue } read++;
+    const W = {}, put0 = (tm, nm, id) => { const w = String(nm || "").trim().split(/\s+/); if (w.length < 2 || !tm || !id) return; const k = tm + "|" + w[0][0].toUpperCase() + "|" + nk(w.slice(1).join(" ")); const L = W[k] = W[k] || []; if (!L.includes(String(id))) L.push(String(id)) };
+    for (const tm of (j.boxscore && j.boxscore.players) || []) { const T = (tm.team && tm.team.abbreviation) || ""; for (const c of tm.statistics || []) for (const a of c.athletes || []) if (a.athlete) put0(T, a.athlete.displayName, a.athlete.id) }
+    for (const t2 of j.injuries || []) for (const i of t2.injuries || []) { const a = i.athlete || {}; put0((t2.team && t2.team.abbreviation) || "", a.displayName, a.id) }
+    const who = (tm, ab) => { const m = String(ab).match(/^([A-Z][a-z]?)\.\s*(.+)$/); if (!m) return null; const L = W[tm + "|" + m[1][0] + "|" + nk(m[2])]; return L && L.length === 1 ? L[0] : null };
+    const R = {}, rec = e => R[e] = R[e] || [null, "", "", 0, 0];
+    const D0 = ((j.drives && (j.drives.previous || [])) || []).concat(j.drives && j.drives.current ? [j.drives.current] : []);
+    for (const d of D0) for (const pl of d.plays || []) { const tx = String(pl.text || ""), q = (pl.period && pl.period.number) || null;
+      for (const m of tx.matchAll(/\b([A-Z]{2,3})-([A-Z][A-Za-z.'\- ]{1,30}?) (?:was|is) injured(?: during the play)?\.?(?:\s*(?:His|Her) return is (\w+))?/g)) { const e = who(m[1], m[2].trim()); if (!e) continue; const r = rec(e); if (r[0] == null) r[0] = q; if (m[3]) r[1] = m[3].toLowerCase() }
+      for (const m of tx.matchAll(/Injury Update:\s*([A-Z]{2,3})-([A-Z][A-Za-z.'\- ]{1,30}?) (?:has returned|returned) to the game/g)) { const e = who(m[1], m[2].trim()); if (e) rec(e)[3] = 1 }
+      for (const m of tx.matchAll(/Injury Update:\s*([A-Z]{2,3})-([A-Z][A-Za-z.'\- ]{1,30}?) (?:has been|is) (?:ruled|declared) out/g)) { const e = who(m[1], m[2].trim()); if (e) rec(e)[1] = "out" } }
+    const k0 = Date.parse((j.header && j.header.competitions && j.header.competitions[0] && j.header.competitions[0].date) || "") || 0;
+    for (const t2 of j.injuries || []) for (const i of t2.injuries || []) { const a = i.athlete || {}, e = String(a.id || ""), d = Date.parse(i.date || "") || 0; if (!e || !k0 || d < k0) continue;
+      const r = rec(e), st = String(i.status || "").toLowerCase(), ty = String((i.details && i.details.type) || ""); if (st && (!r[1] || st === "out")) r[1] = st; if (ty) r[2] = ty }
+    for (const [e, r] of Object.entries(R)) { const g = espnToGsis[e]; if (!g) continue; r[4] = !r[3] && (r[1] === "out" || /concussion/i.test(r[2])) ? 1 : 0; (out.p[g] = out.p[g] || {})[gid] = r }
+    done.add(gid); await new Promise(z => setTimeout(z, 150)) }
+  out.done = [...done]; log(`nfl: in-game injuries ${s}: ${read} games read${fail ? `, ${fail} not reached` : ""} · ${Object.keys(out.p).length} players`); return out }
+
 export async function buildNfl({ api, getPack, getIndex, curYear, all = false, startsOnly = false, staff = {}, log = console.log }) {
   const t0 = Date.now(), up = {}, index = {}, held = [];
   /* a pack that comes out under 40% of its last size is held back, not written (Oct 6: nflverse moved the schedule file and a run wrote an
@@ -952,6 +986,9 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
           for (const g in IJ) for (const [nm, q] of IJ[g]) { const k = dkey(nm), hit = (byGame[g] || []).filter(id => abbr(id) === k); if (hit.length === 1) (inj[hit[0]] = inj[hit[0]] || {})[g] = q || 0 } }
         await put(P("opp-" + s), { s, cols: OPQ_COLS, p: O, inj, injNote: "inj[gsis][game] = quarter he was hurt (play-by-play 'was injured during the play')" }) } await put(P("pbp-" + s), B) }
   }
+  /* in-game injuries this season (ESPN game pages; finished games kept) */
+  if (!startsOnly) try { const eg = {}; for (const [e, g] of Object.entries(ESPN || {})) eg[e] = g; for (const [e, g] of Object.entries(SNAP_ESPN)) if (!eg[e]) eg[e] = g;
+    let pv = null; try { pv = getPack ? await getPack(P("ingame-" + lastPlayed)) : null } catch { } const IG = await inGame(lastPlayed, pv, eg, log); if (IG) await put(P("ingame-" + lastPlayed), IG) } catch (e) { log("nfl: in-game injuries: " + e.message) }
   for (const s of seasons) if (s < lastPlayed && LOGS[s]) DONE.s[s] = NFL_DONE_V; await put(P("done"), DONE);
   /* dynasty inputs (Oct 20, job/dyn.mjs): each player's last 18 league weeks and the windows before, for the page's dynasty model */
   if (!startsOnly) try { const DY = await dynFeatures({ G, PLp: PLP, log, logsOf: async s => LOGS[s] || (getPack ? await getPack(P("logs-" + s)).catch(() => null) : null) });

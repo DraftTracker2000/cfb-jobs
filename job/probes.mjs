@@ -16,6 +16,7 @@ export const PROBES = [
   { name: "nbaraw-new2", mod: "nbainjprobe", env: { RAW: "2026-03-10_05_00PM", OFF: "6000" } },
   { name: "nbatimes", mod: "nbainjprobe", env: { TIMES: "1" } },
   { name: "nbafingers", mod: "nbainjprobe", env: { FINGERS: "1" } },
+  { name: "asktest", page: "/cbb/lab/", widths: [1280], settle: 12000, cap: 1, run: `const Q=["most threes SEC freshmen", "top rebounders Big Ten centers", "Stephen Curry wingspan", "Anthony Edwards injuries", "most load management 2025-26", "most load management", "most games missed injured last season", "longest wingspan bigs 2025", "fastest sprint guards", "most athletic wings 2024", "Cooper Flagg vs Dylan Harper", "Victor Wembanyama vertical", "LeBron James college", "best 3 point percentage ACC", "most assists point guards", "fewest turnovers", "Jalen Brunson injuries", "Kentucky", "Celtics"];const o={ok:true,r:[]};const w=ms=>new Promise(r=>setTimeout(r,ms));for(const q of Q){const i=document.getElementById("q");i.value=q;i.oninput();let t="";for(let k=0;k<30;k++){await w(300);t=document.getElementById("sdrop").innerText;if(!/Looking that up|Searching the NBA/.test(t)&&t.trim())break}o.r.push(q+" => "+t.replace(/\s+/g," ").slice(0,330))}return o` },
   { name: "edw", mod: "edwprobe", env: { Y: "2026" } },
   { name: "nbagp", mod: "edwprobe", env: { TEAMS: "2024,2025,2026" } },
   { name: "combdump", mod: "combdump", cap: 1 },

@@ -8,7 +8,7 @@ function text(buf) { const s = buf.toString("latin1"), out = []; let i = 0;
   while ((i = s.indexOf("stream", i)) >= 0) { let a = i + 6; if (s[a] === "\r") a++; if (s[a] === "\n") a++; const b = s.indexOf("endstream", a); if (b < 0) break;
     try { const t = inflateSync(buf.subarray(a, b)).toString("latin1"); const m = [...t.matchAll(/\(((?:\\.|[^\\)])*)\)\s*Tj|\[((?:[^\]])*)\]\s*TJ/g)].map(x => x[1] != null ? x[1] : [...x[2].matchAll(/\(((?:\\.|[^\\)])*)\)/g)].map(y => y[1]).join("")); if (m.length) out.push(...m) } catch (e) {} i = b + 9 }
   return out }
-export async function run() { if (process.env.FINGERS) return fingers(); if (process.env.RAW) return raw(process.env.RAW, +(process.env.OFF || 0)); const R = [];
+export async function run() { if (process.env.TIMES) return times(); if (process.env.FINGERS) return fingers(); if (process.env.RAW) return raw(process.env.RAW, +(process.env.OFF || 0)); const R = [];
   for (const u of URLS) { try { const r = await fetch(u, H); const b = r.ok ? Buffer.from(await r.arrayBuffer()) : null; const T = b ? text(b) : [];
       R.push({ f: u.split("_").slice(1).join("_"), st: r.status, ct: r.headers.get("content-type"), kb: b ? Math.round(b.length / 1024) : 0, lines: T.length, sample: T.filter(x => /Injury|Ankle|Knee|Rest|Out|Questionable/i.test(x)).slice(0, 6) }) }
     catch (e) { R.push({ f: u, err: String(e.message).slice(0, 120) }) } }
@@ -28,3 +28,11 @@ async function raw(name, off) { const r = await fetch(`https://ak-static.cms.nba
   while ((i = s.indexOf("stream", i)) >= 0) { let a = i + 6; if (s[a] === "\r") a++; if (s[a] === "\n") a++; const b = s.indexOf("endstream", a); if (b < 0) break;
     try { const t = inflateSync(buf.subarray(a, b)).toString("latin1"); if (/Tj|TJ/.test(t) && t.length > best.length) best = t } catch (e) {} i = b + 9 }
   if (off < 0) off = Math.max(0, best.indexOf("BT")); return best.slice(off, off + 3300) }
+/* which report times exist on a few days (Oct 25: the first nightly read found only 7 of 600 days) */
+export async function times() { const out = {};
+  for (const d of ["2026-10-22", "2026-04-08", "2026-01-15", "2025-12-10", "2025-03-10", "2024-01-10", "2023-01-10", "2022-11-15"]) { const hit = [];
+    for (const h of ["11", "12", "01", "02", "03", "04", "05", "06", "07", "08"]) { const ap = h === "11" ? "AM" : "PM";
+      const tries = [`${h}${ap}`, ...["00", "15", "30", "45"].map(m => `${h}_${m}${ap}`)];
+      await Promise.all(tries.map(async t => { try { const r = await fetch(`https://ak-static.cms.nba.com/referee/injury/Injury-Report_${d}_${t}.pdf`, { method: "HEAD", ...H }); if (r.ok) hit.push(t) } catch (e) {} })) }
+    out[d] = hit.sort() }
+  return out }

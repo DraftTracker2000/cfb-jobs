@@ -13,6 +13,11 @@ export function csvLine(s) { const out = []; let cur = "", q = false; for (let i
 /* one season's box scores → { espnId: [name, team, gp, gs, min, pts, reb, ast, stl, blk, tov, fgm, fga, tpm, tpa, ftm, fta] } (regular season + playoffs kept apart: playoffs in p) */
 /* the season's real teams: 20+ games in the file (All-Star sides play 1–3) */
 const realTeams = rows => { const G = {}; for (const r of rows) (G[r.team_abbreviation] = G[r.team_abbreviation] || new Set()).add(r.game_id); return new Set(Object.keys(G).filter(t => G[t].size >= 20)) };
+/* the NBA Cup final (Oct 25): the files code it as a regular-season game, so both finalists show 83; the league doesn't count it. It's the
+   December game between two teams that both reach 83, on a night with no other game. Input: [team, gameId, "YYYY-MM-DD", seasonType] */
+export function cupFinalIds(G4) { const T = {}, byD = {}, gm = {}; for (const [t, g, d, ty] of G4) { if (+ty !== 2) continue; (T[t] = T[t] || new Set()).add(g); (byD[d] = byD[d] || new Set()).add(g); (gm[g] = gm[g] || { d, t: new Set() }).t.add(t) }
+  const out = new Set(); for (const [g, x] of Object.entries(gm)) { const tt = [...x.t]; if (tt.length === 2 && /-12-/.test(x.d) && byD[x.d].size === 1 && tt.every(t => T[t].size === 83)) out.add(g) } return out }
+const cupOfRows = rows => cupFinalIds(rows.map(r => [r.team_abbreviation, r.game_id, String(r.game_date || "").slice(0, 10), r.season_type]));
 export function seasonFromCsv(text) {
   const lines = text.split(/\r?\n/); const H = csvLine(lines[0]).map(h => h.trim().toLowerCase()); const ix = n => H.indexOf(n);
   const I = { id: ix("athlete_id"), nm: ix("athlete_display_name"), tm: ix("team_abbreviation"), min: ix("minutes"), pts: ix("points"), reb: ix("rebounds"), ast: ix("assists"), stl: ix("steals"), blk: ix("blocks"), tov: ix("turnovers"),
@@ -22,9 +27,10 @@ export function seasonFromCsv(text) {
      61): a real team plays 40+ games a season, an All-Star side 1–3, so any team with fewer than 20 games in the file is left out */
   const gid = H.indexOf("game_id"), TG = {}; if (gid >= 0) for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); (TG[f[I.tm]] = TG[f[I.tm]] || new Set()).add(f[gid]) }
   const realTeam = t => gid < 0 || (TG[t] && TG[t].size >= 20);
+  const CUP = gid >= 0 && ix("game_date") >= 0 ? cupFinalIds(lines.slice(1).filter(Boolean).map(l => { const f = csvLine(l); return [f[I.tm], f[gid], String(f[ix("game_date")] || "").slice(0, 10), I.type >= 0 ? f[I.type] : 2] })) : new Set();
   const out = {}, gd = ix("game_date"), ymd = f => +String(f[gd] || "").slice(0, 10).replace(/-/g, ""), TD = {};
   if (gd >= 0) for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); if (!realTeam(f[I.tm]) || (I.type >= 0 && +f[I.type] !== 2)) continue; const d = ymd(f); if (d) (TD[f[I.tm]] = TD[f[I.tm]] || new Set()).add(d) }
-  for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); const id = f[I.id]; if (!id) continue; if (!realTeam(f[I.tm])) continue;
+  for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); const id = f[I.id]; if (!id) continue; if (!realTeam(f[I.tm]) || CUP.has(f[gid])) continue;
     if (I.dnp >= 0 && /true/i.test(f[I.dnp])) continue; const min = +f[I.min] || 0; if (!min) continue;
     /* Oct 25 (Sam: Anthony Edwards 64 games in 2025–26, ESPN 61): only the regular season (2) and the playoffs (3) count — preseason (1),
        the play-in (5) and anything else were being added to the regular season */
@@ -74,7 +80,7 @@ export function nbaTag(seasons, curY, rk = null, latest = null) {
 
 export async function buildNba({ getPack, putPack, log, full, curNba, live, sidToCbbd, draftById, nameMatch }) {
   let NH = full ? null : await getPack("p2000_cbb-nbahist").catch(() => null);
-  if (!NH || !NH.seasons || NH.v !== 4) NH = { v: 4, seasons: {} };   /* v4 (Oct 25): re-read every season without preseason, play-in or All-Star games, and keep the missed dates */
+  if (!NH || !NH.seasons || NH.v !== 5) NH = { v: 5, seasons: {} };   /* v5 (Oct 25): re-read every season without preseason, play-in, All-Star or NBA Cup final games, and keep the missed dates */
   const want = []; for (let y = 2009; y <= curNba; y++) if (!NH.seasons[y] || (live && y === curNba)) want.push(y);
   for (const y of want) {
     let txt = null; for (let k = 0; k < 3 && !txt; k++) { try { const r = await fetch(URL_OF(y), { redirect: "follow" }); if (r.status === 404) break; if (r.ok) txt = await r.text() } catch { } if (!txt) await sleep(2000) }
@@ -130,8 +136,8 @@ export function nbaTeamRatings(box, minG = 20) {
   const T = {};
   /* the other side of each game (Oct 12 — Sam picked box-score stand-ins for the defense play types NBA.com doesn't track): fast-break
      points and offensive rebounds given up, per game */
-  const byG = {}; for (const r of box) if (+r.season_type === 2) (byG[r.game_id] = byG[r.game_id] || []).push(r);
-  for (const r of box) { if (+r.season_type !== 2) continue; const a = r.team_abbreviation; const X = T[a] = T[a] || { nm: r.team_display_name, id: +r.team_id, c1: r.team_color, g: 0, w: 0, pf: 0, pa: 0, poss: 0, fga: 0, tpa: 0, paint: 0, fb: 0, tov: 0, ofb: 0, oorb: 0, og: 0 };
+  const CUP = cupOfRows(box), byG = {}; for (const r of box) if (+r.season_type === 2 && !CUP.has(r.game_id)) (byG[r.game_id] = byG[r.game_id] || []).push(r);   /* standings leave out the NBA Cup final (Oct 25) */
+  for (const r of box) { if (+r.season_type !== 2 || CUP.has(r.game_id)) continue; const a = r.team_abbreviation; const X = T[a] = T[a] || { nm: r.team_display_name, id: +r.team_id, c1: r.team_color, g: 0, w: 0, pf: 0, pa: 0, poss: 0, fga: 0, tpa: 0, paint: 0, fb: 0, tov: 0, ofb: 0, oorb: 0, og: 0 };
     const op = (byG[r.game_id] || []).find(x => x !== r && x.team_abbreviation !== a); if (op) { X.og++; X.ofb += +op.fast_break_points || 0; X.oorb += +op.offensive_rebounds || 0;
       /* what the defense gives up, per game (Oct 21 — the nightly matchup lists): the other side's line in each game */
       const al = X.al = X.al || {}; for (const [k, c] of AL_COLS) al[k] = (al[k] || 0) + (+op[c] || 0) }
@@ -298,7 +304,7 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
      one is young): p2000_cbb-nbaprev = { season, cols, p: { espnId: [games, min, pts, reb, oreb, ast, stl, blk, fgm, fga, tpm, tpa, ftm, fta] a game } }, built once */
   try { const PV = await getPack("p2000_cbb-nbaprev").catch(() => null), y = curNba - 1;
     if (!PV || PV.season !== y) { const txt = await getCsv(REL("espn_nba_player_boxscores", `player_box_${y}.csv`));
-      if (txt) { const A = {}, R1 = rowsOf(txt), RT1 = realTeams(R1); for (const r of R1) { if (+r.season_type !== 2 || !(+r.minutes > 0) || !RT1.has(r.team_abbreviation)) continue; const a = A[r.athlete_id] = A[r.athlete_id] || new Array(14).fill(0); a[0]++;
+      if (txt) { const A = {}, R1 = rowsOf(txt), RT1 = realTeams(R1), CF1 = cupOfRows(R1); for (const r of R1) { if (+r.season_type !== 2 || !(+r.minutes > 0) || !RT1.has(r.team_abbreviation) || CF1.has(r.game_id)) continue; const a = A[r.athlete_id] = A[r.athlete_id] || new Array(14).fill(0); a[0]++;
           [r.minutes, r.points, r.rebounds, r.offensive_rebounds, r.assists, r.steals, r.blocks, r.field_goals_made, r.field_goals_attempted, r.three_point_field_goals_made, r.three_point_field_goals_attempted, r.free_throws_made, r.free_throws_attempted].forEach((v, i) => a[i + 1] += +v || 0) }
         const P = {}; for (const [id, a] of Object.entries(A)) if (a[0] >= 5) P[id] = [a[0], ...a.slice(1).map(v => Math.round(10 * v / a[0]) / 10)];
         await putPack("p2000_cbb-nbaprev", { season: y, cols: ["g", "min", "pts", "reb", "oreb", "ast", "stl", "blk", "fgm", "fga", "tpm", "tpa", "ftm", "fta"], p: P }); log(`nba prev ${y}: ${Object.keys(P).length} players`) } } } catch (e) { log("nba prev: " + e.message) }
@@ -314,7 +320,7 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
   /* every NBA team's seasons (Oct 12 — Sam: "the NBA team profiles look very thin compared to every other profile"): from the team box
      scores, 2010 on, keyed by ESPN team id (abbreviations changed: NJN → BKN, NOH → NOP) → p2000_cbb-nbateamhist
      { cols, s: { season: { teamId: [w, l, net, ortg, drtg, pace, playoffW, playoffL, abbr] } } }; finished seasons are read once */
-  try { let TH = await getPack("p2000_cbb-nbateamhist").catch(() => null); if (!TH || !TH.s) TH = { s: {} }; let got = 0;
+  try { let TH = await getPack("p2000_cbb-nbateamhist").catch(() => null); if (!TH || !TH.s || TH.v !== 2) TH = { v: 2, s: {} };   /* v2 (Oct 25): records without the NBA Cup final, every season re-read */ let got = 0;
     for (let y = 2010; y <= curNba; y++) { if (TH.s[y] && y < curNba - 1 && Object.values(TH.s[y])[0] && Object.values(TH.s[y])[0].length >= 11) continue;   /* rows without play-in games (Oct 12) are read once more */ const txt = await getCsv(REL("espn_nba_team_boxscores", `team_box_${y}.csv`)).catch(() => null); if (!txt) continue;
       const R = rowsOf(txt), Tr = nbaTeamRatings(R, y === curNba ? 1 : 20), po = {};
       const pi = {}; for (const r of R) { const st = +r.season_type; if (st === 3) { const o = po[r.team_id] = po[r.team_id] || [0, 0]; if (/true/i.test(r.team_winner)) o[0]++; else o[1]++ }

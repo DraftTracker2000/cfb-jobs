@@ -116,7 +116,10 @@ export function nbaHonors(w) { const k = String(w).search(/\n\s*\|\s*highlights\
 const AW_KIND = [[/Conference Finals/i, null], [/Finals Most Valuable|Finals MVP/i, "fmvp"], [/All-Star Game (?:Most Valuable|MVP)|All-Star MVP/i, null], [/Most Valuable Player|\bMVP\b/i, "mvp"], [/NBA champion/i, "champ"],
   [/All-Star/i, "allstar"], [/All-NBA First/i, "nba1"], [/All-NBA Second/i, "nba2"], [/All-NBA Third/i, "nba3"], [/All-NBA Team/i, "nba1"], [/All-Defensive/i, "def"], [/Defensive Player of the Year/i, "dpoy"],
   [/All-Rookie/i, null], [/Rookie of the Year/i, "roy"], [/Sixth Man/i, "smoy"], [/Most Improved/i, "mip"], [/scoring champion|points leader/i, "scoring"], [/Hall of Fame/i, "hof"]];
-export function nbaAwards(w) { const k = String(w).search(/\n\s*\|\s*highlights\s*=/); if (k < 0) return []; const rest = w.slice(k + 1), e = rest.search(/\n\s*\|\s*[a-z_]+\s*=|\n\}\}/), h = e < 0 ? rest : rest.slice(0, e), out = [];
+export function nbaAwards(w) { const k = String(w).search(/\n\s*\|\s*highlights\s*=/); if (k < 0) return []; const rest = w.slice(k + 1), e = rest.search(/\n\s*\|\s*[a-z_]+\s*=|\n\}\}/), out = [];
+  /* footnotes and refs out (Russell's titles line carries a footnote citing the FIBA Hall of Fame), and nothing from his coaching years */
+  let h = (e < 0 ? rest : rest.slice(0, e)).replace(/<ref[^>]*\/>/g, "").replace(/<ref[^>]*>[\s\S]*?<\/ref>/g, "").replace(/\{\{\s*efn[^{}]*\}\}/gi, "");
+  const co = h.search(/'''\s*As (?:head )?coach/i); if (co > 0) h = h.slice(0, co);
   /* Oct 25: link targets dropped first ("[[1951–52 NBA season|1952]]" is 1952), every line has to say NBA (other leagues' Finals MVPs
      were counting), the All-Star Game MVP and conference-finals MVP aren't the MVP or Finals MVP, and the Hall of Fame is its own field */
   if (/\n\s*\|\s*HOF_player\s*=\s*[^\s|}]/i.test(w)) out.push(["hof", 0]);
@@ -155,7 +158,7 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   let f2 = []; for (let k = 0; k < failed.length; k += 10) pages += await batch(failed.slice(k, k + 10), f2);
   let f3 = []; for (const t of f2) pages += await batch([t], f3);
   log(`nba careers: ${pages} of ${titles.length} pages read${f3.length ? `, ${f3.length} never came back` : ""}`);
-  await putPack("p2000_cbb-nbacareers", { v: 6, t: Date.now(), p: P, h: HN, aw: AW }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
+  await putPack("p2000_cbb-nbacareers", { v: 7, t: Date.now(), p: P, h: HN, aw: AW }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
 }
 /* probe (MODE=probe, PROBE=nba-careers-test): the infobox honors of a few players, raw and as read */
 export async function run() { const L = ["Bill Russell"];

@@ -159,6 +159,14 @@ async function main() {
     for (let i = 0, k = 0; i < C.length && k < 6; k++) { let s = ""; while (i < C.length && (s + C[i]).length < 5800) s += C[i++] + " | "; console.log(`::notice title=college gaps check ${k + 1}::${s}`) }
     console.log(`::notice title=college gaps unplaced::${d.miss.join(", ").slice(0, 5800)}`);
     await report(true, `college gaps · ${n} players · ${gaps} stretches · ${d.calls} calls`); return }
+  /* style matchups (Oct 25, job/stylepack.mjs): every weekly run, or MODE=style by hand → pack p2000_cfbstyle */
+  if (MODE === "style" || MODE === "weekly") { try { const { buildStyle } = await import("./stylepack.mjs"); const { gzipSync } = await import("node:zlib");
+      const now = new Date(), y = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, d = await buildStyle({ site: SITE, token: sess.token, year: y });
+      const gz = gzipSync(Buffer.from(JSON.stringify({ cfbstyle: d }))), r = await api("PUT", "/api/pack/p2000_cfbstyle", { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+      await api("PUT", "/api/pack-index", { body: { p2000_cfbstyle: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });
+      console.log(`::notice title=style matchups::${Object.keys(d.t).length} teams through week ${d.wk} · ${d.calls} CFBD calls · ${(r.bytes / 1024).toFixed(0)} KB`) }
+    catch (e) { console.log(`::warning title=style matchups failed::${String(e && e.stack || e).slice(0, 2000)}`); if (MODE === "style") throw e }
+    if (MODE === "style") { await report(true, "style matchups"); return } }
   /* MODE=probe: single-feature checks in a browser (job/probe.mjs, job/probes.mjs), results as notices on the run; PROBE picks them */
   if (MODE === "probe") { const { runProbes } = await import("./probe.mjs"); const browser = await chromium.launch();
     try { await runProbes({ browser, site: SITE, token: sess.token, only: process.env.PROBE || "" }) } finally { await browser.close() } return }

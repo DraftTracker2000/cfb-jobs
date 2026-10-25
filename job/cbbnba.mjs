@@ -22,16 +22,25 @@ export function seasonFromCsv(text) {
      61): a real team plays 40+ games a season, an All-Star side 1–3, so any team with fewer than 20 games in the file is left out */
   const gid = H.indexOf("game_id"), TG = {}; if (gid >= 0) for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); (TG[f[I.tm]] = TG[f[I.tm]] || new Set()).add(f[gid]) }
   const realTeam = t => gid < 0 || (TG[t] && TG[t].size >= 20);
-  const out = {};
+  const out = {}, gd = ix("game_date"), ymd = f => +String(f[gd] || "").slice(0, 10).replace(/-/g, ""), TD = {};
+  if (gd >= 0) for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); if (!realTeam(f[I.tm]) || (I.type >= 0 && +f[I.type] !== 2)) continue; const d = ymd(f); if (d) (TD[f[I.tm]] = TD[f[I.tm]] || new Set()).add(d) }
   for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); const id = f[I.id]; if (!id) continue; if (!realTeam(f[I.tm])) continue;
     if (I.dnp >= 0 && /true/i.test(f[I.dnp])) continue; const min = +f[I.min] || 0; if (!min) continue;
     /* Oct 25 (Sam: Anthony Edwards 64 games in 2025–26, ESPN 61): only the regular season (2) and the playoffs (3) count — preseason (1),
        the play-in (5) and anything else were being added to the regular season */
     const ty = I.type >= 0 ? +f[I.type] : 2; if (ty !== 2 && ty !== 3) continue; const po = ty === 3; const key = po ? "p" : "r";
     const X = out[id] = out[id] || { nm: f[I.nm], tm: f[I.tm], r: new Array(15).fill(0), p: new Array(15).fill(0) };
-    const A = X[key]; A[0]++; if (I.st >= 0 && /true/i.test(f[I.st])) A[1]++; A[2] += min;
+    const A = X[key]; A[0]++; if (I.st >= 0 && /true/i.test(f[I.st])) A[1]++; A[2] += min; if (!po && gd >= 0) (X.gd = X.gd || []).push([ymd(f), f[I.tm]]);
     ["pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta"].forEach((c, j) => A[3 + j] += (+f[I[c]] || 0));
     if (!po) X.tm = f[I.tm] || X.tm }
+  /* the regular-season games each player missed, by date (Oct 25 — Sam: "where are the 3 additional missed games"; airtight from the box
+     scores): every date his team played and he didn't, from the season's first game (or the day after he left his last team) to its last
+     game (or the day he was traded). The page names each date's reason from that day's injury report. */
+  const all = Object.values(TD).flatMap(S => [...S]), s0 = Math.min(...all), s1 = Math.max(...all);
+  for (const X of Object.values(out)) { if (!X.gd || !X.gd.length) continue; const G = X.gd.sort((a, b) => a[0] - b[0]), played = new Set(G.map(g => g[0])), seg = [];
+    for (const [d, t] of G) { const l = seg[seg.length - 1]; if (l && l.t === t) l.b = d; else seg.push({ t, a: d, b: d }) }
+    const miss = []; seg.forEach((g, i) => { const from = i === 0 ? s0 : seg[i - 1].b + 1, to = i === seg.length - 1 ? s1 : g.b; for (const d of TD[g.t] || []) if (d >= from && d <= to && !played.has(d)) miss.push(d) });
+    X.miss = miss.sort((a, b) => a - b); delete X.gd }
   return out;
 }
 /* how an NBA career turned out, from what he did on the floor (no awards data): Star · Former star · Starter · Rotation · Bench · Brief.
@@ -65,15 +74,17 @@ export function nbaTag(seasons, curY, rk = null, latest = null) {
 
 export async function buildNba({ getPack, putPack, log, full, curNba, live, sidToCbbd, draftById, nameMatch }) {
   let NH = full ? null : await getPack("p2000_cbb-nbahist").catch(() => null);
-  if (!NH || !NH.seasons || NH.v !== 3) NH = { v: 3, seasons: {} };   /* v3 (Oct 25): re-read every season without preseason, play-in or All-Star games */
+  if (!NH || !NH.seasons || NH.v !== 4) NH = { v: 4, seasons: {} };   /* v4 (Oct 25): re-read every season without preseason, play-in or All-Star games, and keep the missed dates */
   const want = []; for (let y = 2009; y <= curNba; y++) if (!NH.seasons[y] || (live && y === curNba)) want.push(y);
   for (const y of want) {
     let txt = null; for (let k = 0; k < 3 && !txt; k++) { try { const r = await fetch(URL_OF(y), { redirect: "follow" }); if (r.status === 404) break; if (r.ok) txt = await r.text() } catch { } if (!txt) await sleep(2000) }
     if (!txt) { log(`nba ${y}: no file`); continue }
-    const S = seasonFromCsv(txt); NH.seasons[y] = Object.fromEntries(Object.entries(S).map(([id, X]) => [id, [X.nm, X.tm, ...X.r.map(v => Math.round(v)), X.p[0] ? X.p.map(v => Math.round(v)) : null]]));
+    const S = seasonFromCsv(txt); NH.miss = NH.miss || {}; NH.miss[y] = Object.fromEntries(Object.entries(S).filter(([, X]) => X.miss && X.miss.length).map(([id, X]) => [id, X.miss])); NH.seasons[y] = Object.fromEntries(Object.entries(S).map(([id, X]) => [id, [X.nm, X.tm, ...X.r.map(v => Math.round(v)), X.p[0] ? X.p.map(v => Math.round(v)) : null]]));
     log(`nba ${y}: ${Object.keys(S).length} players`);
   }
   await putPack("p2000_cbb-nbahist", NH);
+  /* missed regular-season games by date, 2021–22 on (the injury-report era), for the player pages: p2000_cbb-nbamiss { v, s: { season: { espnId: [yyyymmdd] } } } */
+  try { const M = {}; for (const y in (NH.miss || {})) if (+y >= 2022) M[y] = NH.miss[y]; await putPack("p2000_cbb-nbamiss", { v: 1, s: M }) } catch (e) { log("nba missed games: " + e.message) }
   /* NBA careers of players who played Division I (by ESPN id) */
   const players = {};
   /* ESPN id → college id; failing that, a name match against his first NBA season (see nameMatch in job/cbb.mjs) */

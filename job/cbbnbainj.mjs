@@ -39,7 +39,7 @@ export function nbaInjRows(buf) {
         if (m[1] != null) { x = +m[1]; y = +m[2] } else if (m[3] != null) { if (x == null) { x = +m[3]; y = +m[4] } else if (!words.length) { x += +m[3]; y += +m[4] } }
         else if (m[5] != null) words.push(pdfStr(m[5])); else words.push([...m[6].matchAll(/\(((?:\\.|[^\\)])*)\)/g)].map(q => pdfStr(q[1])).join("")) }
       if (x == null || !words.length) continue; let txt = words.join(" ").replace(/\s+/g, " ").replace(/(\w)- (?=\w)/g, "$1-").trim();
-      if (!txt || /^Page \d+ of \d+$/.test(txt) || /^Injury Report:/.test(txt)) continue; B.push({ x, y: down ? y : -y, txt }) }
+      if (!txt || /^Page \d+( of( \d+)?)?$/.test(txt) || /^Injury Report:/.test(txt)) continue; B.push({ x, y: down ? y : -y, txt }) }
     /* the header row sets the columns (it's on every page) */
     const H = HEAD.map(([h, k]) => { const z = B.find(q => h.test(q.txt)); return z ? [z.x, k] : null }).filter(Boolean);
     if (H.length >= 5) { cols = H.sort((p, q) => p[0] - q[0]); const hy = B.find(q => /^Player( Name)?$/.test(q.txt)).y; for (let j = B.length - 1; j >= 0; j--) if (Math.abs(B[j].y - hy) < 3) B.splice(j, 1) }
@@ -68,7 +68,7 @@ export function nbaInjRows(buf) {
 const name = s => { const m = String(s).match(/^(.+?),\s*(.+)$/); return (m ? `${m[2]} ${m[1]}` : String(s)).replace(/\s+/g, " ").trim() };
 const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, "");
 
-export async function buildNbaInj({ getPack, putPack, log = console.log, curNba, MAXD = 450 }) {
+export async function buildNbaInj({ getPack, putPack, log = console.log, curNba, MAXD = 600 }) {
   const P = (await getPack("p2000_cbb-nbainj").catch(() => null)) || { v: 1, done: {}, T: [], R: [], p: {} };
   const Ti = Object.fromEntries(P.T.map((x, i) => [x, i])), Ri = Object.fromEntries(P.R.map((x, i) => [x, i]));
   const idx = (A, I, v) => I[v] != null ? I[v] : (I[v] = A.push(v) - 1);

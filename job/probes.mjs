@@ -9,7 +9,7 @@ export const PROBES = [
   { name: "nbainj", mod: "nbainjprobe" },
   { name: "nbainjparse", mod: "cbbnbainj" },
   { name: "nbaraw-old", mod: "nbainjprobe", env: { RAW: "2024-03-15_05PM", OFF: "0" } },
-  { name: "nbaraw22", mod: "nbainjprobe", env: { RAW: "2022-01-15_05PM", OFF: "1500" } },
+  { name: "nbaraw22", mod: "nbainjprobe", env: { RAW: "2022-01-15_05PM", OFF: "-1" } },
   { name: "nbaraw-old2", mod: "nbainjprobe", env: { RAW: "2024-03-15_05PM", OFF: "6000" } },
   { name: "nbaraw-new", mod: "nbainjprobe", env: { RAW: "2026-03-10_05_00PM", OFF: "0" } },
   { name: "nbaraw-new2", mod: "nbainjprobe", env: { RAW: "2026-03-10_05_00PM", OFF: "6000" } },

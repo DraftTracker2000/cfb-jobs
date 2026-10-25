@@ -27,4 +27,4 @@ async function fingers() { const days = []; for (const y of [2022, 2023, 2024, 2
 async function raw(name, off) { const r = await fetch(`https://ak-static.cms.nba.com/referee/injury/Injury-Report_${name}.pdf`, H); const buf = Buffer.from(await r.arrayBuffer()), s = buf.toString("latin1"); let i = 0, best = "";
   while ((i = s.indexOf("stream", i)) >= 0) { let a = i + 6; if (s[a] === "\r") a++; if (s[a] === "\n") a++; const b = s.indexOf("endstream", a); if (b < 0) break;
     try { const t = inflateSync(buf.subarray(a, b)).toString("latin1"); if (/Tj|TJ/.test(t) && t.length > best.length) best = t } catch (e) {} i = b + 9 }
-  return best.slice(off, off + 3300) }
+  if (off < 0) off = Math.max(0, best.indexOf("BT")); return best.slice(off, off + 3300) }

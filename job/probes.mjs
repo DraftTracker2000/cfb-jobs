@@ -17,6 +17,7 @@ export const PROBES = [
   { name: "nbatimes", mod: "nbainjprobe", env: { TIMES: "1" } },
   { name: "nbafingers", mod: "nbainjprobe", env: { FINGERS: "1" } },
   { name: "edw", mod: "edwprobe", env: { Y: "2026" } },
+  { name: "nbagp", mod: "edwprobe", env: { TEAMS: "2024,2025,2026" } },
   { name: "combdump", mod: "combdump", cap: 1 },
   { name: "gapall2", mod: "gaplist", env: { DONE: "", ALL: "1", FROM: "280" } },
   { name: "gapall", mod: "gaplist", env: { DONE: "", ALL: "1" } },

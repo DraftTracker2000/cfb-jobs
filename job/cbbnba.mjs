@@ -19,7 +19,9 @@ export function seasonFromCsv(text) {
   const out = {};
   for (let k = 1; k < lines.length; k++) { if (!lines[k]) continue; const f = csvLine(lines[k]); const id = f[I.id]; if (!id) continue;
     if (I.dnp >= 0 && /true/i.test(f[I.dnp])) continue; const min = +f[I.min] || 0; if (!min) continue;
-    const po = I.type >= 0 && +f[I.type] === 3; const key = po ? "p" : "r";
+    /* Oct 25 (Sam: Anthony Edwards 64 games in 2025–26, ESPN 61): only the regular season (2) and the playoffs (3) count — preseason (1),
+       the play-in (5) and anything else were being added to the regular season */
+    const ty = I.type >= 0 ? +f[I.type] : 2; if (ty !== 2 && ty !== 3) continue; const po = ty === 3; const key = po ? "p" : "r";
     const X = out[id] = out[id] || { nm: f[I.nm], tm: f[I.tm], r: new Array(15).fill(0), p: new Array(15).fill(0) };
     const A = X[key]; A[0]++; if (I.st >= 0 && /true/i.test(f[I.st])) A[1]++; A[2] += min;
     ["pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta"].forEach((c, j) => A[3 + j] += (+f[I[c]] || 0));
@@ -57,7 +59,7 @@ export function nbaTag(seasons, curY, rk = null, latest = null) {
 
 export async function buildNba({ getPack, putPack, log, full, curNba, live, sidToCbbd, draftById, nameMatch }) {
   let NH = full ? null : await getPack("p2000_cbb-nbahist").catch(() => null);
-  if (!NH || !NH.seasons) NH = { seasons: {} };
+  if (!NH || !NH.seasons || NH.v !== 2) NH = { v: 2, seasons: {} };   /* v2 (Oct 25): re-read every season without preseason and play-in games */
   const want = []; for (let y = 2009; y <= curNba; y++) if (!NH.seasons[y] || (live && y === curNba)) want.push(y);
   for (const y of want) {
     let txt = null; for (let k = 0; k < 3 && !txt; k++) { try { const r = await fetch(URL_OF(y), { redirect: "follow" }); if (r.status === 404) break; if (r.ok) txt = await r.text() } catch { } if (!txt) await sleep(2000) }

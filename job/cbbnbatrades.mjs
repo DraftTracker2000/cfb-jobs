@@ -107,7 +107,7 @@ export function parseNbaCareer(w, nowStart) {
 }
 /* how decorated an NBA career was: the infobox highlights that are NBA honors (All-Star picks, All-NBA, titles, awards — not college) — the chain game's
    two ends are players people know */
-export function nbaHonors(w) { const k = String(w).search(/\n\s*\|\s*highlights\s*=/); if (k < 0) return 0; const rest = w.slice(k + 1), e = rest.search(/\n\s*\|\s*[a-z_]+\s*=|\n\}\}/); const h = e < 0 ? rest : rest.slice(0, e); return h.split("\n").filter(l => /^\s*\*/.test(l) && /NBA|All-Star|Hall of Fame/i.test(l) && !/NCAA|All-American|college|G League|D-League|WNBA|EuroLeague|FIBA|Olympic/i.test(l)).length }
+export function nbaHonors(w) { const k = String(w).search(/\n\s*\|\s*highlights\s*=/); if (k < 0) return 0; const rest = w.slice(k + 1), e = rest.search(/\n\s*\|\s*[a-z_]+\s*=|\n\}\}/); const h = (e < 0 ? rest : rest.slice(0, e)).replace(/^\s*\|\s*highlights\s*=\s*/, "\n"); return h.split("\n").filter(l => /^\s*\*/.test(l) && /NBA|All-Star|Hall of Fame/i.test(l) && !/NCAA|All-American|college|G League|D-League|WNBA|EuroLeague|FIBA|Olympic/i.test(l)).length }
 /* his NBA honors with their seasons (Oct 24 — Sam: "for team pages on the history tab it would have the award counts mvps. all-pro's etc
    and then those would be the players that are added to those team pages"): each highlights line read for the honor and its years —
    {{nbay|1994|end}} = the 1994–95 season, {{nbafy|1981}} = the 1981 Finals (1980–81), {{nasg|1995}} = the 1995 All-Star Game (1994–95),
@@ -118,7 +118,7 @@ const AW_KIND = [[/Conference Finals|NBA Cup|In-Season Tournament/i, null], [/Fi
   [/All-Rookie/i, null], [/Rookie of the Year/i, "roy"], [/Sixth Man/i, "smoy"], [/Most Improved/i, "mip"], [/scoring champion|points leader/i, "scoring"], [/Hall of Fame/i, "hof"]];
 export function nbaAwards(w) { const k = String(w).search(/\n\s*\|\s*highlights\s*=/); if (k < 0) return []; const rest = w.slice(k + 1), e = rest.search(/\n\s*\|\s*[a-z_]+\s*=|\n\}\}/), out = [];
   /* footnotes and refs out (Russell's titles line carries a footnote citing the FIBA Hall of Fame), and nothing from his coaching years */
-  let h = (e < 0 ? rest : rest.slice(0, e)).replace(/<ref[^>]*\/>/g, "").replace(/<ref[^>]*>[\s\S]*?<\/ref>/g, "").replace(/\{\{\s*efn[^{}]*\}\}/gi, "");
+  let h = (e < 0 ? rest : rest.slice(0, e)).replace(/^\s*\|\s*highlights\s*=\s*/, "\n").replace(/<ref[^>]*\/>/g, "").replace(/<ref[^>]*>[\s\S]*?<\/ref>/g, "").replace(/\{\{\s*efn[^{}]*\}\}/gi, "");
   const co = h.search(/'''\s*As (?:head )?coach/i); if (co > 0) h = h.slice(0, co);
   /* Oct 25: link targets dropped first ("[[1951–52 NBA season|1952]]" is 1952), every line has to say NBA (other leagues' Finals MVPs
      were counting), the All-Star Game MVP and conference-finals MVP aren't the MVP or Finals MVP, and the Hall of Fame is its own field */
@@ -158,7 +158,7 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   let f2 = []; for (let k = 0; k < failed.length; k += 10) pages += await batch(failed.slice(k, k + 10), f2);
   let f3 = []; for (const t of f2) pages += await batch([t], f3);
   log(`nba careers: ${pages} of ${titles.length} pages read${f3.length ? `, ${f3.length} never came back` : ""}`);
-  await putPack("p2000_cbb-nbacareers", { v: 7, t: Date.now(), p: P, h: HN, aw: AW }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
+  await putPack("p2000_cbb-nbacareers", { v: 8, t: Date.now(), p: P, h: HN, aw: AW }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
 }
 /* probe (MODE=probe, PROBE=nba-careers-test): the infobox honors of a few players, raw and as read */
 export async function run() { const L = ["Magic Johnson", "LeBron James"];

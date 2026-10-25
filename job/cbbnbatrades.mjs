@@ -105,11 +105,14 @@ export function parseNbaCareer(w, nowStart) {
     const s0 = a.s, s1 = marks.length === 1 ? a.s : b.plain ? Math.max(s0, b.s - 1) : b.s; out.push([fr, s0, s1]) }
   return out.length ? out : null;
 }
+/* how decorated a career was: the bullet lines in the infobox's highlights (All-Star picks, All-NBA, titles, awards) — the chain game's
+   two ends are players people know */
+export function nbaHonors(w) { const k = String(w).search(/\n\s*\|\s*highlights\s*=/); if (k < 0) return 0; const rest = w.slice(k + 1), e = rest.search(/\n\s*\|\s*[a-z_]+\s*=|\n\}\}/); const h = e < 0 ? rest : rest.slice(0, e); return (h.match(/\n\s*\*/g) || []).length }
 export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   const now = new Date(), nowStart = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, cats = [...new Set(Object.keys(NBA_FR))].map(t => `Category:${t} players`);
   /* the names first (500 a read, each player once however many teams he played for), then the top of each page — the infobox —
      fifty players a read */
-  const P = {}, T = new Set(); let reads = 0; const miss = [];
+  const P = {}, HN = {}, T = new Set(); let reads = 0; const miss = [];
   const call = async q => { for (let a = 0; a < 4; a++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", ...q }), { headers: WUA }); reads++; if (r.ok) { const j = await r.json(); if (!j.error) return j; log(`nba careers: ${j.error.code} ${j.error.info}`) } else log(`nba careers: ${r.status}`) } catch (e) { log(`nba careers: ${e.message}`) } await new Promise(z => setTimeout(z, 3000 * (a + 1))) } return null };
   /* a category whose listing fails is tried again (Oct 24: the Lakers' and Pistons' lists failed once, and Kobe, Magic and Isiah — one team
      each — went missing) */
@@ -122,7 +125,7 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
     for (let g = 0; g < 20; g++) { let j = await call({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", ...(sec ? { rvsection: "0" } : {}), titles: L.join("|"), ...cont });
       if (!j) { failTo.push(...L); break }
       for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots && pg.revisions[0].slots.main.content; if (!w) continue;
-        got++; const C = parseNbaCareer(w, nowStart); if (!C) continue; const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim(); const cur = P[nm] || []; for (const c of C) if (!cur.some(x => x.join() === c.join())) cur.push(c); P[nm] = cur }
+        got++; const C = parseNbaCareer(w, nowStart); if (!C) continue; const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim(); const hn = nbaHonors(w); if (hn) HN[nm] = hn; const cur = P[nm] || []; for (const c of C) if (!cur.some(x => x.join() === c.join())) cur.push(c); P[nm] = cur }
       if (!j.continue) break; cont = j.continue }
     await new Promise(z => setTimeout(z, 400)); return got };
   /* fifty a read; any read that fails is tried again ten at a time, then one at a time */
@@ -130,7 +133,7 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   let f2 = []; for (let k = 0; k < failed.length; k += 10) pages += await batch(failed.slice(k, k + 10), f2);
   let f3 = []; for (const t of f2) pages += await batch([t], f3);
   log(`nba careers: ${pages} of ${titles.length} pages read${f3.length ? `, ${f3.length} never came back` : ""}`);
-  await putPack("p2000_cbb-nbacareers", { v: 3, t: Date.now(), p: P }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
+  await putPack("p2000_cbb-nbacareers", { v: 4, t: Date.now(), p: P, h: HN }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
 }
 /* probe (MODE=probe, PROBE=nba-careers-test): a fifty-page read with Kobe and Magic in it */
 export async function run() { const r0 = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", list: "categorymembers", cmtitle: "Category:Los Angeles Lakers players", cmlimit: "500", cmnamespace: "0" }), { headers: WUA });

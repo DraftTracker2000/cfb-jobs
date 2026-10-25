@@ -8,7 +8,7 @@ function text(buf) { const s = buf.toString("latin1"), out = []; let i = 0;
   while ((i = s.indexOf("stream", i)) >= 0) { let a = i + 6; if (s[a] === "\r") a++; if (s[a] === "\n") a++; const b = s.indexOf("endstream", a); if (b < 0) break;
     try { const t = inflateSync(buf.subarray(a, b)).toString("latin1"); const m = [...t.matchAll(/\(((?:\\.|[^\\)])*)\)\s*Tj|\[((?:[^\]])*)\]\s*TJ/g)].map(x => x[1] != null ? x[1] : [...x[2].matchAll(/\(((?:\\.|[^\\)])*)\)/g)].map(y => y[1]).join("")); if (m.length) out.push(...m) } catch (e) {} i = b + 9 }
   return out }
-export async function run() { if (process.env.FINGERS) return fingers(); const R = [];
+export async function run() { if (process.env.FINGERS) return fingers(); if (process.env.RAW) return raw(process.env.RAW, +(process.env.OFF || 0)); const R = [];
   for (const u of URLS) { try { const r = await fetch(u, H); const b = r.ok ? Buffer.from(await r.arrayBuffer()) : null; const T = b ? text(b) : [];
       R.push({ f: u.split("_").slice(1).join("_"), st: r.status, ct: r.headers.get("content-type"), kb: b ? Math.round(b.length / 1024) : 0, lines: T.length, sample: T.filter(x => /Injury|Ankle|Knee|Rest|Out|Questionable/i.test(x)).slice(0, 6) }) }
     catch (e) { R.push({ f: u, err: String(e.message).slice(0, 120) }) } }
@@ -22,3 +22,9 @@ async function fingers() { const days = []; for (const y of [2022, 2023, 2024, 2
       const T = text(Buffer.from(await r.arrayBuffer())).join(" ").replace(/\s+/g, " ");
       for (const m of T.matchAll(/Injury\/Illness\s*-\s*([^;]{0,60}?(?:Finger|Thumb|Hand|Wrist|Pinky)[^;]{0,25});\s*([A-Za-z ]{0,30})/gi)) { const k = m[1].trim() + "; " + m[2].trim().split(" ").slice(0, 2).join(" "); seen[k] = (seen[k] || 0) + 1 } } catch (e) {} }
   return { reports: ok, kinds: Object.entries(seen).sort((a, b) => b[1] - a[1]).slice(0, 60) } }
+
+/* the raw drawing commands of one report's first text stream, to see how rows and columns are laid out */
+async function raw(name, off) { const r = await fetch(`https://ak-static.cms.nba.com/referee/injury/Injury-Report_${name}.pdf`, H); const buf = Buffer.from(await r.arrayBuffer()), s = buf.toString("latin1"); let i = 0, best = "";
+  while ((i = s.indexOf("stream", i)) >= 0) { let a = i + 6; if (s[a] === "\r") a++; if (s[a] === "\n") a++; const b = s.indexOf("endstream", a); if (b < 0) break;
+    try { const t = inflateSync(buf.subarray(a, b)).toString("latin1"); if (/Tj|TJ/.test(t) && t.length > best.length) best = t } catch (e) {} i = b + 9 }
+  return best.slice(off, off + 3300) }

@@ -130,9 +130,11 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   log(`nba careers: ${pages} of ${titles.length} pages read${f3.length ? `, ${f3.length} never came back` : ""}`);
   await putPack("p2000_cbb-nbacareers", { v: 2, t: Date.now(), p: P }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.slice(0, 12).join(", ")}` : ""}`); return P;
 }
-/* probe (MODE=probe, PROBE=nba-careers-test): why a few famous careers were missing */
-export async function run() { const L = ["Larry Bird", "Kobe Bryant", "Scottie Pippen", "Kareem Abdul-Jabbar", "Kevin McHale"], out = {};
-  for (const sec of [true, false]) { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", prop: "revisions", rvprop: "content", rvslots: "main", ...(sec ? { rvsection: "0" } : {}), titles: L.join("|") }), { headers: WUA });
-    const j = await r.json(); out[sec ? "sec" : "full"] = { st: r.status, err: j.error, cont: j.continue, warn: j.warnings, pages: ((j.query || {}).pages || []).map(p => ({ t: p.title, has: !!(p.revisions && p.revisions[0]), len: p.revisions && p.revisions[0] && p.revisions[0].slots ? p.revisions[0].slots.main.content.length : 0, car: p.revisions && p.revisions[0] && p.revisions[0].slots ? parseNbaCareer(p.revisions[0].slots.main.content, 2026) : null })) } }
-  const cats = {}; for (const c of ["Category:Boston Celtics players", "Category:Los Angeles Lakers players"]) { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", list: "categorymembers", cmtitle: c, cmlimit: "500", cmnamespace: "0" }), { headers: WUA }); const j = await r.json(); const m = (j.query && j.query.categorymembers) || []; cats[c] = { n: m.length, cont: !!j.continue, bird: m.some(x => x.title === "Larry Bird"), kobe: m.some(x => x.title === "Kobe Bryant") } }
-  return { ok: true, out, cats } }
+/* probe (MODE=probe, PROBE=nba-careers-test): a fifty-page read with Kobe and Magic in it */
+export async function run() { const r0 = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", list: "categorymembers", cmtitle: "Category:Los Angeles Lakers players", cmlimit: "500", cmnamespace: "0" }), { headers: WUA });
+  const T = ((await r0.json()).query.categorymembers || []).map(m => m.title), k = T.indexOf("Kobe Bryant"), L = T.slice(Math.max(0, k - 25), k + 25); if (!L.includes("Magic Johnson")) L[0] = "Magic Johnson";
+  const out = []; let cont = {};
+  for (let g = 0; g < 10; g++) { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", prop: "revisions", rvprop: "content", rvslots: "main", rvsection: "0", titles: L.join("|"), ...cont }), { headers: WUA }); const j = await r.json();
+    out.push({ st: r.status, err: j.error && j.error.code, cont: j.continue, n: ((j.query || {}).pages || []).length, withRev: ((j.query || {}).pages || []).filter(p => p.revisions).length, kobe: ((j.query || {}).pages || []).filter(p => /Kobe Bryant|Magic Johnson/.test(p.title)).map(p => ({ t: p.title, rev: !!p.revisions, missing: p.missing, invalid: p.invalid, car: p.revisions ? parseNbaCareer(p.revisions[0].slots.main.content, 2026) : null })) });
+    if (!j.continue) break; cont = j.continue }
+  return { ok: true, k, out } }

@@ -937,7 +937,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
     const gz = gzipSync(Buffer.from(JSON.stringify(obj)));
     /* content checks (Oct 9): a source that still answers but sends nonsense keeps its size and slips past the 40% rule */
     const bad = packProblem(name, obj); if (bad) { held.push(`${name} (${bad})`); log(`nfl: HELD ${name}: ${bad}`); return }
-    const was = prevIx[name] && prevIx[name].bytes; if (was > 4096 && gz.length < .4 * was) { held.push(`${name} (${(gz.length / 1024).toFixed(0)} KB vs ${(was / 1024).toFixed(0)} KB)`); log(`nfl: HELD ${name}: ${gz.length} bytes vs ${was} last time`); return }
+    const was = prevIx[name] && prevIx[name].bytes; if (was > 4096 && gz.length < .4 * was && !(obj && obj.v && /_nfl-ingame-/.test(name)))   /* a new version of the in-game file may be smaller on purpose (Oct 25) */ { held.push(`${name} (${(gz.length / 1024).toFixed(0)} KB vs ${(was / 1024).toFixed(0)} KB)`); log(`nfl: HELD ${name}: ${gz.length} bytes vs ${was} last time`); return }
     const r = await api("PUT", `/api/pack/${name}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
     index[name] = { sha: r.sha, bytes: r.bytes, at: Date.now() }; up[name] = gz.length; log(`nfl: ${name} ${(gz.length / 1024).toFixed(0)} KB`);
   };

@@ -39,6 +39,8 @@ export function seasonFromCsv(text) {
     const X = out[id] = out[id] || { nm: f[I.nm], tm: f[I.tm], r: new Array(15).fill(0), p: new Array(15).fill(0) };
     const A = X[key]; A[0]++; if (I.st >= 0 && /true/i.test(f[I.st])) A[1]++; A[2] += min; if (!po && gd >= 0) (X.gd = X.gd || []).push([ymd(f), f[I.tm]]);
     ["pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta"].forEach((c, j) => A[3 + j] += (+f[I[c]] || 0));
+    /* big scoring games (Oct 25 — Sam: panels for 30–39, 40–49, 50–59 … point games over a career): counted per ten-point band, 30 to 100+ */
+    { const pt = +f[I.pts] || 0; if (pt >= 30) { const B = X.big = X.big || { r: new Array(8).fill(0), p: new Array(8).fill(0) }; B[key][Math.min(7, Math.floor(pt / 10) - 3)]++ } }
     if (!po) X.tm = f[I.tm] || X.tm }
   /* the regular-season games each player missed, by date (Oct 25 — Sam: "where are the 3 additional missed games"; airtight from the box
      scores): every date his team played and he didn't, from the season's first game (or the day after he left his last team) to its last
@@ -90,6 +92,13 @@ export async function buildNba({ getPack, putPack, log, full, curNba, live, sidT
     log(`nba ${y}: ${Object.keys(S).length} players`);
   }
   await putPack("p2000_cbb-nbahist", NH);
+  /* p2000_cbb-nbabig { v, s: { season: { espnId: [r30s, r40s … r100+, p30s … p100+] } } }: every regular-season and playoff game of 30+
+     points since 2001–02, by ten-point band. Past seasons are read once; the current one again each live run */
+  try { const BG = (await getPack("p2000_cbb-nbabig").catch(() => null)) || { v: 1, s: {} }; if (BG.v !== 1) { BG.v = 1; BG.s = {} } let nb = 0;
+    for (let y = 2002; y <= curNba; y++) { if (BG.s[y] && !(live && y === curNba) && y !== curNba) continue; if (nb >= 26 && y < curNba) continue;
+      let txt = null; for (let k = 0; k < 3 && !txt; k++) { try { const r = await fetch(URL_OF(y), { redirect: "follow" }); if (r.status === 404) break; if (r.ok) txt = await r.text() } catch { } if (!txt) await sleep(2000) }
+      if (!txt) continue; const S = seasonFromCsv(txt), o = {}; for (const [id, X] of Object.entries(S)) if (X.big) o[id] = [...X.big.r, ...X.big.p]; BG.s[y] = o; nb++ }
+    await putPack("p2000_cbb-nbabig", BG); log(`nba big games: ${Object.keys(BG.s).length} seasons (${nb} read this run)`) } catch (e) { log("nba big games: " + e.message) }
   /* missed regular-season games by date, 2021–22 on (the injury-report era), for the player pages: p2000_cbb-nbamiss { v, s: { season: { espnId: [yyyymmdd] } } } */
   try { const M = {}; for (const y in (NH.miss || {})) if (+y >= 2022) M[y] = NH.miss[y]; await putPack("p2000_cbb-nbamiss", { v: 1, s: M }) } catch (e) { log("nba missed games: " + e.message) }
   /* NBA careers of players who played Division I (by ESPN id) */

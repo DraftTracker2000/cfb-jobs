@@ -82,6 +82,9 @@ export async function buildNbaInj({ getPack, putPack, log = console.log, curNba,
   const today = new Date(), days = [];
   for (let s = curNba; s >= 2022; s--) for (let d = new Date(Date.UTC(s, 5, 25)); d >= new Date(Date.UTC(s - 1, 9, 15)); d.setUTCDate(d.getUTCDate() - 1)) {
     if (d > today) continue; const k = ymd(d), age = (today - d) / 864e5; if (P.done[k] === 1 && age > 1.2) continue; if (P.done[k] <= -4) continue; days.push(new Date(d)) }
+  /* never-tried days first, then the retries (Oct 26: the retries are the no-game days — before opening night, the All-Star break — and
+     coming first, 25 of them in a row stopped every run before it reached 2021–22) */
+  days.sort((a, b) => ((P.done[ymd(a)] == null ? 0 : 1) - (P.done[ymd(b)] == null ? 0 : 1)) || (b - a));
   let read = 0, rows = 0, miss = 0, streak = 0, stopped = false; const todo = days.slice(0, MAXD), CODES = {};
   const one = async d => { const iso = d.toISOString().slice(0, 10), k = ymd(d), newStyle = k >= "20251211";   /* the 15-minute file names start mid-December 2025 */
     for (const tm of newStyle ? ["05_00PM", "05_30PM", "04_30PM", "06_00PM"] : ["05PM", "06PM", "04PM", "01PM"]) {   /* only that era's file names: fewer misses for the server to count against us */
@@ -92,7 +95,7 @@ export async function buildNbaInj({ getPack, putPack, log = console.log, curNba,
       for (const x of R) { const st = ST[String(x.status).toLowerCase()]; if (!st) continue; const dt = x.date ? +(x.date.slice(6) + x.date.slice(0, 2) + x.date.slice(3, 5)) : +k;
         const L = P.p[name(x.player)] = (P.p[name(x.player)] || []).filter(z => z[0] !== dt); L.push([dt, idx(P.T, Ti, x.team), st, idx(P.R, Ri, x.reason || "")]); rows++ }
       P.done[k] = 1; return }
-    P.done[k] = (P.done[k] < 0 ? P.done[k] : 0) - 1; miss++; streak++ };
+    const fresh = P.done[k] == null; P.done[k] = (P.done[k] < 0 ? P.done[k] : 0) - 1; miss++; if (fresh) streak++ };   /* a retry missing again is expected (no games that day) — only new days count toward the stop */
   /* one at a time with a short pause (Oct 25: six at once read 7 of 600 days — the league's server turns away bursts) */
   /* a long run of days with nothing usually means the server has started turning us away: stop, keep what's read, finish next run */
   for (const d of todo) { await one(d); if (streak >= 25) { stopped = true; break } await new Promise(z => setTimeout(z, 250)) }

@@ -99,6 +99,11 @@ const r1 = v => v == null ? null : Math.round(v * 10) / 10, r2 = v => v == null 
 /* ── games ── */
 const GAME_COLS = ["id", "season", "type", "week", "date", "time", "away", "awayScore", "home", "homeScore", "neutral", "awayRest", "homeRest",
   "awayML", "homeML", "spread", "total", "div", "roof", "surface", "temp", "wind", "awayCoach", "homeCoach", "stadium", "awayQB", "homeQB"];
+/* Oct 26 audit (M2): nflverse's roof for games abroad is wrong for open-air grounds (the MCG, Stade de France and Munich's Allianz Arena
+   came through as "dome"), so those games were called indoors, got no forecast and counted in the indoor splits. Open-air grounds abroad
+   are "outdoors" whatever the file says; Frankfurt's and the Bernabéu's retractable roofs keep the file's open/closed when it has one. */
+const OPEN_ABROAD = /tottenham|wembley|twickenham|allianz|bayern|olympiastadion|berlin|corinthians|s(ã|a)o paulo|maracan|melbourne|cricket ground|stade de france|azteca|banorte|croke|dublin/i;
+export const fixRoof = (roof, stadium) => (stadium && OPEN_ABROAD.test(stadium) && roof !== "outdoors" ? "outdoors" : roof || null);
 export async function games(log) {
   /* nflverse moved the schedule to games.csv.gz (Oct 6: the plain .csv started answering 404, and a run wrote an empty schedule) */
   const t = (await get("schedules/games.csv.gz", log)) || (await get("schedules/games.csv", log)); const out = [];
@@ -107,7 +112,7 @@ export async function games(log) {
     const s = +o.season; if (!(s >= FIRST)) return;
     out.push([o.game_id, s, o.game_type, +o.week, o.gameday, o.gametime, o.away_team, num(o.away_score), o.home_team, num(o.home_score), o.location === "Neutral" ? 1 : 0,
       num(o.away_rest), num(o.home_rest), num(o.away_moneyline), num(o.home_moneyline), num(o.spread_line), num(o.total_line), num(o.div_game) ? 1 : 0,
-      o.roof || null, o.surface || null, num(o.temp), num(o.wind), o.away_coach || null, o.home_coach || null, o.stadium || null, o.away_qb_id || null, o.home_qb_id || null]);
+      fixRoof(o.roof, o.stadium), o.surface || null, num(o.temp), num(o.wind), o.away_coach || null, o.home_coach || null, o.stadium || null, o.away_qb_id || null, o.home_qb_id || null]);
   });
   return { cols: GAME_COLS, g: out };
 }
@@ -250,7 +255,7 @@ async function pbp(S, log) {
   const zc = (Z, k) => Z[k] = Z[k] || [0, 0, 0, 0, 0, 0];   // att, cmp, yds, td, int, epa
   rows(t, ["game_id", "season_type", "home_team", "away_team", "posteam", "defteam", "qtr", "down", "ydstogo", "yardline_100", "play_type", "yards_gained", "pass_location",
     "air_yards", "run_location", "epa", "score_differential", "total_home_score", "total_away_score", "complete_pass", "interception", "touchdown", "sack", "fumble_lost",
-    "passer_player_id", "receiver_player_id", "rusher_player_id", "qb_spike", "qb_kneel", "two_point_attempt", "first_down", "third_down_converted", "aborted_play", "weather", "roof",
+    "passer_player_id", "receiver_player_id", "rusher_player_id", "qb_spike", "qb_kneel", "two_point_attempt", "first_down", "third_down_converted", "aborted_play", "weather", "roof", "stadium",
     "fixed_drive", "half_seconds_remaining", "posteam_score", "defteam_score", "posteam_score_post", "defteam_score_post", "run_gap", "success",
     "solo_tackle_1_player_id", "solo_tackle_2_player_id", "assist_tackle_1_player_id", "assist_tackle_2_player_id", "tackle_with_assist_1_player_id", "tackle_with_assist_2_player_id",
     "pass_defense_1_player_id", "pass_defense_2_player_id", "interception_player_id", "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id",
@@ -292,7 +297,7 @@ async function pbp(S, log) {
       if (o.play_type === "pass" && o.passer_player_id) dv.P[o.passer_player_id] = (dv.P[o.passer_player_id] || 0) + 1;
       else if (o.play_type === "run" && o.rusher_player_id && o.passer_player_id) dv.P[o.passer_player_id] = (dv.P[o.passer_player_id] || 0) + 1 }
     if (hsF(o)) FS[g] = [o.home_team, o.away_team, num(o.total_home_score), num(o.total_away_score)];
-    if (!(g in WX)) WX[g] = precipOf(o.weather, o.roof);
+    if (!(g in WX)) WX[g] = precipOf(o.weather, fixRoof(o.roof, o.stadium));
     /* the score as the game went: home margin at the half, after three quarters, low and high */
     const hs = num(o.total_home_score), as = num(o.total_away_score), q = num(o.qtr);
     if (hs != null && as != null) { const m = hs - as, x = G[g] = G[g] || [null, null, 0, 0, o.home_team, o.away_team];
@@ -372,7 +377,8 @@ async function pbp(S, log) {
         if (o.receiver_player_id) { const rid = o.receiver_player_id, ry = ev.cmp ? yds : 0;
           const rs = (RS[rid] = RS[rid] || {})[d] = RS[rid][d] || [0, 0]; rs[0]++; rs[1] += ry; LG[d][0]++; LG[d][1] += ry;
           const dsx = ((DS[o.defteam] = DS[o.defteam] || {})[d] = DS[o.defteam][d] || {}), x = dsx[rid] = dsx[rid] || [0, 0]; x[0]++; x[1] += ry;
-          const rz = (RZ[rid] = RZ[rid] || {})[k] = RZ[rid][k] || [0, 0]; rz[0]++; rz[1] += ry; const lz = LZ[k] = LZ[k] || [0, 0]; lz[0]++; lz[1] += ry;
+          /* Oct 26 audit (H2): was `const rz`, which hid the play's red-zone flag below — every target counted as a red-zone target */
+          const rzr = (RZ[rid] = RZ[rid] || {})[k] = RZ[rid][k] || [0, 0]; rzr[0]++; rzr[1] += ry; const lz = LZ[k] = LZ[k] || [0, 0]; lz[0]++; lz[1] += ry;
           const dzx = ((DZ[o.defteam] = DZ[o.defteam] || {})[k] = DZ[o.defteam][k] || {}), xz = dzx[rid] = dzx[rid] || [0, 0]; xz[0]++; xz[1] += ry;
           const r = pl(R, o.receiver_player_id); add(zc(r.Z, k)); addPass(r.all, ev); if (late) addPass(r.late, ev); if (rz) addPass(r.rz, ev); if (two) addPass(r.two, ev);
           if (third) { r.third[0]++; if (o.third_down_converted === "1") r.third[1]++ } } }
@@ -615,7 +621,7 @@ export async function kicking(S, log) {
   const FG = [], K = {}, P = {}, DST = {}, KG = {}, PREV = {};
   rows(t, ["game_id", "season_type", "posteam", "yardline_100", "field_goal_attempt", "field_goal_result", "kick_distance", "extra_point_attempt", "extra_point_result",
     "kickoff_attempt", "touchback", "punt_attempt", "punt_blocked", "punt_fair_catch", "return_yards", "kicker_player_id", "kicker_player_name", "punter_player_id",
-    "punter_player_name", "weather", "roof", "temp", "wind", "desc", "kickoff_out_of_bounds", "kickoff_fair_catch", "punt_out_of_bounds", "punt_downed",
+    "punter_player_name", "weather", "roof", "stadium", "temp", "wind", "desc", "kickoff_out_of_bounds", "kickoff_fair_catch", "punt_out_of_bounds", "punt_downed",
     "defteam", "play_type", "yards_gained", "sack", "interception", "fumble_lost", "fumble_forced", "fumble_recovery_1_team", "safety", "touchdown", "td_team",
     "tackled_for_loss", "pass_defense_1_player_id", "pass_defense_2_player_id", "two_point_attempt", "qtr", "game_seconds_remaining", "score_differential",
     "timeout", "timeout_team", "own_kickoff_recovery"], o => {
@@ -644,7 +650,7 @@ export async function kicking(S, log) {
     if (o.kicker_player_id && (o.field_goal_attempt === "1" || o.extra_point_attempt === "1")) { const x = (KG[o.kicker_player_id] = KG[o.kicker_player_id] || {})[o.game_id] = KG[o.kicker_player_id][o.game_id] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
       if (o.extra_point_attempt === "1") { x[9]++; if (o.extra_point_result === "good") x[8]++ }
       else { const d = num(o.kick_distance); if (d != null) { const i = d < 40 ? 0 : d < 50 ? 2 : d < 60 ? 4 : 6; x[i + 1]++; if (o.field_goal_result === "made") x[i]++ } } }
-    const out = o.roof === "outdoors" || o.roof === "open", wind = out && num(o.wind) >= 15, cold = out && num(o.temp) != null && num(o.temp) <= 40,
+    const rf = fixRoof(o.roof, o.stadium), out = rf === "outdoors" || rf === "open", wind = out && num(o.wind) >= 15, cold = out && num(o.temp) != null && num(o.temp) <= 40,
       wet = out && /rain|snow|sleet|shower|drizzle/i.test(o.weather || "");
     /* how a miss missed (Sam, Oct 1: "do we know if kickers miss right or left?"): the play description says wide right / left, short,
        off the upright or crossbar, or blocked */

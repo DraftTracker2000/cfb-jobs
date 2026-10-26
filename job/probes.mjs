@@ -2,6 +2,11 @@
    async function evaluated in the page (w(ms) waits, W is the width). Return {ok, ...whatever helps}. Keep results short. */
 const res = `const R=()=>performance.getEntriesByType("resource").map(e=>decodeURIComponent(e.name));`;
 export const PROBES = [
+  /* Oct 26 (#52): can college basketball injuries be kept from now on — does ESPN list them, and do game summaries carry them */
+  { name: "cbbinj", node: `const o={ok:true};const a=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/injuries");o.list=a.status+" "+(a.ok?JSON.stringify(await a.json()).slice(0,300):"");
+const sb=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=20260314&groups=50&limit=5").then(r=>r.json()).catch(()=>null);const ev=sb&&sb.events&&sb.events[0];o.ev=ev&&ev.id;
+if(ev){const s=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/summary?event="+ev.id).then(r=>r.json());o.keys=Object.keys(s).join(",");o.inj=JSON.stringify(s.injuries||null).slice(0,400);const b=s.boxscore&&s.boxscore.players&&s.boxscore.players[0];o.dnp=b?JSON.stringify((b.statistics[0].athletes||[]).filter(x=>x.didNotPlay||x.reason).slice(0,3)).slice(0,400):null}
+const t=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/150/injuries").catch(()=>null);o.team=t?t.status:null;return o` },
   /* Oct 26 (#47): what ESPN's contract records say for players we have no 2026-27 contract for */
   { name: "nbacon", node: `const H={headers:{Authorization:"Bearer "+TOKEN}};const G=await fetch(SITE+"/api/pack/p2026_cbb-nbagames",H).then(r=>r.json());const F=await fetch(SITE+"/api/pack/p2026_cbb-nbafront",H).then(r=>r.json());
 const miss=Object.entries(G.allp).filter(([id,a])=>a.tm&&!F.con[id]);const pick=miss.filter(([id,a])=>/LeBron|Westbrook|Aday Mara|Chris Paul|Kevin Love|Josh Dix|Otega/.test(a.nm)).slice(0,8);const o={ok:true,miss:miss.length,r:[]};

@@ -49,7 +49,7 @@ export async function contractPack(Y, log, extra = null, base = null) {
     if (d) { kind = d.cap && Object.keys(d.cap).length ? "vet" : "terms"; for (const y of years) if (d.cap && d.cap[y] != null) cap[y] = d.cap[y]; sb = d.sb ?? null; est = d.estAll ? 2 : d.est ? 1 : 0; src = d.src || null; lab = d.srcLabel || null; note = d.note || null; total = d.total ?? null; span = d.years || null; dt = d.type || null;
       /* a second deal with the team that drafted him, signed while his rookie deal still ran (first-rounders: through the option year) — an
          extension (Oct 26 — Sam: Ja'Marr Chase's deal isn't a "veteran deal") */
-      if (!dt && iDC >= 0 && x[iDC] && x[iDC] === team && entry && pick) { const sy = +String(d.signed || d.years || "").slice(0, 4); if (sy && sy <= entry + (pick <= 32 ? 4 : 3)) dt = "ext" } }
+      if (!dt && iDC >= 0 && x[iDC] && x[iDC] === team && entry && pick) { const sy = +String(d.signed || d.years || "").slice(0, 4); if (sy && sy <= entry + (pick <= 32 ? 4 : 3)) dt = "ext"; else if (!sy && exp >= 4) dt = "second" } }
     else if (st === "DEV") { kind = "ps"; cap[Y] = psWeekly(Y, exp) * 18 }
     else if (pick && entry && entry >= Y - 3) { kind = "rookie"; const rd = rookieDeal(entry, pick); for (const y of years) if (rd.cap[y] != null) cap[y] = rd.cap[y]; sb = rd.sb; est = rd.est ? 1 : 0; src = "scale" }
     else if (pick && entry === Y - 4 && pick <= 32) kind = "option";

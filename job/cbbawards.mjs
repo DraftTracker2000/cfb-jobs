@@ -56,7 +56,7 @@ export async function buildAwards({ getPack, putPack, log = console.log, force =
     /* the men's Division I table only — these pages also list women's winners and other divisions */
     for (const T of tables(w)) { let H = T.heads; if (/women|division (ii|iii|2|3)\b|naia|junior|njcaa|two-year|small college|high school|coach|key/i.test(T.heading + " " + T.caption)) continue;
       /* a table whose header row didn't parse (a caption on the same line): season, player, school, in that order, when the first cell is a season */
-      if (!H.length) { if (!T.rows.length || !seasonOf(cellText(T.rows[0][0] || ""))) continue; H = ["season", "player", "school"] } const iS = H.findIndex(h => /season|year/.test(h)), iP = H.findIndex(h => /player|winner|recipient|name/.test(h)), iT = H.findIndex(h => /^(school|team|college)/.test(h)); if (iS < 0 || iP < 0) continue;
+      if (!H.length) { if (!T.rows.some(r => seasonOf(cellText(r[0] || "")))) continue; H = ["season", "player", "school"] } const iS = H.findIndex(h => /season|year/.test(h)), iP = H.findIndex(h => /player|winner|recipient|name/.test(h)), iT = H.findIndex(h => /^(school|team|college)/.test(h)); if (iS < 0 || iP < 0) continue;
       for (const r of T.rows) { const y = seasonOf(cellText(r[iS] || "")); if (!y || y < 2009 || y > Y1 + 1) continue; const nm = cellText(r[iP] || "").replace(/\s*\(\d+\)$/, ""); if (!nm || /vacated|not awarded/i.test(nm)) continue;
         const sc = iT >= 0 ? cellText(r[iT] || "") : ""; rows.push([y, key, nm, sc]); n++ } }
     log(`awards: ${title} — ${n} winners since 2008–09`) }

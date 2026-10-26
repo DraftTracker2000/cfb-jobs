@@ -2,6 +2,12 @@
    async function evaluated in the page (w(ms) waits, W is the width). Return {ok, ...whatever helps}. Keep results short. */
 const res = `const R=()=>performance.getEntriesByType("resource").map(e=>decodeURIComponent(e.name));`;
 export const PROBES = [
+  /* Oct 26 (#47): what ESPN's contract records say for players we have no 2026-27 contract for */
+  { name: "nbacon", node: `const H={headers:{Authorization:"Bearer "+TOKEN}};const G=await fetch(SITE+"/api/pack/p2026_cbb-nbagames",H).then(r=>r.json());const F=await fetch(SITE+"/api/pack/p2026_cbb-nbafront",H).then(r=>r.json());
+const miss=Object.entries(G.allp).filter(([id,a])=>a.tm&&!F.con[id]);const pick=miss.filter(([id,a])=>/LeBron|Westbrook|Aday Mara|Chris Paul|Kevin Love|Josh Dix|Otega/.test(a.nm)).slice(0,8);const o={ok:true,miss:miss.length,r:[]};
+for(const [id,a] of pick){const row=[a.nm,id];for(const y of [2027,2026]){const r=await fetch("https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/athletes/"+id+"/contracts/"+y);row.push(y+":"+r.status+(r.ok?":"+JSON.stringify(await r.json()).slice(0,160):""))}
+ const L=await fetch("https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/athletes/"+id+"/contracts").then(r=>r.ok?r.json():null).catch(()=>null);row.push("list:"+(L?JSON.stringify(L).slice(0,200):"none"));o.r.push(row.join(" | "))}
+o.r=o.r.join(" || ");return o` },
   /* Oct 26 (Sam: "but no stats available. right?" — "sure do that"): of the NBA's current players who came from overseas, how many Wikipedia
      pages have a stats table from before the NBA (EuroLeague or a domestic league) and don't cite Sports Reference */
   { name: "eurostat", node: `const H={headers:{Authorization:"Bearer "+TOKEN}},UA={headers:{"User-Agent":"mycbbbigboard.com data job (college basketball stats site; contact via the site)"}};const sl=ms=>new Promise(r=>setTimeout(r,ms));

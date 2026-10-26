@@ -265,14 +265,14 @@ async function pbp(S, log) {
     /* fantasy bonuses by player and game: [pass TD 40+, 50+, rush TD 40+, 50+, catch TD 40+, 50+, pick-six thrown, completion 40+, run 40+, catch 40+] */
     if (o.two_point_attempt !== "1") { const yg = num(o.yards_gained), id = x => x && x !== "NA" ? x : null;
       const b = (pid, i) => { if (!pid) return; const m = BON[pid] = BON[pid] || {}; (m[g] = m[g] || new Array(BON_N).fill(0))[i]++ };
-      const ps = id(o.passer_player_id), rc = id(o.receiver_player_id), ru = id(o.rusher_player_id), td = id(o.td_player_id);
+      const ps = id(o.passer_player_id), rc = id(o.receiver_player_id), ru = id(o.rusher_player_id), tdId = id(o.td_player_id);   /* Oct 26: was `td`, shadowing the play's touchdown flag (the `rz` setup) */
       /* laterals (Sam, Oct 4 — Evans caught it for 2 and pitched to Deebo Samuel, who went 80 for the score): the passer gets the whole play;
          each ball carrier gets his own yards, and the touchdown bonus goes to whoever scored */
       const lrc = id(o.lateral_receiver_player_id), lru = id(o.lateral_rusher_player_id), lry = num(o.lateral_receiving_yards) || 0, lrr = num(o.lateral_rushing_yards) || 0;
       const rcY = lrc ? num(o.receiving_yards) ?? (yg - lry) : yg, ruY = lru ? num(o.rushing_yards) ?? (yg - lrr) : yg;
       if (o.pass_touchdown === "1" && yg != null) { if (yg >= 40) b(ps, 0); if (yg >= 50) b(ps, 1);
-        const [who, y] = lrc && td === lrc ? [lrc, lry] : [rc, rcY]; if (y >= 40) b(who, 4); if (y >= 50) b(who, 5) }
-      if (o.rush_touchdown === "1" && yg != null) { const [who, y] = lru && td === lru ? [lru, lrr] : [ru, ruY]; if (y >= 40) b(who, 2); if (y >= 50) b(who, 3) }
+        const [who, y] = lrc && tdId === lrc ? [lrc, lry] : [rc, rcY]; if (y >= 40) b(who, 4); if (y >= 50) b(who, 5) }
+      if (o.rush_touchdown === "1" && yg != null) { const [who, y] = lru && tdId === lru ? [lru, lrr] : [ru, ruY]; if (y >= 40) b(who, 2); if (y >= 50) b(who, 3) }
       if (o.interception === "1" && o.return_touchdown === "1") b(ps, 6);
       if (o.complete_pass === "1" && yg != null) { if (yg >= 40) b(ps, 7); if (rcY >= 40) b(rc, 9); if (lrc && lry >= 40) b(lrc, 9) }
       if (o.play_type === "run" && yg != null) { if (ruY >= 40) b(ru, 8); if (lru && lrr >= 40) b(lru, 8) } }
@@ -363,7 +363,7 @@ async function pbp(S, log) {
         dfx: [...ids(o, ["sack_player_id"]).map(id => [id, 1]), ...ids(o, ["half_sack_1_player_id", "half_sack_2_player_id"]).map(id => [id, .5]), ...ids(o, ["interception_player_id"]).map(id => [id, 1]), ...ids(o, ["forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id"]).map(id => [id, 1])], dft: o.defteam }) }
     if (o.passer_player_id && o.complete_pass === "1" && o.receiver_player_id && o.receiver_player_id !== "NA" && num(o.yards_after_catch) != null && num(o.air_yards) != null)
       YACS.push([o.receiver_player_id, Math.max(-5, Math.min(40, Math.round(num(o.air_yards) / 5) * 5)) + "|" + (o.pass_location || "x"), num(o.yards_after_catch)]);
-    { const po = num(o.pass_oe); if (po != null && o.defteam && (pt === "pass" || pt === "run") && o.two_point_attempt !== "1") { const td = T[o.defteam] = T[o.defteam] || { off: {}, def: {} }, xd = td.proeD = td.proeD || [0, 0]; xd[0] += po; xd[1]++ } }
+    { const po = num(o.pass_oe); if (po != null && o.defteam && (pt === "pass" || pt === "run") && o.two_point_attempt !== "1") { const tdef = T[o.defteam] = T[o.defteam] || { off: {}, def: {} }, xd = tdef.proeD = tdef.proeD || [0, 0]; xd[0] += po; xd[1]++ } }
     { const po = num(o.pass_oe); if (po != null && o.posteam && (pt === "pass" || pt === "run") && o.two_point_attempt !== "1") { const tt = T[o.posteam] = T[o.posteam] || { off: {}, def: {} }, x = tt.proe = tt.proe || [0, 0]; x[0] += po; x[1]++ } }
     if (pt === "pass" && o.passer_player_id) {
       const ev = { sack: o.sack === "1", cmp: o.complete_pass === "1", int: o.interception === "1", td: td && o.interception !== "1", fl, yds, epa, fd: o.first_down === "1" };

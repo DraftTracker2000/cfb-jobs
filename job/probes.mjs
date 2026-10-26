@@ -2,6 +2,16 @@
    async function evaluated in the page (w(ms) waits, W is the width). Return {ok, ...whatever helps}. Keep results short. */
 const res = `const R=()=>performance.getEntriesByType("resource").map(e=>decodeURIComponent(e.name));`;
 export const PROBES = [
+  /* Oct 26 (Sam: "but no stats available. right?" — "sure do that"): of the NBA's current players who came from overseas, how many Wikipedia
+     pages have a stats table from before the NBA (EuroLeague or a domestic league) and don't cite Sports Reference */
+  { name: "eurostat", node: `const H={headers:{Authorization:"Bearer "+TOKEN}},UA={headers:{"User-Agent":"mycbbbigboard.com data job (college basketball stats site; contact via the site)"}};const sl=ms=>new Promise(r=>setTimeout(r,ms));
+const C=await fetch(SITE+"/api/pack/p2000_cbb-nbacareers",H).then(r=>r.json());const G=await fetch(SITE+"/api/pack/p2026_cbb-nbagames",H).then(r=>r.json());
+const nk=x=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z]/g,"");const cur=new Set(Object.values(G.allp||{}).filter(a=>a.tm).map(a=>nk(a.nm)));
+const L=Object.entries(C.o||{}).filter(([n,o])=>!o.col&&(o.pre||[]).some(([,t])=>!/^\u2192/.test(t))&&cur.has(nk(n)));const out={n:L.length,stats:0,sref:0,both:0,noTable:0,miss:0,ok:[],blocked:[]};
+for(const [n] of L){let w=null;for(let a=0;a<4&&!w;a++){try{const j=await fetch("https://en.wikipedia.org/w/api.php?action=parse&prop=wikitext&format=json&formatversion=2&redirects=1&page="+encodeURIComponent(n),UA).then(r=>r.json());w=j.parse?j.parse.wikitext:"";}catch(e){await sl(4000*(a+1))}}await sl(1200);
+ if(!w){out.miss++;continue}const sr=/sports-reference|basketball-reference/i.test(w);const tb=/==+\s*(EuroLeague|Euroleague|EuroCup|Domestic|Liga ACB|ACB|Adriatic|ABA League|LNB|Pro A|Basketball Super League|BSL|Greek Basket|NBL|Serbian|Turkish|Lega Basket|Liga Endesa|Basketball Bundesliga|International)[^=]*==+/i.test(w)||/\{\|[^\n]*\n[^]*?(EuroLeague|Euroleague)[^]*?\|\}/.test(w);
+ if(tb)out.stats++;if(sr)out.sref++;if(tb&&!sr){out.ok.push(n)}else if(tb&&sr){out.both++;out.blocked.push(n)}if(!tb)out.noTable++}
+out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(", ");return {ok:true,r:JSON.stringify(out)}` },
   /* Oct 26: when do hoopR's NBA schedule and box-score files update? (Sunday's games weren't in our 6:37 am run) */
   { name: "hrtime", node: `const o={ok:true,r:[]};for(const t of ["espn_nba_schedules","espn_nba_player_boxscores","espn_nba_rosters"]){const j=await fetch("https://api.github.com/repos/sportsdataverse/sportsdataverse-data/releases/tags/"+t).then(r=>r.json());for(const a of (j.assets||[]).filter(a=>/2027/.test(a.name)))o.r.push(t+" "+a.name+" "+a.updated_at)}const c=await fetch("https://api.github.com/repos/sportsdataverse/hoopR-nba-data/commits?per_page=12").then(r=>r.json()).catch(()=>[]);o.c=(Array.isArray(c)?c:[]).map(x=>x.commit&&x.commit.committer&&x.commit.committer.date);return o` },
   /* Oct 22 (Sam: lineups "there should be other ways to clean this out"): can the runners read NBA.com's official rotation (exact in/out times) */

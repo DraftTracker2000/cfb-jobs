@@ -35,7 +35,10 @@ export async function contractPack(Y, log, extra = null, base = null) {
   const seen = {}; for (let i = 1; i < R.length; i++) { const x = R[i], w = +x[iW]; if (!x[iG] || !w || (x[iGT] && x[iGT] !== "REG")) continue;
     const s = seen[x[iG]] = seen[x[iG]] || { ps: false, first: {} }; if (x[iS] === "DEV") s.ps = true; else if (!(x[iT] in s.first) || w < s.first[x[iT]]) s.first[x[iT]] = w }
   const p = {}, years = [Y, Y + 1, Y + 2, Y + 3], moved = [];
-  for (let i = 1; i < R.length; i++) { const x = R[i]; if (+x[iW] !== wk || !x[iG]) continue;
+  /* each player's latest weekly roster row (Oct 26 data check: the weekly roster file has no rows for teams on a bye that week, so
+     reading only the latest week left four whole teams out — Josh Allen had no contract while Buffalo was off) — the last two weeks */
+  const LAST = {}; for (let i = 1; i < R.length; i++) { const x = R[i], w = +x[iW]; if (!x[iG] || !w || (x[iGT] && x[iGT] !== "REG")) continue; if (!LAST[x[iG]] || w > +R[LAST[x[iG]]][iW]) LAST[x[iG]] = i }
+  for (const ii of Object.values(LAST)) { const x = R[ii]; if (+x[iW] < wk - 1) continue;
     const g = x[iG], st = x[iS], entry = +x[iE] || +x[iR] || null, pick = +x[iD] || null, exp = +x[iX] || 0, team = x[iT];
     if (!["ACT", "RES", "INA", "PUP", "DEV", "SUS", "NWT", "EXE"].includes(st)) continue;
     let kind, cap = {}, sb = null, est = 1, src = null, lab = null, note = null, total = null, span = null, dt = null;

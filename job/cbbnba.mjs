@@ -285,10 +285,13 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
   const PREV = getPack ? await getPack(`p${S}_cbb-nbagames`).catch(() => null) : null, LOCK = {};
   if (PREV && Array.isArray(PREV.games)) for (const x of PREV.games) if (x && x[8] != null) LOCK[x[0]] = [x[8], x[9]];
   const now = Date.now(); let locked = 0;
-  const games = []; for (const g of rowsOf(sched)) { const st = +g.season_type; if (st !== 2 && st !== 3 && st !== 5) continue;   /* 5 = play-in (Oct 21 audit) */ const h = g.home_abbreviation, a = g.away_abbreviation; if (!T[h] || !T[a]) continue;
+  /* Oct 26 (Sam: "we also havent done how we will handle the nba cup"): the NBA Cup final is on the regular-season schedule but doesn't count
+     in the standings — it's marked 2 in the playoffs column (the page's season sim and standings skip anything non-zero there) */
+  const SR = rowsOf(sched), CUPF = cupFinalIds(SR.flatMap(g => [[g.home_abbreviation, g.id, String(g.date || "").slice(0, 10), g.season_type], [g.away_abbreviation, g.id, String(g.date || "").slice(0, 10), g.season_type]]));
+  const games = []; for (const g of SR) { const st = +g.season_type; if (st !== 2 && st !== 3 && st !== 5) continue;   /* 5 = play-in (Oct 21 audit) */ const h = g.home_abbreviation, a = g.away_abbreviation; if (!T[h] || !T[a]) continue;
     let pk = nbaPick({ net: T[h].pnet }, { net: T[a].pnet }, /true/i.test(g.neutral_site));
     if (Date.parse(g.date) <= now && LOCK[+g.id]) { pk = { p: LOCK[+g.id][0], m: LOCK[+g.id][1] }; locked++ }
-    games.push([+g.id, g.date, h, a, /true/i.test(g.status_type_completed) ? +g.home_score : null, /true/i.test(g.status_type_completed) ? +g.away_score : null, g.status_type_state, g.broadcast_name || g.broadcast || "", pk.p, pk.m, st === 3 ? 1 : 0]) }
+    games.push([+g.id, g.date, h, a, /true/i.test(g.status_type_completed) ? +g.home_score : null, /true/i.test(g.status_type_completed) ? +g.away_score : null, g.status_type_state, g.broadcast_name || g.broadcast || "", pk.p, pk.m, st === 3 ? 1 : st === 5 ? 3 : CUPF.has(g.id) ? 2 : 0]) }   /* 1 playoffs · 2 Cup final · 3 play-in: none count in the standings */
   games.sort((x, y) => x[1].localeCompare(y[1])); log(`nba games: ${locked} picks kept from before tip-off`);
   /* shot zones, close games and the series from the play-by-play: last season's is cached (it won't change); this season's is
      re-read each run and takes over once there are 150 games */

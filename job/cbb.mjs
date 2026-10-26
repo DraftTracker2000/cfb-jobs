@@ -254,6 +254,8 @@ export async function main() {
        seasons since come from the site's own NBA data every night. Bump the pack version to read it again. */
     if (!C || (C.v || 0) < 8) await buildNbaCareers({ getPack, putPack, log }) } catch (e) { log("nba careers: " + e.message) }
     /* the league's official injury reports (Oct 25): past days read once, then the new day each run */
+    /* college national awards and consensus All-Americans (Oct 26), re-read once a week */
+    try { const { buildAwards } = await import("./cbbawards.mjs"); await buildAwards({ getPack, putPack, log }) } catch (e) { log("college awards: " + e.message) }
     try { const { buildNbaInj } = await import("./cbbnbainj.mjs"); await buildNbaInj({ getPack, putPack, log, curNba }) } catch (e) { log("nba injury reports: " + e.message) }
     try { await refreshNbaOnCourt({ getPack, putPack, log, curNba: M >= 7 ? Yr + 1 : Yr, packNames: [`p${UPCOMING}_cbb-nbagames`, `p${UPCOMING - 1}_cbb-nbagames`] }) } catch (e) { log("nba on-court: " + e.message) }
     await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `Basketball · NBA stats only · ${((Date.now() - started) / 60e3).toFixed(1)} min · 0 CBBD calls`; log(msg);

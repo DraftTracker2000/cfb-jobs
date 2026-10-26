@@ -41,7 +41,7 @@ export function tables(w) { const out = []; let i = 0;
       const row = []; const live = carry.filter(c => c.left > 0); let k = 0; const total = heads.length || cells.length;
       for (let col = 0; col < Math.max(total, cells.length + live.length); col++) { const sp = live.find(c => c.col === col); if (sp) { row.push(sp.raw); sp.left--; continue } const c = cells[k++]; if (!c) break; row.push(c.raw); if (c.span > 1) carry.push({ col, raw: c.raw, left: c.span - 1 }) }
       carry = carry.filter(c => c.left > 0); rows.push(row) }
-    out.push({ caption: cap, heads, rows }) }
+    const hs = w.slice(0, i - body.length).match(/^==+[^=\n]+==+/gm) || []; out.push({ caption: cap, heads, rows, heading: cellText((hs[hs.length - 1] || "").replace(/=/g, "")) }) }
   return out }
 
 const seasonOf = t => { const m = String(t).match(/(\d{4})\s*[–-]\s*(\d{2,4})/); if (m) return +m[1] + 1; const y = String(t).match(/^\s*(\d{4})\b/); return y ? +y[1] : null };
@@ -53,8 +53,9 @@ export async function buildAwards({ getPack, putPack, log = console.log, force =
   for (const [key, title] of AWARDS) { const w0 = await wiki(title); await sleep(2500); if (!w0) { skipped.push(title + " (not read)"); continue }
     if (/sports-reference|basketball-reference/i.test(w0)) { skipped.push(title + " (cites Sports Reference)"); continue }
     src[key] = title; const w = noRefs(w0); let n = 0;
-    for (const T of tables(w)) { const H = T.heads; if (!H.length) continue; const iS = H.findIndex(h => /season|year/.test(h)), iP = H.findIndex(h => /player|winner|recipient|name/.test(h)), iT = H.findIndex(h => /school|team|college|university/.test(h)); if (iS < 0 || iP < 0) continue;
-      for (const r of T.rows) { const y = seasonOf(cellText(r[iS] || "")); if (!y || y < 2009 || y > Y1 + 1) continue; const nm = cellText(r[iP] || ""); if (!nm || /vacated|not awarded/i.test(nm)) continue;
+    /* the men's Division I table only — these pages also list women's winners and other divisions */
+    for (const T of tables(w)) { const H = T.heads; if (!H.length) continue; if (/women|division (ii|iii|2|3)\b|naia|junior|njcaa|small college|high school/i.test(T.heading + " " + T.caption)) continue; const iS = H.findIndex(h => /season|year/.test(h)), iP = H.findIndex(h => /player|winner|recipient|name/.test(h)), iT = H.findIndex(h => /school|team|college|university/.test(h)); if (iS < 0 || iP < 0) continue;
+      for (const r of T.rows) { const y = seasonOf(cellText(r[iS] || "")); if (!y || y < 2009 || y > Y1 + 1) continue; const nm = cellText(r[iP] || "").replace(/\s*\(\d+\)$/, ""); if (!nm || /vacated|not awarded/i.test(nm)) continue;
         const sc = iT >= 0 ? cellText(r[iT] || "") : ""; rows.push([y, key, nm, sc]); n++ } }
     log(`awards: ${title} — ${n} winners since 2008–09`) }
   /* consensus All-America teams, one page a season */

@@ -218,9 +218,9 @@ export async function nbaPbpSummary(rows) {
     const ha = f[I.ha], aa = f[I.aa]; if (!ha || !aa) continue;
     const g = G[f[I.gid]] = G[f[I.gid]] || { h: ha, a: aa, d: f[I.dt], hs: 0, as: 0, cl: false };
     const hs = +f[I.hs] || 0, as = +f[I.as] || 0; if (hs > g.hs) g.hs = hs; if (as > g.as) g.as = as;
-    const per = +f[I.per] || 0; if (per > 4 || (per === 4 && +f[I.rem] <= 300 && Math.abs(hs - as) <= 5)) g.cl = true;
+    const per = +f[I.per] || 0; if (per >= 4 && +f[I.rem] <= 300 && Math.abs(hs - as) <= 5) g.cl = true;   /* Oct 26 review: every overtime game counted as close; within 5 in OT too (as NBA.com's clutch) */
     if (f[I.sh] !== "true") continue; const pts = +f[I.pa];
-    const off0 = f[I.tid] === f[I.hid] ? ha : aa, made0 = f[I.sc] === "true", clutch = per > 4 || (per === 4 && +f[I.rem] <= 300 && Math.abs(hs - as) <= 5 + (made0 ? pts : 0));
+    const off0 = f[I.tid] === f[I.hid] ? ha : aa, made0 = f[I.sc] === "true", clutch = per >= 4 && +f[I.rem] <= 300 && Math.abs(hs - as) <= 5 + (made0 ? pts : 0);
     const S1 = I.a1 >= 0 ? pl(f[I.a1], off0) : null;
     if (S1 && clutch) { if (pts === 1) { S1.cl[3] += made0 ? 1 : 0; S1.cl[4]++ } else if (pts === 2 || pts === 3) { S1.cl[1] += made0 ? 1 : 0; S1.cl[2]++ } if (made0) S1.cl[0] += pts }
     if (pts !== 2 && pts !== 3) continue;

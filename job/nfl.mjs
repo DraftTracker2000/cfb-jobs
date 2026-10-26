@@ -903,11 +903,11 @@ export function packProblem(name, o) {
    matched through the game's box score (team + first initial + last name, one man only) to his ESPN id, then to his gsis id.
    → p<Y>_nfl-ingame-<S>: { s, cols, p: { gsis: { nflverseGameId: [quarter, status, type, returned 0/1, out 0/1] } }, done: [game ids] }
    out = declared out (status Out), or a concussion with no return. Finished games are read once. */
-export async function inGame(s, prev, espnToGsis, log = console.log) {
+export async function inGame(s, prev, espnToGsis, log = console.log, nameToGsis = {}) {
   const SUMU = id => `https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${id}`;
   const t = (await get("schedules/games.csv.gz", log)) || (await get("schedules/games.csv", log)); const G = [];
   rows(t, ["game_id", "season", "espn", "home_score", "game_type"], o => { if (+o.season === s && o.home_score !== "" && o.home_score != null && o.espn) G.push([o.game_id, String(Math.round(+o.espn))]) });
-  const out = prev && prev.s === s && prev.p && prev.v === 2 ? prev : { v: 2, s, cols: ["quarter", "status", "type", "returned", "out"], p: {}, done: [] };   /* v2: only men hurt in the game (a play-text line) — ESPN's injury list also carries players out before kickoff */ const done = new Set(out.done || []); let read = 0, fail = 0;
+  const out = prev && prev.s === s && prev.p && prev.v === 3 ? prev : { v: 3, s, cols: ["quarter", "status", "type", "returned", "out", "seenAgain"], p: {}, done: [] };   /* v2: only men hurt in the game (a play-text line) — ESPN's injury list also carries players out before kickoff */ const done = new Set(out.done || []); let read = 0, fail = 0;
   const nk = v => String(v || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "");
   for (const [gid, eid] of G) { if (done.has(gid)) continue;
     let j = null; try { const r = await fetch(SUMU(eid)); if (r.ok) j = await r.json() } catch { } if (!j) { fail++; continue } read++;
@@ -915,16 +915,22 @@ export async function inGame(s, prev, espnToGsis, log = console.log) {
     for (const tm of (j.boxscore && j.boxscore.players) || []) { const T = (tm.team && tm.team.abbreviation) || ""; for (const c of tm.statistics || []) for (const a of c.athletes || []) if (a.athlete) put0(T, a.athlete.displayName, a.athlete.id) }
     for (const t2 of j.injuries || []) for (const i of t2.injuries || []) { const a = i.athlete || {}; put0((t2.team && t2.team.abbreviation) || "", a.displayName, a.id) }
     const who = (tm, ab) => { const m = String(ab).match(/^([A-Z][A-Za-z]{0,2})\.\s*(.+)$/); if (!m) return null; const L = W[tm + "|" + m[1][0] + "|" + nk(m[2])]; return L && L.length === 1 ? L[0] : null };
-    const R = {}, rec = e => R[e] = R[e] || [null, "", "", 0, 0];
+    const R = {}, rec = e => R[e] = R[e] || [null, "", "", 0, 0, 0];
     const D0 = ((j.drives && (j.drives.previous || [])) || []).concat(j.drives && j.drives.current ? [j.drives.current] : []);
     for (const d of D0) for (const pl of d.plays || []) { const tx = String(pl.text || ""), q = (pl.period && pl.period.number) || null;
       for (const m of tx.matchAll(/\b([A-Z]{2,3})-([A-Z][A-Za-z.'\- ]{1,30}?) (?:was|is) injured(?: during the play)?\.?(?:\s*(?:His|Her) return is (\w+))?/g)) { const e = who(m[1], m[2].trim()); if (!e) continue; const r = rec(e); if (r[0] == null) r[0] = q; if (m[3]) r[1] = m[3].toLowerCase() }
       for (const m of tx.matchAll(/Injury Update:\s*([A-Z]{2,3})-([A-Z][A-Za-z.'\- ]{1,30}?) (?:has returned|returned) to the game/g)) { const e = who(m[1], m[2].trim()); if (e) rec(e)[3] = 1 }
       for (const m of tx.matchAll(/Injury Update:\s*([A-Z]{2,3})-([A-Z][A-Za-z.'\- ]{1,30}?) (?:has been|is) (?:ruled|declared) out/g)) { const e = who(m[1], m[2].trim()); if (e) rec(e)[1] = "out" } }
+    /* seen again: his "F.Last" in any play after the one he was hurt on (a catch, a carry, a tackle) — he came back even without an update line */
+    { const PLS = D0.flatMap(d => d.plays || []), ab = {}; for (const [tm, L] of Object.entries(W)) for (const z of L) { } 
+      for (const d of D0) for (const pl of d.plays || []) { const tx = String(pl.text || ""); for (const m of tx.matchAll(/\b([A-Z]{2,3})-([A-Z][A-Za-z.'\- ]{1,30}?) (?:was|is) injured/g)) { const e = who(m[1], m[2].trim()); if (e && ab[e] == null) ab[e] = [PLS.indexOf(pl), m[2].trim()] } }
+      for (const [e, [i0, nm]] of Object.entries(ab)) { const re = new RegExp("\\b" + nm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b"); if (PLS.slice(i0 + 1).some(pl => re.test(String(pl.text || "")) && !/injur/i.test(String(pl.text || "")))) rec(e)[5] = 1 } }
     const k0 = Date.parse((j.header && j.header.competitions && j.header.competitions[0] && j.header.competitions[0].date) || "") || 0;
     for (const t2 of j.injuries || []) for (const i of t2.injuries || []) { const a = i.athlete || {}, e = String(a.id || ""), d = Date.parse(i.date || "") || 0; if (!e || !k0 || d < k0) continue;
       const r = rec(e), st = String(i.status || "").toLowerCase(), ty = String((i.details && i.details.type) || ""); if (st && (!r[1] || st === "out")) r[1] = st; if (ty) r[2] = ty }
-    for (const [e, r] of Object.entries(R)) { const g = espnToGsis[e]; if (!g || r[0] == null || /coach/i.test(r[2])) continue;   /* hurt during this game only */ r[4] = !r[3] && (r[1] === "out" || /concussion/i.test(r[2])) ? 1 : 0; (out.p[g] = out.p[g] || {})[gid] = r }
+    const NM = {}; for (const tm of (j.boxscore && j.boxscore.players) || []) for (const c of tm.statistics || []) for (const a of c.athletes || []) if (a.athlete) NM[String(a.athlete.id)] = a.athlete.displayName;
+    for (const t2 of j.injuries || []) for (const i of t2.injuries || []) if (i.athlete) NM[String(i.athlete.id)] = i.athlete.displayName;
+    for (const [e, r] of Object.entries(R)) { const nl = nameToGsis[nk(NM[e])], g = espnToGsis[e] || (nl && nl.length === 1 ? nl[0] : null); if (!g || r[0] == null || /coach/i.test(r[2])) continue;   /* a rookie without an ESPN id in nflverse: by full name (one man only) */   /* hurt during this game only */ r[4] = !r[3] && (r[1] === "out" || /concussion/i.test(r[2])) ? 1 : 0; (out.p[g] = out.p[g] || {})[gid] = r }
     done.add(gid); await new Promise(z => setTimeout(z, 150)) }
   out.done = [...done]; log(`nfl: in-game injuries ${s}: ${read} games read${fail ? `, ${fail} not reached` : ""} · ${Object.keys(out.p).length} players`); return out }
 
@@ -988,7 +994,8 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   }
   /* in-game injuries this season (ESPN game pages; finished games kept) */
   if (!startsOnly) try { const eg = {}; for (const [e, g] of Object.entries(ESPN || {})) eg[e] = g; for (const [e, g] of Object.entries(SNAP_ESPN)) if (!eg[e]) eg[e] = g;
-    let pv = null; try { pv = getPack ? await getPack(P("ingame-" + lastPlayed)) : null } catch { } const IG = await inGame(lastPlayed, pv, eg, log); if (IG) await put(P("ingame-" + lastPlayed), IG) } catch (e) { log("nfl: in-game injuries: " + e.message) }
+    let pv = null; try { pv = getPack ? await getPack(P("ingame-" + lastPlayed)) : null } catch { } const n2g = {}, nk2 = v => String(v || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, ""); for (const [g, nm] of Object.entries(PLN)) (n2g[nk2(nm)] = n2g[nk2(nm)] || []).push(g);
+    const IG = await inGame(lastPlayed, pv, eg, log, n2g); if (IG) await put(P("ingame-" + lastPlayed), IG) } catch (e) { log("nfl: in-game injuries: " + e.message) }
   for (const s of seasons) if (s < lastPlayed && LOGS[s]) DONE.s[s] = NFL_DONE_V; await put(P("done"), DONE);
   /* dynasty inputs (Oct 20, job/dyn.mjs): each player's last 18 league weeks and the windows before, for the page's dynasty model */
   if (!startsOnly) try { const DY = await dynFeatures({ G, PLp: PLP, log, logsOf: async s => LOGS[s] || (getPack ? await getPack(P("logs-" + s)).catch(() => null) : null) });

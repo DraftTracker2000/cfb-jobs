@@ -57,6 +57,7 @@ const JOB = process.env.JOB_TOKEN || "";
 const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
+const NOFRESH = ["probe", "look"].includes(MODE) || /test$/.test(MODE);
 const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest"];   // these write packs only; the shared data version is unchanged
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
@@ -144,9 +145,11 @@ async function main() {
   const refs = await refreshRefs({ site: SITE, jobToken: JOB, mode: MODE });
   console.log(`reference files: ${refs.refreshed} refreshed of ${refs.checked}`);
 
-  const sess = await api("POST", "/api/job/session");
+  /* Oct 26: runs that only look (probe, look) or test (…test) sign in as the probe user, so their page loads share the server's copies
+     of current-season CFBD data instead of paying fresh calls (src/cfbd.js) */
+  const sess = await api("POST", "/api/job/session", { body: NOFRESH ? { who: "probe" } : undefined });
   console.log(`[${MODE}] signed in to ${SITE}`);
-  CFTOK = sess.token; CF0 = await cfbdLeft(); if (CF0 != null) console.log(`CFBD calls left at the start: ${CF0}`);
+  CFTOK = sess.token; CF0 = await cfbdLeft(); if (CF0 != null) console.log(`::notice title=CFBD::calls left at the start of this ${MODE} run: ${CF0.toLocaleString()}`);
 
   /* MODE=colgap: college missed-game check from box scores (job/colgap.mjs, Oct 24) */
   if (MODE === "colgap") { const { buildColGap, uploadColGap } = await import("./colgap.mjs");

@@ -512,6 +512,17 @@ export async function main() {
   /* ---------- the board ---------- */
   const portal = await cb("/recruiting/portal", { year: S });
   const portalNext = [];
+  /* the transfer cycle (Oct 26 — Sam: "the boards should just show the players that transferred to new schools or are still in the portal
+     for this season … when the next window opens the ones that transferred should cycle out … and gather new players as they enter"):
+     the newest portal year with 50+ entries is the cycle (next spring's window takes over once it has 50); each player keeps the day we
+     first saw him, so the list grows as players enter. p2000_cbb-portal { y, at, rows: [[name, pos, stars, fromId, fromName, toId, toName, firstSeen]] } */
+  try { const old = await getPack("p2000_cbb-portal").catch(() => null), seen = {};
+    if (old && old.rows) for (const r of old.rows) seen[old.y + "|" + r[0] + "|" + r[3]] = r[7];
+    let cyc = null; for (const y of [S + 1, S, S - 1]) { const L = y === S ? portal : await cb("/recruiting/portal", { year: y }).catch(() => []); if ((L || []).length >= 50) { cyc = { y, L }; break } }
+    if (cyc) { const today = new Date().toISOString().slice(0, 10), rows = cyc.L.map(p => { const nm = (p.firstName + " " + p.lastName).trim(), o = p.origin || {}, d = p.destination || {};
+        return [nm, p.position || "", p.stars || null, o.id || null, o.name || "", d.id || null, d.name || "", seen[cyc.y + "|" + nm + "|" + (o.id || null)] || (p.transferDate ? String(p.transferDate).slice(0, 10) : today)] });
+      await putPack("p2000_cbb-portal", { y: cyc.y, at: Date.now(), rows }); log(`portal: ${cyc.y} window — ${rows.length} entered, ${rows.filter(r => !r[5]).length} still in the portal`) } }
+  catch (e) { log("portal cycle: " + e.message) }
   const PORT = {}; for (const p of portal) { const nm = normName(p.firstName + " " + p.lastName), from = (p.origin || {}).id; const c = byNameTeam[nm + "|" + from]; if (c) PORT[c[0].id] = p }
   const lastRow = {}; for (const r of rowsS) if (!lastRow[r.id] || r.min > lastRow[r.id].min) lastRow[r.id] = r;
   const H_S = Object.fromEntries(hist.filter(h => h.r.s === S).map(h => [h.r.id + "|" + h.r.tm, h]));

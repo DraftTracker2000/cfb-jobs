@@ -13,7 +13,7 @@ function csv(t) {
     else if (c === '"') q = true; else if (c === ",") { row.push(f); f = "" } else if (c === "\n" || c === "\r") { if (c === "\r" && t[i + 1] === "\n") i++; row.push(f); out.push(row); row = []; f = "" } else f += c }
   if (f || row.length) { row.push(f); out.push(row) } return out;
 }
-export const CT_COLS = ["name", "team", "pos", "status", "kind", "draftYear", "pick", "yearsExp", "cap", "sb", "est", "src", "srcLabel", "note", "total", "years"];
+export const CT_COLS = ["name", "team", "pos", "status", "kind", "draftYear", "pick", "yearsExp", "cap", "sb", "est", "src", "srcLabel", "note", "total", "years", "type"];
 /* est: 0 reported · 1 later years estimated · 2 every year estimated (only a length + total was reported)
    kind: rookie (drafted, on his scale deal) · udfa (undrafted, first three years) · ps (practice squad) · vet (deal entered from a report)
    · terms (a deal's length and total were reported but not what it counts each year — still counted as pending)
@@ -38,12 +38,12 @@ export async function contractPack(Y, log, extra = null, base = null) {
   for (let i = 1; i < R.length; i++) { const x = R[i]; if (+x[iW] !== wk || !x[iG]) continue;
     const g = x[iG], st = x[iS], entry = +x[iE] || +x[iR] || null, pick = +x[iD] || null, exp = +x[iX] || 0, team = x[iT];
     if (!["ACT", "RES", "INA", "PUP", "DEV", "SUS", "NWT", "EXE"].includes(st)) continue;
-    let kind, cap = {}, sb = null, est = 1, src = null, lab = null, note = null, total = null, span = null;
+    let kind, cap = {}, sb = null, est = 1, src = null, lab = null, note = null, total = null, span = null, dt = null;
     /* a deal entered for one team doesn't follow a player who's been traded or released and signed elsewhere —
        he goes back to "terms pending" (and the admin list flags him) until his new deal is entered */
     const d0 = deals[g], d = d0 && !d0.min && (!d0.team || d0.team === team) ? d0 : null;
     if (d0 && !d0.min && !d) moved.push([g, x[iN], d0.team, team]);
-    if (d) { kind = d.cap && Object.keys(d.cap).length ? "vet" : "terms"; for (const y of years) if (d.cap && d.cap[y] != null) cap[y] = d.cap[y]; sb = d.sb ?? null; est = d.estAll ? 2 : d.est ? 1 : 0; src = d.src || null; lab = d.srcLabel || null; note = d.note || null; total = d.total ?? null; span = d.years || null }
+    if (d) { kind = d.cap && Object.keys(d.cap).length ? "vet" : "terms"; for (const y of years) if (d.cap && d.cap[y] != null) cap[y] = d.cap[y]; sb = d.sb ?? null; est = d.estAll ? 2 : d.est ? 1 : 0; src = d.src || null; lab = d.srcLabel || null; note = d.note || null; total = d.total ?? null; span = d.years || null; dt = d.type || null }
     else if (st === "DEV") { kind = "ps"; cap[Y] = psWeekly(Y, exp) * 18 }
     else if (pick && entry && entry >= Y - 3) { kind = "rookie"; const rd = rookieDeal(entry, pick); for (const y of years) if (rd.cap[y] != null) cap[y] = rd.cap[y]; sb = rd.sb; est = rd.est ? 1 : 0; src = "scale" }
     else if (pick && entry === Y - 4 && pick <= 32) kind = "option";
@@ -55,7 +55,7 @@ export async function contractPack(Y, log, extra = null, base = null) {
     if (kind === "pending") { const s = seen[g] || { first: {} }, w0 = s.first[team] || 1, flag = d0 && d0.min && (!d0.team || d0.team === team);
       if (flag || s.ps || w0 > 1) { kind = "min"; est = 2; src = "min"; cap[Y] = Math.round((exp >= 4 ? minSalary(Y, 2) : minSalary(Y, exp)) * (19 - w0) / 18);
         note = "Terms never reported — counted at the league minimum for his experience" + (w0 > 1 ? `, from week ${w0} when he joined` : "") + "." } }
-    p[g] = [x[iN], team, x[iP], st, kind, entry, pick, exp, cap, sb, est, src, lab, note, total, span];
+    p[g] = [x[iN], team, x[iP], st, kind, entry, pick, exp, cap, sb, est, src, lab, note, total, span, dt];
   }
   /* each team: what's known for each year, how many players are still pending, and the practice squad on its own */
   const teams = {};

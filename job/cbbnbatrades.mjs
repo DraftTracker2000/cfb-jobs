@@ -133,11 +133,18 @@ export function nbaAwards(w) { const k = String(w).search(/\n\s*\|\s*highlights\
     const S = []; for (let i = 0; i < marks.length; i++) { if (marks[i] === "-") continue; if (marks[i + 1] === "-" && typeof marks[i + 2] === "number") { for (let y = marks[i]; y <= marks[i + 2] && y - marks[i] < 25; y++) S.push(y); i += 2 } else S.push(marks[i]) }
     for (const y of [...new Set(S)]) if (!out.some(x => x[0] === kind && x[1] === y)) out.push([kind, y]) }
   return out }
+/* where a player came from (Oct 26 — Sam: "we have draft data … don't we know where players like luka came from"): the infobox's high
+   school, college, the clubs he played for before his first NBA season, nationality and draft line */
+export function nbaOrigin(w) { const f = k => { const m = w.match(new RegExp(`\\n[ \\t]*\\|[ \\t]*${k}[ \\t]*=[ \\t]*([^\\n]*)`, "i")); return m ? m[1].replace(/<ref[^>]*\/>|<ref[^>]*>.*?<\/ref>/g, "").replace(/\{\{[^{}]*\}\}/g, "").replace(/\[\[[^\]|]*\|([^\]]*)\]\]/g, "$1").replace(/\[\[([^\]]*)\]\]/g, "$1").replace(/<br\s*\/?>/g, ", ").replace(/''+/g, "").replace(/\s+/g, " ").trim() : "" };
+  const o = { hs: f("high_school"), col: f("college"), nat: f("nationality"), dy: +f("draft_year").replace(/\D/g, "").slice(0, 4) || null, dr: +f("draft_round").replace(/\D/g, "") || null, dp: +f("draft_pick").replace(/\D/g, "") || null, dt: f("draft_team"), pre: [] };
+  const first = (w.match(/\|\s*career_start\s*=\s*(\d{4})/i) || [])[1];
+  for (let i = 1; i <= 8; i++) { const yrs = f(`years${i}`), tm = f(`team${i}`); if (!yrs || !tm) continue; const y0 = +(yrs.match(/\d{4}/) || [])[0]; if (/NBA|Lakers|Celtics|Mavericks|Hawks|Nets|Hornets|Bulls|Cavaliers|Nuggets|Pistons|Warriors|Rockets|Pacers|Clippers|Grizzlies|Heat|Bucks|Timberwolves|Pelicans|Knicks|Thunder|Magic|76ers|Suns|Trail Blazers|Kings|Spurs|Raptors|Jazz|Wizards|SuperSonics|Bobcats|Hornets/.test(tm)) break; o.pre.push([yrs, tm]) }
+  if (!o.hs && !o.col && !o.pre.length && !o.dy) return null; return o }
 export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   const now = new Date(), nowStart = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, cats = [...new Set(Object.keys(NBA_FR))].map(t => `Category:${t} players`);
   /* the names first (500 a read, each player once however many teams he played for), then the top of each page — the infobox —
      fifty players a read */
-  const P = {}, HN = {}, AW = {}, T = new Set(); let reads = 0; const miss = [];
+  const P = {}, HN = {}, AW = {}, OR = {}, T = new Set(); let reads = 0; const miss = [];
   const call = async q => { for (let a = 0; a < 4; a++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", ...q }), { headers: WUA }); reads++; if (r.ok) { const j = await r.json(); if (!j.error) return j; log(`nba careers: ${j.error.code} ${j.error.info}`) } else log(`nba careers: ${r.status}`) } catch (e) { log(`nba careers: ${e.message}`) } await new Promise(z => setTimeout(z, 3000 * (a + 1))) } return null };
   /* a category whose listing fails is tried again (Oct 24: the Lakers' and Pistons' lists failed once, and Kobe, Magic and Isiah — one team
      each — went missing) */
@@ -150,7 +157,7 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
     for (let g = 0; g < 20; g++) { let j = await call({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", ...(sec ? { rvsection: "0" } : {}), titles: L.join("|"), ...cont });
       if (!j) { failTo.push(...L); break }
       for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots && pg.revisions[0].slots.main.content; if (!w) continue;
-        got++; const C = parseNbaCareer(w, nowStart); if (!C) continue; const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim(); const hn = nbaHonors(w); if (hn) HN[nm] = hn; const aw = nbaAwards(w); if (aw.length) AW[nm] = aw; const cur = P[nm] || []; for (const c of C) if (!cur.some(x => x.join() === c.join())) cur.push(c); P[nm] = cur }
+        got++; const C = parseNbaCareer(w, nowStart); if (!C) continue; const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim(); const hn = nbaHonors(w); if (hn) HN[nm] = hn; const aw = nbaAwards(w); if (aw.length) AW[nm] = aw; try { const og = nbaOrigin(w); if (og) OR[nm] = og } catch { } const cur = P[nm] || []; for (const c of C) if (!cur.some(x => x.join() === c.join())) cur.push(c); P[nm] = cur }
       if (!j.continue) break; cont = j.continue }
     await new Promise(z => setTimeout(z, 400)); return got };
   /* fifty a read; any read that fails is tried again ten at a time, then one at a time */
@@ -158,7 +165,7 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   let f2 = []; for (let k = 0; k < failed.length; k += 10) pages += await batch(failed.slice(k, k + 10), f2);
   let f3 = []; for (const t of f2) pages += await batch([t], f3);
   log(`nba careers: ${pages} of ${titles.length} pages read${f3.length ? `, ${f3.length} never came back` : ""}`);
-  await putPack("p2000_cbb-nbacareers", { v: 8, t: Date.now(), p: P, h: HN, aw: AW }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
+  await putPack("p2000_cbb-nbacareers", { v: 9, t: Date.now(), p: P, h: HN, aw: AW, o: OR }); log(`nba careers: ${Object.keys(P).length} players, ${reads} Wikipedia reads${miss.length ? ` · nothing from ${miss.length}: ${miss.join(", ")}` : ""}`); return P;
 }
 /* probe (MODE=probe, PROBE=nba-careers-test): the infobox honors of a few players, raw and as read */
 export async function run() { const L = ["Magic Johnson", "LeBron James"];

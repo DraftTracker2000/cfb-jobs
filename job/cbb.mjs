@@ -252,7 +252,7 @@ export async function main() {
     try { const { buildNbaBrackets } = await import("./cbbnbatrades.mjs"); await buildNbaBrackets({ getPack, putPack, log }) } catch (e) { log("nba brackets: " + e.message) }
     try { const { buildNbaCareers } = await import("./cbbnbatrades.mjs"); const C = await getPack("p2000_cbb-nbacareers").catch(() => null); /* read once and kept (Oct 24 — Sam: "we just did the searching like that once for it?"): history before 2008–09 doesn't change, and the
        seasons since come from the site's own NBA data every night. Bump the pack version to read it again. */
-    if (!C || (C.v || 0) < 8) await buildNbaCareers({ getPack, putPack, log }) } catch (e) { log("nba careers: " + e.message) }
+    if (!C || (C.v || 0) < 9) await buildNbaCareers({ getPack, putPack, log }) } catch (e) { log("nba careers: " + e.message) }
     /* the league's official injury reports (Oct 25): past days read once, then the new day each run */
     /* college national awards and consensus All-Americans (Oct 26), re-read once a week */
     try { const { buildAwards } = await import("./cbbawards.mjs"); await buildAwards({ getPack, putPack, log }) } catch (e) { log("college awards: " + e.message) }

@@ -23,7 +23,7 @@ export async function contractPack(Y, log, extra = null, base = null) {
   const r = await fetch(NFLV + Y + ".csv", { redirect: "follow" }); if (!r.ok) { log(`contracts: rosters ${r.status}`); return null }
   const R = csv(await r.text()), H = R[0], ix = k => H.indexOf(k);
   const iW = ix("week"), iG = ix("gsis_id"), iN = ix("full_name"), iT = ix("team"), iP = ix("position"), iS = ix("status"), iE = ix("entry_year"), iR = ix("rookie_year"),
-    iD = ix("draft_number"), iX = ix("years_exp"), iGT = ix("game_type");
+    iD = ix("draft_number"), iX = ix("years_exp"), iGT = ix("game_type"), iDC = ix("draft_club");
   let wk = 0; for (let i = 1; i < R.length; i++) { const w = +R[i][iW]; if (w > wk && (!R[i][iGT] || R[i][iGT] === "REG")) wk = w }
   /* the hand-entered deals file: from the site (base, behind the job token) — the public job repo doesn't carry it — else from disk */
   let deals = base && Object.keys(base).length ? { ...base } : {}; if (!Object.keys(deals).length) { try { deals = JSON.parse(await readFile(new URL("../data/nfl-contracts.json", import.meta.url), "utf8")).deals || {} } catch { } }
@@ -46,7 +46,10 @@ export async function contractPack(Y, log, extra = null, base = null) {
        he goes back to "terms pending" (and the admin list flags him) until his new deal is entered */
     const d0 = deals[g], d = d0 && !d0.min && (!d0.team || d0.team === team) ? d0 : null;
     if (d0 && !d0.min && !d) moved.push([g, x[iN], d0.team, team]);
-    if (d) { kind = d.cap && Object.keys(d.cap).length ? "vet" : "terms"; for (const y of years) if (d.cap && d.cap[y] != null) cap[y] = d.cap[y]; sb = d.sb ?? null; est = d.estAll ? 2 : d.est ? 1 : 0; src = d.src || null; lab = d.srcLabel || null; note = d.note || null; total = d.total ?? null; span = d.years || null; dt = d.type || null }
+    if (d) { kind = d.cap && Object.keys(d.cap).length ? "vet" : "terms"; for (const y of years) if (d.cap && d.cap[y] != null) cap[y] = d.cap[y]; sb = d.sb ?? null; est = d.estAll ? 2 : d.est ? 1 : 0; src = d.src || null; lab = d.srcLabel || null; note = d.note || null; total = d.total ?? null; span = d.years || null; dt = d.type || null;
+      /* a second deal with the team that drafted him, signed while his rookie deal still ran (first-rounders: through the option year) — an
+         extension (Oct 26 — Sam: Ja'Marr Chase's deal isn't a "veteran deal") */
+      if (!dt && iDC >= 0 && x[iDC] && x[iDC] === team && entry && pick) { const sy = +String(d.signed || d.years || "").slice(0, 4); if (sy && sy <= entry + (pick <= 32 ? 4 : 3)) dt = "ext" } }
     else if (st === "DEV") { kind = "ps"; cap[Y] = psWeekly(Y, exp) * 18 }
     else if (pick && entry && entry >= Y - 3) { kind = "rookie"; const rd = rookieDeal(entry, pick); for (const y of years) if (rd.cap[y] != null) cap[y] = rd.cap[y]; sb = rd.sb; est = rd.est ? 1 : 0; src = "scale" }
     else if (pick && entry === Y - 4 && pick <= 32) kind = "option";

@@ -157,25 +157,38 @@ const BON_N = 10;   // the play-by-play ones: ptd40 … rec40
 const OPQ_COLS = ["rush in 5", "rush 6-10", "rush 11-20", "rush 21-50", "rush 51+", "tgt behind LOS", "tgt 0-9 air", "tgt 10-19 air", "tgt 20+ air", "tgt red zone", "tgt end zone", "rush competitive", "tgt competitive", "opp 3rd/4th down"];
 let SLP_IDS = null;const SNAP_ESPN = {}, SNAP_NAME = {}, SNAP_ALL = new Set();
 const snapKey = (n, p) => String(n || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "") + "|" + ({ FB: "RB", HB: "RB" }[String(p || "").toUpperCase()] || String(p || "").toUpperCase());
+/* Oct 26 (Sam: "snap counts won't change during the week on wednesday and thursday"): a finished week is read once and kept
+   (pYYYY_slpsnaps); the latest week is read again only on Monday, Tuesday and Friday (after Sunday, Monday and Thursday games); on the other
+   days a run reads nothing from Sleeper and uses the kept weeks */
+let SNAP_GET = null, SNAP_PUT = null;
 async function sleeperSnaps(S, log) {
   if (S < 2020) return null;
   try {
+    let prev = null; try { prev = SNAP_GET ? await SNAP_GET(`p${S}_slpsnaps`) : null } catch { } if (!prev || prev.v !== 1) prev = { v: 1, wk: {}, fin: {} };
+    const dow = new Date().toLocaleDateString("en-US", { weekday: "short", timeZone: "America/New_York" }), readDay = ["Mon", "Tue", "Fri"].includes(dow);
+    const have = Object.keys(prev.wk).length, quiet = have && !readDay;
+    if (!quiet && !SLP_IDS) {
     /* Sleeper's player list comes from the site's own copy (/api/slp-players, refreshed by the worker's one read a day), not from Sleeper
        (Oct 11 audit: this run was a second daily read of the 5 MB list, against Sleeper's "once a day at most") */
-    if (!SLP_IDS) { const r = await fetch((process.env.SITE_URL || "https://mycfbbigboard.com") + "/api/slp-players", { headers: { Authorization: "Bearer " + (process.env.JOB_TOKEN || "") } }); if (!r.ok) { log(`nfl: site sleeper directory ${r.status}`); return null } const J = await r.json(), P = {};
+      const r = await fetch((process.env.SITE_URL || "https://mycfbbigboard.com") + "/api/slp-players", { headers: { Authorization: "Bearer " + (process.env.JOB_TOKEN || "") } }); if (!r.ok) { log(`nfl: site sleeper directory ${r.status}`); return null } const J = await r.json(), P = {};
       for (const [k, x] of Object.entries((J && J.p) || {})) P[k] = { full_name: x[0], position: x[1], espn_id: x[4], gsis_id: x[5] || "" }; SLP_IDS = {};
       /* Sleeper's gsis id when it has one, else its ESPN id, else a unique name + position (newer players often lack the gsis id) */
       for (const k in P) { const p = P[k]; if (!p) continue; let g = p.gsis_id && SNAP_ALL.has(String(p.gsis_id).trim()) ? String(p.gsis_id).trim() : null;   // only a gsis id we know
         if (!g && p.espn_id) g = SNAP_ESPN[String(p.espn_id)] || null;
         if (!g) { const L = SNAP_NAME[snapKey(p.full_name, p.position)] || []; if (L.length === 1) g = L[0] }
         if (g) SLP_IDS[k] = g } }
-    const out = {}; let n = 0;
-    for (let w = 1; w <= 18; w++) {
-      const r = await fetch(`https://api.sleeper.app/v1/stats/nfl/regular/${S}/${w}`); if (!r.ok) continue; const J = await r.json();
-      for (const k in J) { const x = J[k], g = SLP_IDS[k]; if (!g || x.off_snp == null) continue; (out[g] = out[g] || {})[w] = [x.off_snp, x.tm_off_snp ?? null]; n++ }
+    let reads = 0, last = 0;
+    if (!quiet) for (let w = 1; w <= 18; w++) {
+      if (prev.fin[w] && prev.wk[w]) { last = w; continue }
+      const r = await fetch(`https://api.sleeper.app/v1/stats/nfl/regular/${S}/${w}`); reads++; if (!r.ok) break; const J = await r.json(); const M = {}; let n = 0;
+      for (const k in J) { const x = J[k], g = SLP_IDS[k]; if (!g || x.off_snp == null) continue; M[g] = [x.off_snp, x.tm_off_snp ?? null]; n++ }
+      if (!n) break; prev.wk[w] = M; last = w;
       await new Promise(z => setTimeout(z, 250));   // gentle on Sleeper's API
     }
-    log(`nfl: snaps ${S}: ${n} player-games (${Object.keys(SLP_IDS).length} Sleeper players matched)`); return out;
+    for (const w in prev.wk) if (+w < last) prev.fin[w] = 1;   // a week with a later week behind it is final
+    if (!quiet && SNAP_PUT) await SNAP_PUT(`p${S}_slpsnaps`, prev).catch(() => {});
+    const out = {}; let n = 0; for (const [w, M] of Object.entries(prev.wk)) for (const g in M) { (out[g] = out[g] || {})[w] = M[g]; n++ }
+    log(`nfl: snaps ${S}: ${n} player-games · ${reads} Sleeper reads${quiet ? " (" + dow + ": kept weeks, no reads)" : ""}`); return out;
   } catch (e) { log(`nfl: snaps ${S}: ${e.message}`); return null }
 }
 async function logs(S, log) {
@@ -941,6 +954,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   /* a pack that comes out under 40% of its last size is held back, not written (Oct 6: nflverse moved the schedule file and a run wrote an
      empty schedule over the good one — every NFL view lost this season's games for ten minutes) */
   const prevIx = (getIndex && await getIndex().catch(() => null)) || {};
+  SNAP_GET = getPack ? n => getPack(n) : null;
   const put = async (name, obj) => {
     const gz = gzipSync(Buffer.from(JSON.stringify(obj)));
     /* content checks (Oct 9): a source that still answers but sends nonsense keeps its size and slips past the 40% rule */
@@ -966,6 +980,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   /* Oct 12 (Sam: "we should never be refreshing and running stats for things that never change again"): a finished season (before the one
      being played) is built once at this version and skipped after — its packs stay as they are. Bump NFL_DONE_V when what a season's
      packs hold changes, and every finished season is rebuilt once. */
+  SNAP_PUT = (n, o) => put(n, o);
   const NFL_DONE_V = 3; let DONE = { s: {} }; try { DONE = (getPack && (await getPack(P("done")))) || DONE } catch { } DONE.s = DONE.s || {};
   if (!all) for (let i = seasons.length - 1; i >= 0; i--) if (seasons[i] < lastPlayed && DONE.s[seasons[i]] === NFL_DONE_V) { log(`nfl: ${seasons[i]} finished, kept`); seasons.splice(i, 1) }
   const LOGS = {}, WXP = {}, STN = {};

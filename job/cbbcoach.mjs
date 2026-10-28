@@ -4,6 +4,7 @@
 
    Pack p2000_cbb-coachids (cache): { seasons: { year: { cbbdTeamId: espnCoachId } }, names: { espnCoachId: "First Last" }, at }
    The current season is re-read once a week (a coaching change shows up within a week); past seasons never change. */
+import { noSR, srSkipped } from "./wikisr.mjs";
 const BASE = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball";
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function getJSON(url) {
@@ -211,7 +212,7 @@ export async function wikiCoaches({ getPack, putPack, log, coaches, full }) {
   /* Wikipedia rate-limits the shared GitHub runners hard (109 of 199 calls refused on Oct 10), so pages are read 40 at a time:
      one query returns every page's top section. Titles tried in turn: "Name", "Name (basketball)", "Name (basketball coach)". */
   const t0 = Date.now(), codes = {}; let n = 0, found = 0;
-  const get = async u => { for (let k = 0; k < 4; k++) { try { const r = await fetch(u, { headers: WUA }); codes[r.status] = (codes[r.status] || 0) + 1; n++; if (r.ok) return await r.json(); if (r.status === 404 || r.status === 403) return null } catch { codes.err = (codes.err || 0) + 1 } await new Promise(r => setTimeout(r, 4000 * (k + 1))) } return null };
+  const get = async u => { for (let k = 0; k < 4; k++) { try { const r = await fetch(u, { headers: WUA }); codes[r.status] = (codes[r.status] || 0) + 1; n++; if (r.ok) return noSR(await r.json()); if (r.status === 404 || r.status === 403) return null } catch { codes.err = (codes.err || 0) + 1 } await new Promise(r => setTimeout(r, 4000 * (k + 1))) } return null };
   let left = todo.slice(); const tried = new Set();
   for (const suffix of ["", " (basketball)", " (basketball coach)"]) {
     for (let b = 0; b < left.length && Date.now() - t0 < 480e3; b += 40) { const batch = left.slice(b, b + 40); const titles = batch.map(c => c.nm + suffix);
@@ -262,7 +263,7 @@ export async function interimNames({ getPack, putPack, log, itm, names, coachNam
     const [y, tid] = key.split("|"), school = names[tid]; if (!school) continue; const szn = `${+y - 1}–${String(y).slice(2)}`;
     try { const q = await (await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srlimit=5&format=json&formatversion=2&srsearch=${encodeURIComponent(`${szn} ${school} men's basketball team`)}`, { headers: WUA })).json(); n++;
       const hit = ((q.query || {}).search || []).find(r => r.title.startsWith(szn) && /men's basketball/i.test(r.title) && r.title.toLowerCase().includes(school.toLowerCase().split(" ")[0]));
-      let nm = null; if (hit) { const j = await (await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&rvsection=0&format=json&formatversion=2&titles=${encodeURIComponent(hit.title)}`, { headers: WUA })).json(); n++;
+      let nm = null; if (hit) { const j = await (await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&rvsection=0&format=json&formatversion=2&titles=${encodeURIComponent(hit.title)}`, { headers: WUA })).json(); noSR(j); n++;
         const pg = (j.query.pages || [])[0], w = pg && pg.revisions ? pg.revisions[0].slots.main.content : ""; nm = interimFromInfobox(w, coachNames[I.by[0]]) }
       P.k[key] = nm; P.t[key] = Date.now(); I.n = nm; if (nm) got++ } catch (e) { await new Promise(r => setTimeout(r, 5000)) }   /* refused (429): left for the next run */
     await new Promise(r => setTimeout(r, 1200)) }
@@ -276,7 +277,7 @@ export async function wikiRecords({ getPack, putPack, log, coaches, W, S }) {
   let n = 0, kept = 0;
   for (let i = 0; i < todo.length; i += 15) { const B = todo.slice(i, i + 15), titles = B.map(c => W.c[c.cid].t);
     let j = null; for (let a = 0; a < 4 && !j; a++) { try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(titles.join("|"))}`, { headers: WUA }); n++;
-        if (r.ok) j = await r.json(); else await new Promise(z => setTimeout(z, 5000 * (a + 1))) } catch { await new Promise(z => setTimeout(z, 3000)) } }
+        if (r.ok) j = noSR(await r.json()); else await new Promise(z => setTimeout(z, 5000 * (a + 1))) } catch { await new Promise(z => setTimeout(z, 3000)) } }
     if (!j || !j.query) continue;
     const norm = {}; for (const x of j.query.normalized || []) norm[x.from] = x.to; const red = {}; for (const x of j.query.redirects || []) red[x.from] = x.to;
     const byTitle = {}; for (const p of j.query.pages || []) if (p.revisions) byTitle[p.title] = p.revisions[0].slots.main.content;

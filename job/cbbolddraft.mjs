@@ -2,6 +2,7 @@
    so a coach's picks from the 1980s and 1990s (Mateen Cleaves and Morris Peterson in 2000, for Izzo) were missing. Each year's Wikipedia
    page ("1996 NBA draft") has the full table — round, pick, player, team, school. Read once per year (finished drafts never change) into
    p2000_cbb-olddraft: { y: [[pick, round, name, school]] }, plus the Division I team id where the school matches ours. */
+import { noSR, srSkipped } from "./wikisr.mjs";
 const UA = { "User-Agent": "mycbbbigboard.com data job (college basketball stats site; contact via the site)" };
 const FROM = 1980, TO = 2000;
 
@@ -26,7 +27,7 @@ export async function buildOldDraft({ getPack, putPack, log, teams, schoolKey })
   for (let y = FROM; y <= TO; y++) { if (P.y[y] && P.y[y].length >= 40) continue;
     for (let a = 0; a < 4 && !P.y[y]; a++) {   /* Wikipedia turns away bursts from the shared runners (1990–97 missed on the first run): wait and retry */
       try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=parse&prop=wikitext&format=json&formatversion=2&redirects=1&page=${y}_NBA_draft`, { headers: UA }); calls++;
-        if (r.ok) { const j = await r.json(); const rows = parseDraftTable((j.parse || {}).wikitext || ""); if (rows.length >= 40) P.y[y] = rows; break }
+        if (r.ok) { const j = noSR(await r.json()); const rows = parseDraftTable((j.parse || {}).wikitext || ""); if (rows.length >= 40) P.y[y] = rows; break }
         if (r.status !== 429 && r.status < 500) break } catch (e) { break }
       await new Promise(r => setTimeout(r, 6000 * (a + 1))) }
     await new Promise(r => setTimeout(r, 1200)) }

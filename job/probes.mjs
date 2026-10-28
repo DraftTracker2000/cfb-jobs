@@ -5,6 +5,7 @@ export const PROBES = [
   /* Oct 28 (Sam: "who are the coaches that broke the sports reference rule"): read only — for each coach, whether a line we actually keep cites a Sports Reference site
      (college infobox: overall record, NCAA record, titles / Final Fours, stops; NBA: the head-coaching record table) — named refs resolved — or only
      somewhere else on the page. Changes nothing. */
+  { name: "prerefs", node: `const m=await import(process.cwd()+"/job/prerefs.mjs");const r=await m.preRefs({log:()=>{}});return {ok:true,r}` },
   { name: "awline", node: `const m=await import(process.cwd()+"/job/awline.mjs");const r=await m.awLine({log:()=>{}});return {ok:true,r}` },
   { name: "cavpast", node: `const UA={"user-agent":"Mozilla/5.0 (mycfbbigboard.com data job; availability reports, read only check)"},o={ok:true};
 const HD="https://app.hdintelligence.com/api/get-publish-public";const post=b=>fetch(HD,{method:"POST",headers:{...UA,"content-type":"application/json",accept:"application/json",referer:"https://app.hdintelligence.com/"},body:JSON.stringify(b)});

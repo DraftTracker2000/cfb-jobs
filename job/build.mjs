@@ -160,6 +160,7 @@ async function main() {
     const getIndex = async () => { try { const r = await fetch(SITE + "/api/pack-index", { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? (await r.json()).packs : null } catch { return null } };
     const d = await buildPunts({ site: SITE, token: sess.token, api, getIndex, log: x => console.log(x) });
     for (const x of d.seasons) console.log(`::notice title=punts ${x.y}::${x.stopped ? "stopped (CFBD budget floor)" : `${x.plays} punts · ${x.punters ?? 0} punters · ${x.returners ?? 0} returners${x.kb ? ` · ${x.kb} KB` : ""}${x.short ? " · too few, not written" : ""}`}`);
+    console.log(`::notice title=punt scores::${(d.scores || []).map(x => x.y + ": " + x.drives).join(" · ") || "none new"}`);
     console.log(`::notice title=punts::${d.calls} CFBD calls`);
     await report(true, `punts · ${d.seasons.length} seasons · ${d.calls} calls`); return }
   /* MODE=colgap: college missed-game check from box scores (job/colgap.mjs, Oct 24) */

@@ -13,7 +13,7 @@ const COLS = ["gameId", "playId", "driveId", "week", "seasonType", "puntingTeam"
   "down", "distance", "playType", "playText", "punterId", "punter", "receiverId", "receiver", "returnerId", "returner", "blockerId", "blocker", "countsAsPunt",
   "countsAsReturn", "startYardsToGoal", "puntYards", "returnYards", "returnerYards", "netPuntYards", "kickEndYardline", "endYardline", "isTouchback",
   "isFairCatch", "isOutOfBounds", "isDowned", "isBlocked", "isMuffed", "isReturnTouchdown", "isReceivingTeamTurnover", "hasPenalty", "parseStatus"];
-export const puntName = y => `p2000_cfbpunt-${y}`;
+export const puntName = y => `p2000_cfbpunt-${y}`, scName = y => `p2000_cfbpuntsc-${y}`;
 
 export async function buildPunts({ site, token, api, getIndex, log = console.log, first = 2015, minLeft = 1500 }) {
   const H = { headers: { Authorization: "Bearer " + token } };
@@ -40,5 +40,19 @@ export async function buildPunts({ site, token, api, getIndex, log = console.log
     await api("PUT", "/api/pack-index", { body: { [puntName(y)]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });
     const pun = players.filter(x => x.punting).length, ret = players.filter(x => x.returning).length;
     log(`punts ${y}: ${plays.length} punts · ${pun} punters · ${ret} returners · ${(r.bytes / 1024).toFixed(0)} KB`); out.push({ y, plays: plays.length, punters: pun, returners: ret, kb: Math.round(r.bytes / 1024) }) }
-  return { calls, seasons: out }
+  /* the score when each punt happened (Oct 28 — Sam: "this could easily be sorted out from play by play"): the punt rows carry their drive
+     id, and CFBD's drives carry each drive's starting score — a drive that ends in a punt hasn't scored, so that is the score at the punt.
+     Two calls a season (regular + postseason), kept for good like the punts: p2000_cfbpuntsc-<season> = { v: 1, s: { driveId: [offense
+     score, defense score] } } for every drive of the season */
+  const sc = [];
+  for (let y = first; y <= cur; y++) {
+    if (y < cur && idx[scName(y)]) continue;
+    const S = {}; let n = 0;
+    for (const st of ["regular", "postseason"]) for (const d of (await cf(`/drives?year=${y}&seasonType=${st}`)) || []) { if (d.id == null) continue; S[String(d.id)] = [d.startOffenseScore ?? null, d.startDefenseScore ?? null]; n++ }
+    if (n < 1000) { log(`punt scores ${y}: only ${n} drives — not written`); continue }
+    const gz = gzipSync(Buffer.from(JSON.stringify({ cfbpuntsc: { v: 1, t: Date.now(), season: y, s: S } })));
+    const r = await api("PUT", `/api/pack/${scName(y)}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+    await api("PUT", "/api/pack-index", { body: { [scName(y)]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });
+    log(`punt scores ${y}: ${n} drives · ${(r.bytes / 1024).toFixed(0)} KB`); sc.push({ y, drives: n }) }
+  return { calls, seasons: out, scores: sc }
 }

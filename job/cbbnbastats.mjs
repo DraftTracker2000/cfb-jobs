@@ -94,7 +94,23 @@ export function injuryRows(rows) { const M = {}, seen = {};
   for (const r of L) { const id = String(r.athlete_id || ""), k = String(r.injury_id || ""); if (!id || !k || seen[k]) continue; seen[k] = 1;
     (M[id] = M[id] || []).push([iso(r.injury_date || r.as_of_date).slice(0, 10), String(r.status || ""), String(r.detail_type || ""), String(r.detail_side || "").replace(/^Not Specified$/, ""), iso(r.detail_return_date).slice(0, 10)]) }
   for (const id in M) M[id] = M[id].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 8); return M }
-export async function buildNbaStats({ getPack, putPack, log, curNba, live, full }) {
+/* a finished season's frozen copy (Oct 28): p<season>_cbb-nbastats-fin { v, season, at, ptO, ptD, hCols, mCols, xCols, xv, luV, s: the
+   season block exactly as this pack holds it }. Written once: if the site already has one it is left as it is (and noted in K.frz);
+   one is written only when the site says 404 (none yet) — any other failed read skips that season for this run. */
+export const FRZ_V = 1;
+export async function freezeNbaSeasons({ K, getPack, putPack, packStatus, log = console.log, curNba, live }) {
+  K.frz = K.frz || {}; const out = [];
+  for (const y of Object.keys(K.s).map(Number).sort((a, b) => a - b)) {
+    if (K.frz[y] || !K.fin || !K.fin[y] || (y === curNba && live) || !K.s[y] || !K.s[y].lu) continue;
+    const name = `p${y}_cbb-nbastats-fin`, have = await getPack(name).catch(() => null);
+    if (have && have.v === FRZ_V && have.season === y && have.s) { K.frz[y] = have.at || 1; out.push(y + " (already frozen)"); continue }
+    if (have || !packStatus || packStatus(name) !== 404) { log(`nbastats freeze ${y}: ${name} not read (${have ? "unexpected shape" : "status " + (packStatus ? packStatus(name) : "unknown")}) — skipped this run`); continue }
+    const F = { v: FRZ_V, season: y, at: Date.now(), ptO: K.ptO, ptD: K.ptD, hCols: K.hCols, mCols: K.mCols, xCols: K.xCols, xv: K.xv, luV: K.luV, s: K.s[y] };
+    await putPack(name, F); K.frz[y] = F.at; out.push(y + " (frozen now)") }
+  if (out.length) log(`nbastats freeze: ${out.join(", ")}`);
+  return out;
+}
+export async function buildNbaStats({ getPack, putPack, packStatus, log, curNba, live, full }) {
   let K = full ? null : await getPack("p2000_cbb-nbastats").catch(() => null);
   if (!K || K.v !== 2) K = { v: 2, got: [], ptO: PT_O, ptD: PT_D, hCols: H_COLS, mCols: M_COLS, s: {} };
   const espnOf = await crosswalk([curNba - 1, curNba]); let files = 0;
@@ -137,7 +153,11 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
     for (const y of [curNba, curNba - 1, curNba + 1]) { const CP = await getPack(`p${y}_cbb-coaches`).catch(() => null); if (!CP || !CP.coaches) continue;
       for (const c of Object.values(CP.coaches)) { const st = (c.wiki && c.wiki.stops) || []; const nb = st.map(s => teamOf(s[1])).filter(Boolean); if (nb.length && c.nm && !names[c.nm]) names[c.nm] = { list: nb, cur: false } } break }
     await buildNbaCoaches(K, names, log, curNba); files++ } catch (e) { log("nbastats coach records: " + e.message) }
-  for (const y of Object.keys(K.s)) if (+y < curNba - 2) delete K.s[y];
+  /* every finished season frozen for good (Oct 28 — Sam: "once data is complete, we keep our own copy forever and stop asking for it"):
+     a season that's done (its last read after it ended, and its lineups) is copied once into p<season>_cbb-nbastats-fin and never
+     re-read or rewritten. This pack still shows the last three seasons; one drops out of it only after its frozen copy is confirmed. */
+  try { await freezeNbaSeasons({ K, getPack, putPack, packStatus, log, curNba, live }) } catch (e) { log("nbastats freeze: " + e.message) }
+  for (const y of Object.keys(K.s)) if (+y < curNba - 2 && K.frz && K.frz[y]) delete K.s[y];
   /* every defender-vs-scorer pair (Oct 25 — Sam: the NBA Compare should show how two players guard each other): NBA.com's season
      matchups, all pairs with a minute or more of guarding, by season since 2017–18 → p2000_cbb-nbamu
      { v, cols, got: [finished seasons], s: { season: { defenderKey: [[scorerKey, sec, pts, fgm, fga, 3pm, 3pa, partialPoss]] } } }.

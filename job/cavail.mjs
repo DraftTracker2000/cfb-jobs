@@ -54,8 +54,10 @@ export function parseSbc(j, conf) {
   return out;
 }
 
-export async function buildCollegeAvail({ fetchFn = fetch, today = new Date() } = {}) {
-  const src = {}, all = [];
+/* `all` (optional, Oct 28): pass an array and it gets every report read this run — every game the sources still list, not only each
+   team's next one — for the permanent archive below. The pack this returns is the same as before. */
+export async function buildCollegeAvail({ fetchFn = fetch, today = new Date(), all = [] } = {}) {
+  const src = {};
   for (const [org, conf] of Object.entries(HD_CONF)) {
     try { const r = await fetchFn(HD, { method: "POST", headers: { "content-type": "application/json", accept: "application/json", referer: "https://app.hdintelligence.com/", "user-agent": UA }, body: JSON.stringify({ sport: "Football", organization: org, conference: org }) });
       if (!r.ok) { src[conf] = "error " + r.status; continue }
@@ -70,6 +72,37 @@ export async function buildCollegeAvail({ fetchFn = fetch, today = new Date() } 
   const day = new Date(today.getTime() - 5 * 3600e3).toISOString().slice(0, 10), t = {};   /* today in Eastern time: game-day reports stay up through the night */
   for (const e of all) { if (!e.team || (e.d && e.d < day)) continue; const cur = t[e.team]; if (cur && cur.d && e.d && cur.d <= e.d) continue; const { team, ...x } = e; t[team] = x }
   return { v: 1, at: Date.now(), src, t };
+}
+
+/* every report kept for good (Oct 28 — Sam: "once data is complete, we keep our own copy forever and stop asking for it"). The pack
+   above holds only each team's next game and is replaced every run; p{year}_cavail-arc keeps every version of every report we read:
+   { v, season, cols, g: { "<game date>|<team>": { opp, conf, k, r: [[type, up (as posted), first seen (ms), p: [[name, pos, num, status]]]] } } }.
+   A version is added when the report type, its posted time or its player list differs from the last one kept for that game; nothing
+   kept is ever changed or removed. readPack(name) → { status, j }; the archive is started fresh only on a 404 (no such pack yet) — any
+   other failed read skips the archive this run, so a bad read never writes an empty archive over a full one. */
+export const ARC_V = 1;
+export function mergeAvailArchive(A, all, now = Date.now()) {
+  let added = 0;
+  for (const e of all || []) { if (!e || !e.team) continue;
+    const key = `${e.d || ""}|${e.team}`, G = A.g[key] = A.g[key] || { opp: e.opp || null, conf: e.conf || null, k: e.k || null, r: [] };
+    const last = G.r[G.r.length - 1], p = e.p || [];
+    if (last && last[0] === (e.type || "") && last[1] === (e.up || null) && JSON.stringify(last[3]) === JSON.stringify(p)) continue;
+    G.r.push([e.type || "", e.up || null, now, p]); added++ }
+  return added;
+}
+export async function archiveCollegeAvail({ api, readPack, season, all, log = console.log, now = Date.now() }) {
+  const name = `p${season}_cavail-arc`;
+  let st = null, A = null; try { const x = await readPack(name); st = x && x.status; A = x && x.j } catch (e) { st = "error " + e.message }
+  if (!A || A.v !== ARC_V || A.season !== season || !A.g) {
+    if (A || st !== 404) { log(`college availability archive: ${name} not read (${A ? "unexpected shape" : "status " + st}) — not written this run`); return null }
+    A = { v: ARC_V, season, cols: ["name", "pos", "num", "status"], g: {} } }
+  const added = mergeAvailArchive(A, all, now);
+  if (!added) return { name, added: 0, games: Object.keys(A.g).length };
+  A.at = now;
+  const gz = gzipSync(Buffer.from(JSON.stringify(A)));
+  const r = await api("PUT", `/api/pack/${name}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+  await api("PUT", "/api/pack-index", { body: { [name]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });
+  return { name, added, games: Object.keys(A.g).length, bytes: r.bytes };
 }
 
 export async function uploadCollegeAvail({ api, season, data }) {

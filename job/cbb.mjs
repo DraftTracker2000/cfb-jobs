@@ -105,8 +105,14 @@ export async function getPack(name) {
   let r = await fetch(SITE + "/api/pack/" + name, { headers: { Authorization: "Bearer " + SESS } });
   /* a job sign-in lasts 2 hours; the long referee backfill (MODE=refhist) outlives it, so sign in again once (Oct 22) */
   if (r.status === 401) { SESS = (await site("POST", "/api/job/session", { body: { who: "cbb" } })).token; r = await fetch(SITE + "/api/pack/" + name, { headers: { Authorization: "Bearer " + SESS } }) }
+  PACK_ST[name] = r.status;
   return r.ok ? r.json() : null;
 }
+/* the answer the last getPack of a pack got (Oct 28 — Sam: "once data is complete, we keep our own copy forever"): the permanent
+   archive packs are only ever started fresh when the site said 404 (no such pack yet) — a failed read must never lead to an empty
+   archive written over a full one */
+const PACK_ST = {};
+export const packStatus = name => PACK_ST[name];
 const INDEX = {};
 async function putPack(name, obj) {
   const gz = gzipSync(Buffer.from(JSON.stringify(obj)));
@@ -243,11 +249,11 @@ export async function main() {
     await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return }
   /* nbaszn: only the NBA season box scores and lineups (job/cbbnbaszn.mjs), NBA.com reads only (Oct 22) */
   if (MODE === "nbaszn") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
-    const { buildNbaSzn } = await import("./cbbnbaszn.mjs"); const P = await buildNbaSzn({ getPack, putPack, log, curNba });
+    const { buildNbaSzn } = await import("./cbbnbaszn.mjs"); const P = await buildNbaSzn({ getPack, putPack, log, curNba, packStatus });
     await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `NBA season · ${Object.keys(P.done).length} games · ${Object.keys(P.box).length} players · gaps ${P.bad} · off ${P.off || 0} · player minutes off ${P.pOff || 0} of ${P.pChk || 0} ${JSON.stringify(P.offEx || [])}`.slice(0, 900); log(msg);
     await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return }
   if (MODE === "nbastats") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
-    await buildNbaStats({ getPack, putPack, log, curNba, live: nbaLive, full: false });
+    await buildNbaStats({ getPack, putPack, packStatus, log, curNba, live: nbaLive, full: false });
     try { const { buildNbaTrades } = await import("./cbbnbatrades.mjs"); await buildNbaTrades({ putPack, log }) } catch (e) { log("nba trades: " + e.message) }
     try { const { buildNbaBrackets } = await import("./cbbnbatrades.mjs"); await buildNbaBrackets({ getPack, putPack, log }) } catch (e) { log("nba brackets: " + e.message) }
     try { const { buildNbaCareers } = await import("./cbbnbatrades.mjs"); const C = await getPack("p2000_cbb-nbacareers").catch(() => null); /* read once and kept (Oct 24 — Sam: "we just did the searching like that once for it?"): history before 2008–09 doesn't change, and the
@@ -682,14 +688,14 @@ export async function main() {
   /* NBA calls by official and player (Oct 21; job/cbbnbacalls.mjs) */
   try { const { buildNbaCalls } = await import("./cbbnbacalls.mjs"); await buildNbaCalls({ getPack, putPack, log, curNba }) } catch (e) { log("nba calls: " + e.message) }
   /* NBA season box scores, +/- and lineups with when they play (Oct 22; job/cbbnbaszn.mjs) */
-  try { const { buildNbaSzn } = await import("./cbbnbaszn.mjs"); await buildNbaSzn({ getPack, putPack, log, curNba }) } catch (e) { log("nba season: " + e.message) }
+  try { const { buildNbaSzn } = await import("./cbbnbaszn.mjs"); await buildNbaSzn({ getPack, putPack, log, curNba, packStatus }) } catch (e) { log("nba season: " + e.message) }
   try { if (GM && GM.CI) await buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTED, normName, bySeason: GM.CI.seasons, D1, teams: teamsRaw, schoolKey: wikiSchoolKey }) } catch (e) { log("coach extras: " + e.message) }
   /* NCAA tournament runs since 2008, for the "Name the run" game (job/cbbncaa.mjs) */
   let NCAA = null; try { NCAA = await buildNcaaRuns({ cb, getPack, putPack, log, S, full }) } catch (e) { log("ncaa runs: " + e.message) }
   /* NBA draft combine measurements since 2001 (job/cbbcombine.mjs) */
   try { await buildCombine({ getPack, putPack, log, S, full }) } catch (e) { log("combine: " + e.message) }
   /* NBA play types, hustle and matchup defense (job/cbbnbastats.mjs) */
-  try { await buildNbaStats({ getPack, putPack, log, curNba, live: nbaLive, full }) } catch (e) { log("nbastats: " + e.message) }
+  try { await buildNbaStats({ getPack, putPack, packStatus, log, curNba, live: nbaLive, full }) } catch (e) { log("nbastats: " + e.message) }
 
   /* the last ten finished seasons, for the season picker (job/cbbpast.mjs) */
   try { const curGames = G.filter(g => g.season === S && g.status === "final").map(g => [g.id, g.startDate.slice(0, 10), g.homeTeamId, g.awayTeamId, g.homePoints, g.awayPoints, g.neutralSite ? 1 : 0, g.conferenceGame ? 1 : 0, null, null, g.seasonType === "postseason" ? 1 : 0, g.tournament || null]);

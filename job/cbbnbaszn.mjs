@@ -69,7 +69,26 @@ export function lineupsOf(bx, pb) {
    national games were 1–5 and the rest come later — so walking the numbers stopped early); null when the file can't be read */
 export async function nbaFinalIds(code) { const S = await j("https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"); if (!S || !S.leagueSchedule) return null;
   const out = []; for (const d of S.leagueSchedule.gameDates || []) for (const g of d.games || []) if (String(g.gameId).startsWith(code) && g.gameStatus === 3) out.push(String(g.gameId)); return out.length ? out.sort() : null }
-export async function buildNbaSzn({ getPack, putPack, log = console.log, curNba, CAP = 400 }) {
+/* the NBA injury list archive (Oct 28): p<S>_cbb-nbaszn-inj { v, season, cols, d: { "YYYY-MM-DD": { espnId: [status, type, name, team] } } },
+   one entry per day, the same snapshot the season pack's injH holds. Only added to: a past day already in the archive is never
+   rewritten; today's entry is replaced by later runs the same day (the list is still changing until the day ends). The days still in
+   the season pack's 10-day view are copied in too, so nothing on hand is lost. Started fresh only when the site says the pack doesn't
+   exist yet (404); any other failed read skips the archive for this run. Written only when something was added or today's list changed. */
+export const INJ_ARC_V = 1;
+export async function keepNbaInjDays({ getPack, putPack, packStatus, log = console.log, S, P, day }) {
+  const name = `p${S}_cbb-nbaszn-inj`;
+  let A = await getPack(name).catch(() => null);
+  if (!A || A.v !== INJ_ARC_V || A.season !== S || !A.d) {
+    if (A || !packStatus || packStatus(name) !== 404) { log(`nba injury archive: ${name} not read (${A ? "unexpected shape" : "status " + (packStatus ? packStatus(name) : "unknown")}) — not written this run`); return null }
+    A = { v: INJ_ARC_V, season: S, cols: ["status", "type", "name", "team"], d: {} } }
+  let added = 0, changed = 0;
+  for (const [d, m] of Object.entries(P.injH || {})) {
+    if (!(d in A.d)) { A.d[d] = m; added++ }
+    else if (d === day && JSON.stringify(A.d[d]) !== JSON.stringify(m)) { A.d[d] = m; changed++ } }
+  if (added || changed) { A.at = Date.now(); await putPack(name, A); log(`nba injury archive: ${name} · ${Object.keys(A.d).length} days kept (${added} added${changed ? ", today's list updated" : ""})`) }
+  return A;
+}
+export async function buildNbaSzn({ getPack, putPack, packStatus, log = console.log, curNba, CAP = 400 }) {
   const S = curNba, name = `p${S}_cbb-nbaszn`;
   let P = await getPack(name).catch(() => null);
   if (!P || P.v !== 8 || P.season !== S) P = { v: 8, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
@@ -103,7 +122,11 @@ export async function buildNbaSzn({ getPack, putPack, log = console.log, curNba,
   /* the NBA injury list each day (ESPN), the last 10 days kept, for each team page's "what changed this week" (Oct 22) */
   try { const r = await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries", { headers: { "User-Agent": H["User-Agent"] } }); if (r.ok) { const J = await r.json(), day = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }), m = {};
       for (const T of J.injuries || []) for (const x of T.injuries || []) { const id = String((x.athlete && x.athlete.links && (x.athlete.links[0] || {}).href || "").match(/id\/(\d+)/)?.[1] || ""); if (id) m[id] = [x.status || "", (x.details && x.details.type) || "", (x.athlete && x.athlete.displayName) || "", T.displayName || ""] }
-      P.injH = P.injH || {}; P.injH[day] = m; for (const d of Object.keys(P.injH).sort().slice(0, -10)) delete P.injH[d]; read++ } } catch (e) { log("nba injuries: " + e.message) }
+      P.injH = P.injH || {}; P.injH[day] = m;
+      /* every day's list kept for good (Oct 28 — Sam: "once data is complete, we keep our own copy forever and stop asking for it"):
+         copied into the season's archive pack before the 10-day view below trims it */
+      try { await keepNbaInjDays({ getPack, putPack, packStatus, log, S, P, day }) } catch (e) { log("nba injury archive: " + e.message) }
+      for (const d of Object.keys(P.injH).sort().slice(0, -10)) delete P.injH[d]; read++ } } catch (e) { log("nba injuries: " + e.message) }
   if (lineupsOf.dbg) P.dbg = lineupsOf.dbg;
   P.at = Date.now(); if (read) await putPack(name, P);
   log(`nba season: read ${read} games · ${Object.keys(P.done).length} in all · ${Object.keys(P.box).length} players · lineup gaps in ${P.bad} games`);

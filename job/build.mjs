@@ -47,7 +47,7 @@ import { refreshRefs } from "./refs.mjs";
 import { buildAvailability, uploadAvailability } from "./avail.mjs";
 import { buildInjHist, uploadInjHist } from "./injhist.mjs";
 import { buildInjImpact, uploadInjImpact } from "./injimpact.mjs";
-import { buildCollegeAvail, uploadCollegeAvail } from "./cavail.mjs";
+import { buildCollegeAvail, uploadCollegeAvail, archiveCollegeAvail } from "./cavail.mjs";
 import { buildNfl } from "./nfl.mjs";
 import { buildStaff } from "./staff.mjs";
 
@@ -111,7 +111,11 @@ async function main() {
   /* college availability reports (job/cavail.mjs): its own quick run Wednesday night to Saturday morning, and the start of every live run */
   if (MODE === "cavail" || MODE === "live") {
     const now = new Date(), season = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
-    try { const data = await buildCollegeAvail({}); const up = await uploadCollegeAvail({ api, season, data });
+    try { const all = [], data = await buildCollegeAvail({ all }); const up = await uploadCollegeAvail({ api, season, data });
+      /* every report kept for good in p{year}_cavail-arc (Oct 28, job/cavail.mjs) — after the pack above, and never failing the run */
+      try { const ss = await api("POST", "/api/job/session"), readPack = async n => { const r = await fetch(SITE + "/api/pack/" + n, { headers: { Authorization: "Bearer " + (ss && ss.token) } }); return { status: r.status, j: r.ok ? await r.json() : null } };
+        const a = await archiveCollegeAvail({ api, readPack, season, all }); if (a) console.log(`college availability archive: ${a.name} · ${a.added} report version(s) added · ${a.games} games kept${a.bytes ? ` · ${(a.bytes / 1024).toFixed(0)} KB` : ""}`) }
+      catch (e) { console.log("college availability archive: " + e.message) }
       const n = Object.values(data.t).reduce((a, x) => a + x.p.length, 0), msg = `college availability · ${Object.keys(data.t).length} teams · ${n} players listed · ${Object.entries(data.src).map(([k, v]) => k + " " + v).join(", ")} · ${(up.bytes / 1024).toFixed(0)} KB`;
       console.log(`::notice title=college availability::${msg} · ${Object.entries(data.t).slice(0, 4).map(([t, x]) => `${t} ${x.type} ${x.d} vs ${x.opp}: ${x.p.slice(0, 3).map(p => p[0] + " " + p[3]).join(", ")}`).join(" | ")}`); if (MODE === "cavail") { await report(!Object.values(data.src).every(v => /^error/.test(v)), msg); return } }
     catch (e) { if (MODE === "cavail") throw e; console.log("college availability: " + e.message) }

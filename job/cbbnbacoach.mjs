@@ -4,6 +4,7 @@
    what's kept. Who: every NBA head coach in our coaches list (2010 on) plus college head coaches whose Wikipedia stops include an NBA team.
    A table row is kept only when its team is an NBA franchise and its season is a real season; a page is used only when at least one of
    its rows matches a team our own coaches list has him at (namesakes ruled out). A coach is looked up again only while he is coaching. */
+import { noSR, srSkipped } from "./wikisr.mjs";
 const NBA_TEAMS = { "Atlanta": "ATL", "Boston": "BOS", "Brooklyn": "BKN", "New Jersey": "BKN", "Charlotte": "CHA", "Chicago": "CHI", "Cleveland": "CLE", "Dallas": "DAL", "Denver": "DEN", "Detroit": "DET",
   "Golden State": "GS", "Houston": "HOU", "Indiana": "IND", "LA Clippers": "LAC", "L.A. Clippers": "LAC", "Los Angeles Clippers": "LAC", "San Diego": "LAC", "LA Lakers": "LAL", "L.A. Lakers": "LAL", "Los Angeles Lakers": "LAL",
   "Memphis": "MEM", "Vancouver": "MEM", "Miami": "MIA", "Milwaukee": "MIL", "Minnesota": "MIN", "New Orleans": "NO", "New Orleans/Oklahoma City": "NO", "New York": "NY", "Oklahoma City": "OKC", "Seattle": "OKC",
@@ -34,7 +35,7 @@ export function parseNbaRecord(w) {
     out.push([y0 + 1, tm, wn, l, pw, pl, /^[—–-]$/.test(res) || /^\d/.test(res) ? "" : res.slice(0, 60)]) }
   return out }
 async function wikiText(title) { for (let k = 0; k < 5; k++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?action=parse&redirects=1&prop=wikitext&format=json&page=" + encodeURIComponent(title), { headers: { "User-Agent": "mycfbbigboard.com data job (NBA coach records)" } });
-      if (r.status === 429 || r.status >= 500) { await new Promise(z => setTimeout(z, 4000 * (k + 1))); continue } const j = await r.json(); return j.parse ? j.parse.wikitext["*"] : "" } catch { await new Promise(z => setTimeout(z, 1500)) } } return null }
+      if (r.status === 429 || r.status >= 500) { await new Promise(z => setTimeout(z, 4000 * (k + 1))); continue } const j = noSR(await r.json()); return j.parse ? j.parse.wikitext["*"] : "" } catch { await new Promise(z => setTimeout(z, 1500)) } } return null }
 /* names: { name: [team abbreviations we have him at] } → K.coh { name: { r: [[seasonEnd, team, W, L, playoff W, playoff L, result]], at } }, K.cohMiss */
 export async function buildNbaCoaches(K, names, log, curNba) {
   K.coh = K.coh || {}; K.cohMiss = K.cohMiss || []; if (K.cohV !== 2) { K.cohMiss = []; K.cohV = 2 }   /* v2: the GP-wins-losses template is read — coaches missed before get another look */

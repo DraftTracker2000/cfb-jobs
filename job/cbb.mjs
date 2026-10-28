@@ -33,6 +33,7 @@ import { buildOldDraft } from "./cbbolddraft.mjs";
 import { wikiSchoolKey } from "./cbbcoach.mjs";
 import { buildNba, buildNbaGames, refreshNbaOnCourt } from "./cbbnba.mjs";
 import { buildNbaFront } from "./cbbfront.mjs";
+import { srSkipped } from "./wikisr.mjs";
 import { fetchRosters, fetchSummary } from "./cbbespn.mjs";
 
 let SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
@@ -780,7 +781,7 @@ export async function main() {
   await site("PUT", "/api/pack-index", { body: INDEX });
   const mins = ((Date.now() - started) / 60e3).toFixed(1);
   const msg = `Basketball · ${board.length} players · ${Object.keys(teams).length} teams · test AUC ${test.aucDrafted}/${test.aucR1}/${test.aucLottery} · ${CALLS} CBBD calls${LEFT != null ? ` (${LEFT.toLocaleString()} left)` : ""} · ${mins} min`;
-  log(msg);
+  log(msg); if (srSkipped.length) log(`skipped ${srSkipped.length} Wikipedia pages that cite Sports Reference: ${[...new Set(srSkipped)].slice(0, 40).join(", ")}`);
   console.log(`::notice title=cbb run::${String(msg).replace(/[\r\n]+/g, " ").slice(0, 3000)}`);
   if (GM && GM.test) console.log(`::notice title=cbb pick::${JSON.stringify(GM.test.seasons.map(t => ({ s: t.season, right: t.pickRight, brier: t.brier, miss: t.marginMiss, ats: t.atsWin, n: t.atsDisagree3 })))}`);
   await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, detail: { test, calls: CALLS }, started } }).catch(e => log("report failed: " + e.message));

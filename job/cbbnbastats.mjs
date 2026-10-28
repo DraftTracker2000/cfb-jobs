@@ -96,7 +96,7 @@ export function injuryRows(rows) { const M = {}, seen = {};
   for (const id in M) M[id] = M[id].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 8); return M }
 export async function buildNbaStats({ getPack, putPack, log, curNba, live, full }) {
   let K = full ? null : await getPack("p2000_cbb-nbastats").catch(() => null);
-  if (!K || K.v !== 3) K = { v: 3, got: [], ptO: PT_O, ptD: PT_D, hCols: H_COLS, mCols: M_COLS, s: {} };
+  if (!K || K.v !== 2) K = { v: 2, got: [], ptO: PT_O, ptD: PT_D, hCols: H_COLS, mCols: M_COLS, s: {} };
   const espnOf = await crosswalk([curNba - 1, curNba]); let files = 0;
   K.fin = K.fin || {};
   if (K.xv !== 2) { for (const y of Object.keys(K.fin)) delete K.fin[y]; K.xv = 2 }   /* (in the preseason the season just finished is curNba itself, so both seasons on hand) */   /* Oct 12: free-throw trips by play type, eight matchups each way, and the tracking tables — last season's files read once more, then kept */
@@ -104,10 +104,10 @@ export async function buildNbaStats({ getPack, putPack, log, curNba, live, full 
   for (const y of want) {
     const get = async f => { files++; return readParquet(REL(f)).catch(e => (log(`nbastats ${f}: ${e.message}`), null)) };
     const off = {}, def = {};
-    /* (Oct 28) play types are Synergy's, and Synergy is owned by Sportradar — a banned source — so they're no longer read */
-    const hp = await get(`nba_stats_hustle/leaguehustlestatsplayer_regular-season_totals_${y}.parquet`) || [];
-    if (!hp.length) { log(`nbastats ${y}: no files yet`); continue }
-    const ht = await get(`nba_stats_hustle/leaguehustlestatsteam_regular-season_totals_${y}.parquet`) || [],
+    for (const t of PT_O) off[t] = await get(`nba_stats_synergy/regular-season_${t}_offensive_totals_${y}.parquet`);
+    for (const t of PT_D) def[t] = await get(`nba_stats_synergy/regular-season_${t}_defensive_totals_${y}.parquet`);
+    if (!Object.values(off).some(v => v && v.length)) { log(`nbastats ${y}: no play-type files yet`); continue }
+    const hp = await get(`nba_stats_hustle/leaguehustlestatsplayer_regular-season_totals_${y}.parquet`) || [], ht = await get(`nba_stats_hustle/leaguehustlestatsteam_regular-season_totals_${y}.parquet`) || [],
       mu = await get(`nba_stats_matchups/matchupsrollup_regular-season_totals_${y}.parquet`) || [], lsm = await get(`nba_stats_matchups/leagueseasonmatchups_regular-season_totals_${y}.parquet`) || [];
     const xf = {}; for (const f of Object.keys(X_SRC)) xf[f] = await get(`nba_stats_leaguedash/${f}_${y}.parquet`) || [];
     K.s[y] = seasonBlock({ off, def, hp, ht, mu, lsm, xf }, espnOf); if (!K.got.includes(y)) K.got.push(y); if (!(y === curNba && live)) K.fin[y] = 1;

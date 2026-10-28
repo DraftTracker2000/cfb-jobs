@@ -6,7 +6,6 @@
      current and past seasons only, so future years aren't shown as dollars — only how many are left.
    Saved as p{S}_cbb-nbafront = { at, season, gms: { ab: [name, since] }, con: { espnId: [salary, yearsLeft, option, bird, min, teamAb] } }.
    Skipped when the pack is under six days old (Sam: never re-fetch what hasn't changed). */
-import { noSR, srSkipped } from "./wikisr.mjs";
 const UA = { "User-Agent": "mycbbbigboard.com data job (NBA front offices)" };
 export function parseNbaGMs(wt, nameToAb) {
   const out = {}; const rows = wt.split(/\n\|-\s*\n/);
@@ -29,7 +28,7 @@ export async function buildNbaFront({ getPack, putPack, log, S, curNba }) {
   const nameToAb = {}; for (const [ab, t] of Object.entries(G.teams)) if (t.nm) nameToAb[t.nm] = ab; nameToAb["LA Clippers"] = nameToAb["LA Clippers"] || "LAC"; nameToAb["Los Angeles Clippers"] = "LAC";
   let gms = (old && old.gms) || {}, gmsAt = (old && old.gmsAt) || 0;
   if (Object.keys(gms).length >= 25 && Date.now() - gmsAt < 6 * 864e5) log("nba GMs: kept (under a week old)"); else try { const r = await fetch("https://en.wikipedia.org/w/api.php?action=parse&page=List_of_NBA_general_managers&prop=wikitext&format=json&formatversion=2&redirects=1", { headers: UA });
-    const j = noSR(await r.json()); const got = parseNbaGMs(j.parse.wikitext, nameToAb); if (Object.keys(got).length >= 25) { gms = got; gmsAt = Date.now() } log(`nba GMs: ${Object.keys(got).length} from Wikipedia`) } catch (e) { log("nba GMs: " + e.message) }
+    const j = await r.json(); const got = parseNbaGMs(j.parse.wikitext, nameToAb); if (Object.keys(got).length >= 25) { gms = got; gmsAt = Date.now() } log(`nba GMs: ${Object.keys(got).length} from Wikipedia`) } catch (e) { log("nba GMs: " + e.message) }
   /* the team is the one ESPN has the contract with this season (v2, Oct 17 — rosters can lag a trade) */
   const abOfId = {}; for (const [ab, t] of Object.entries(G.teams)) if (t.id != null) abOfId[String(t.id)] = ab;
   const ids = Object.entries(G.allp || {}).filter(([, a]) => a.tm).map(([id, a]) => [id, a.tm]);

@@ -10,7 +10,7 @@ on:
         description: "live · catchup · weekly · look · qb · views · avail · coaches · cdef · nfl · nflhistory · nfldraft · history · full"
         default: live
         type: choice
-        options: [live, cavail, look, probe, extras, honors, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, grtest, nfl, nflhistory, nfldraft, history, full, colgap, style]
+        options: [live, cavail, look, probe, extras, honors, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, grtest, nfl, nflhistory, nfldraft, history, full, colgap, style, punt]
       page:
         description: "Which version of the site runs the build: / (live) or /lab/"
         default: "/"

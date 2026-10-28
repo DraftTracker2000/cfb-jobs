@@ -22,12 +22,13 @@ export function parseNbaGMs(wt, nameToAb) {
 async function pool(items, n, fn) { const out = []; let i = 0; await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]).catch(() => null) } })); return out }
 export async function buildNbaFront({ getPack, putPack, log, S, curNba }) {
   const old = await getPack(`p${S}_cbb-nbafront`).catch(() => null);
-  if (old && old.at && Date.now() - old.at < 6 * 864e5 && old.season === curNba && old.v === 3) { log("nba front offices: kept (under a week old)"); return old }
+  /* contracts are checked daily (Oct 26 — Sam: rookies, two-ways and new deals were "unknown" for days); the GM list stays weekly */
+  if (old && old.at && Date.now() - old.at < 20 * 36e5 && old.season === curNba && old.v === 3) { log("nba front offices: kept (checked today)"); return old }
   const G = await getPack(`p${S}_cbb-nbagames`).catch(() => null); if (!G || !G.teams) { log("nba front offices: no team list yet"); return null }
   const nameToAb = {}; for (const [ab, t] of Object.entries(G.teams)) if (t.nm) nameToAb[t.nm] = ab; nameToAb["LA Clippers"] = nameToAb["LA Clippers"] || "LAC"; nameToAb["Los Angeles Clippers"] = "LAC";
-  let gms = (old && old.gms) || {};
-  try { const r = await fetch("https://en.wikipedia.org/w/api.php?action=parse&page=List_of_NBA_general_managers&prop=wikitext&format=json&formatversion=2&redirects=1", { headers: UA });
-    const j = await r.json(); const got = parseNbaGMs(j.parse.wikitext, nameToAb); if (Object.keys(got).length >= 25) gms = got; log(`nba GMs: ${Object.keys(got).length} from Wikipedia`) } catch (e) { log("nba GMs: " + e.message) }
+  let gms = (old && old.gms) || {}, gmsAt = (old && old.gmsAt) || 0;
+  if (Object.keys(gms).length >= 25 && Date.now() - gmsAt < 6 * 864e5) log("nba GMs: kept (under a week old)"); else try { const r = await fetch("https://en.wikipedia.org/w/api.php?action=parse&page=List_of_NBA_general_managers&prop=wikitext&format=json&formatversion=2&redirects=1", { headers: UA });
+    const j = await r.json(); const got = parseNbaGMs(j.parse.wikitext, nameToAb); if (Object.keys(got).length >= 25) { gms = got; gmsAt = Date.now() } log(`nba GMs: ${Object.keys(got).length} from Wikipedia`) } catch (e) { log("nba GMs: " + e.message) }
   /* the team is the one ESPN has the contract with this season (v2, Oct 17 — rosters can lag a trade) */
   const abOfId = {}; for (const [ab, t] of Object.entries(G.teams)) if (t.id != null) abOfId[String(t.id)] = ab;
   const ids = Object.entries(G.allp || {}).filter(([, a]) => a.tm).map(([id, a]) => [id, a.tm]);
@@ -42,6 +43,6 @@ export async function buildNbaFront({ getPack, putPack, log, S, curNba }) {
     const tid = ((c.team && c.team.$ref) || "").match(/teams\/(\d+)/); con[id] = [c.salary, py ? c.yearsRemaining - 1 : c.yearsRemaining ?? null, c.optionType ?? 0, c.birdStatus ?? null, c.minimumSalaryException ? 1 : 0, py ? tm : (tid && abOfId[tid[1]]) || tm, ...(py ? ["py"] : [])]; ok++; if (py) carried++ });
   log(`nba contracts: ${carried} carried over from last season's records`);
   log(`nba contracts: ${ok} of ${ids.length} players (ESPN, ${curNba - 1}–${String(curNba).slice(2)})`);
-  const out = { v: 3, at: Date.now(), season: curNba, gms, con: ok >= 200 ? con : (old && old.con) || con };
+  const out = { v: 3, at: Date.now(), season: curNba, gms, gmsAt, con: ok >= 200 ? con : (old && old.con) || con };
   await putPack(`p${S}_cbb-nbafront`, out); return out;
 }

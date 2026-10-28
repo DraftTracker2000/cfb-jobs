@@ -9,6 +9,8 @@
      p<Y>_nfl-pbp-<S>      one season of play-by-play boiled down: passing zones (air yards × direction) for every passer,
                            receiver and defense; late-and-close, third down and red zone lines; runs by direction;
                            each game's score at the half, after three quarters, and its low and high point
+                           and each offense's play-call tendencies (team.tend: pass calls by down × distance, run and throw direction,
+                           depth, shotgun, no huddle, red zone — Oct 28)
      p<Y>_nfl-picks        who owns each pick of the next three drafts (trades read from ESPN's transaction feed)
      p<Y>_nfl-teams        each season's defense: yards allowed a game (pass, run), points, and FBS-style ranks
      p<Y>_nfl-depth        this week's depth charts (offense, OL and defense), the injury report, who's on reserve, and rookies
@@ -230,7 +232,26 @@ const LOC = { left: "L", middle: "M", right: "R" };
 /* a passing line: attempts, completions, yards, TD, INT, sacks, fumbles lost, EPA sum, first downs */
 const line = () => [0, 0, 0, 0, 0, 0, 0, 0, 0];
 function addPass(L, o) { if (o.sack) { L[5]++; L[2] += o.yds; if (o.fl) L[6]++; L[7] += o.epa; return } L[0]++; if (o.cmp) { L[1]++; L[2] += o.yds } if (o.td) L[3]++; if (o.int) L[4]++; if (o.fl) L[6]++; L[7] += o.epa; if (o.fd) L[8]++ }
-async function pbp(S, log) {
+/* play-call tendencies (Oct 28 — each NFL offense's play-call mix): every called play (a dropback — sacks and scrambles included, it was
+   called as a pass — or a designed run), regular season and playoffs; no kneels, spikes, two-pointers, aborted snaps or plays wiped out
+   by a penalty → team[t].tend = { n: [plays, pass calls], dd: { down + distance (S 1–3, M 4–7, L 8+ to go): [plays, pass calls] },
+   run: designed runs [left, middle, right], edge: of those, runs to the ends, loc: aimed throws [left, middle, right], len: [short, deep]
+   (nflverse's pass length: deep = 15+ yards in the air), sg: plays from shotgun, nh: plays with no huddle, rz: inside the 20 [plays, pass calls] } */
+export const TEND_COLS = "n [plays, pass calls] · dd[down+S/M/L (1–3, 4–7, 8+ to go)] [plays, pass calls] · run [left, middle, right] designed runs · edge runs to the ends · loc [left, middle, right] aimed throws · len [short, deep] · sg shotgun plays · nh no-huddle plays · rz inside the 20 [plays, pass calls]";
+export function tendAdd(TD, o) {
+  if (!o.posteam || o.two_point_attempt === "1" || o.qb_spike === "1" || o.qb_kneel === "1" || o.aborted_play === "1") return;
+  const pass = o.qb_dropback === "1" || o.play_type === "pass", run = !pass && o.play_type === "run"; if (!pass && !run) return;
+  const x = TD[o.posteam] = TD[o.posteam] || { n: [0, 0], dd: {}, run: [0, 0, 0], edge: 0, loc: [0, 0, 0], len: [0, 0], sg: 0, nh: 0, rz: [0, 0] };
+  x.n[0]++; if (pass) x.n[1]++;
+  const dn = num(o.down), tg = num(o.ydstogo);
+  if (dn >= 1 && dn <= 4 && tg != null && tg > 0) { const k = dn + (tg <= 3 ? "S" : tg <= 7 ? "M" : "L"), c = x.dd[k] = x.dd[k] || [0, 0]; c[0]++; if (pass) c[1]++ }
+  if (o.shotgun === "1") x.sg++; if (o.no_huddle === "1") x.nh++;
+  if ((num(o.yardline_100) ?? 99) <= 20) { x.rz[0]++; if (pass) x.rz[1]++ }
+  if (run) { const i = { left: 0, middle: 1, right: 2 }[o.run_location]; if (i != null) { x.run[i]++; if (i !== 1 && o.run_gap === "end") x.edge++ } }
+  else if (o.sack !== "1" && o.qb_scramble !== "1") { const i = { left: 0, middle: 1, right: 2 }[o.pass_location]; if (i != null) x.loc[i]++;
+    if (o.pass_length === "short") x.len[0]++; else if (o.pass_length === "deep") x.len[1]++ }
+}
+export async function pbp(S, log) {
   const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null;
   const LGD = {}, LYH = {};
   const P = {}, R = {}, U = {}, T = {}, G = {}, WX = {}, DRV = {}, FS = {}, DF = {}, OPQ = {}, INJ = {}, BON = {};
@@ -248,7 +269,7 @@ async function pbp(S, log) {
   const df = (id, t) => { const d = DF[id] = DF[id] || { t, P: {}, R: { L: [0, 0], M: [0, 0], R: [0, 0] }, Q: [0, 0, 0, 0, 0, 0], sk: 0, qbh: 0, ff: 0, tfl: 0, g: new Set() }; d.t = t; return d };
   const ids = (o, ks) => { const out = []; for (const k of ks) if (o[k] && o[k] !== "NA" && !out.includes(o[k])) out.push(o[k]); return out };
   const hsF = o => num(o.total_home_score) != null && num(o.total_away_score) != null;
-  const WPS = {}, YACS = [];
+  const WPS = {}, YACS = [], TD = {};
   const pl = (M, id) => M[id] = M[id] || { Z: {}, all: line(), late: line(), third: [0, 0], rz: line(), two: line() };
   /* field position of a snap: backed up (own 1–10), own 11 to midfield, their 49–21, red zone 20–11, inside the 10; short yardage = 3rd or 4th and 1–2 */
   const fpos = o => { const y = num(o.yardline_100) || 50; return y >= 90 ? "bk" : y >= 50 ? "own" : y >= 21 ? "opp" : y >= 11 ? "rz2" : "i10" }, shortY = o => num(o.down) >= 3 && (num(o.ydstogo) || 99) <= 2;
@@ -260,7 +281,7 @@ async function pbp(S, log) {
     "solo_tackle_1_player_id", "solo_tackle_2_player_id", "assist_tackle_1_player_id", "assist_tackle_2_player_id", "tackle_with_assist_1_player_id", "tackle_with_assist_2_player_id",
     "pass_defense_1_player_id", "pass_defense_2_player_id", "interception_player_id", "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id",
     "qb_hit_1_player_id", "qb_hit_2_player_id", "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id", "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id", "desc", "wp", "pass_touchdown", "rush_touchdown", "return_touchdown", "td_player_id", "receiving_yards", "rushing_yards",
-    "lateral_receiver_player_id", "lateral_receiving_yards", "lateral_rusher_player_id", "lateral_rushing_yards", "cpoe", "comp_air_epa", "comp_yac_epa", "qb_scramble", "pass_oe", "qb_dropback", "game_seconds_remaining", "spread_line", "yards_after_catch"], o => {
+    "lateral_receiver_player_id", "lateral_receiving_yards", "lateral_rusher_player_id", "lateral_rushing_yards", "cpoe", "comp_air_epa", "comp_yac_epa", "qb_scramble", "pass_oe", "qb_dropback", "game_seconds_remaining", "spread_line", "yards_after_catch", "shotgun", "no_huddle", "pass_length"], o => {
     const g = o.game_id; if (!g) return;
     /* fantasy bonuses by player and game: [pass TD 40+, 50+, rush TD 40+, 50+, catch TD 40+, 50+, pick-six thrown, completion 40+, run 40+, catch 40+] */
     if (o.two_point_attempt !== "1") { const yg = num(o.yards_gained), id = x => x && x !== "NA" ? x : null;
@@ -302,6 +323,7 @@ async function pbp(S, log) {
     const hs = num(o.total_home_score), as = num(o.total_away_score), q = num(o.qtr);
     if (hs != null && as != null) { const m = hs - as, x = G[g] = G[g] || [null, null, 0, 0, o.home_team, o.away_team];
       if (q <= 2) x[0] = m; if (q <= 3) x[1] = m; if (m < x[2]) x[2] = m; if (m > x[3]) x[3] = m }
+    tendAdd(TD, o);
     if (o.two_point_attempt === "1" || o.qb_spike === "1" || o.qb_kneel === "1" || o.aborted_play === "1") return;
     /* pass protection (Sam, Oct 1: the best offensive lines): dropbacks, sacks and QB hits, for the offense (prO, and game by game prG)
        and the defense (prD) — so a line's sack rate can be read against the pass rushes it faced */
@@ -461,9 +483,10 @@ async function pbp(S, log) {
   { const avg = {}; for (const [, k, y] of YACS) { const a = avg[k] = avg[k] || [0, 0]; a[0]++; a[1] += y }
     for (const [id, k, y] of YACS) { const a = avg[k]; if (!a || a[0] < 20) continue; const x = pl(R, id), e = x.yacx = x.yacx || [0, 0]; e[0]++; e[1] += y - a[1] / a[0] } }
   for (const t in T) if (T[t].sit) for (const side of ["o", "d"]) { const z = T[t].sit[side], v = Object.values(z.rzd); z.rz = [v.length, v.filter(Boolean).length]; delete z.rzd }
+  for (const t in TD) (T[t] = T[t] || { off: {}, def: {} }).tend = TD[t];
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
-    gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, bon: BON,
+    gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], tendCols: TEND_COLS, pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, bon: BON,
     dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF };
 }
 /* rain or snow at kickoff, from the play-by-play's weather line ("Light Rain Temp: 45° F, …"): 0 clear or dry, 1 rain, 2 snow,
@@ -987,7 +1010,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
      being played) is built once at this version and skipped after — its packs stay as they are. Bump NFL_DONE_V when what a season's
      packs hold changes, and every finished season is rebuilt once. */
   SNAP_PUT = (n, o) => put(n, o);
-  const NFL_DONE_V = 3; let DONE = { s: {} }; try { DONE = (getPack && (await getPack(P("done")))) || DONE } catch { } DONE.s = DONE.s || {};
+  const NFL_DONE_V = 4;   /* 4 (Oct 28): the pbp pack carries each offense's play-call tendencies (team.tend) */ let DONE = { s: {} }; try { DONE = (getPack && (await getPack(P("done")))) || DONE } catch { } DONE.s = DONE.s || {};
   if (!all) for (let i = seasons.length - 1; i >= 0; i--) if (seasons[i] < lastPlayed && DONE.s[seasons[i]] === NFL_DONE_V) { log(`nfl: ${seasons[i]} finished, kept`); seasons.splice(i, 1) }
   const LOGS = {}, WXP = {}, STN = {};
   /* starts for every season (mode nfldraft: just the starts and the draft grades, every season — the first fill, or a rebuild) */

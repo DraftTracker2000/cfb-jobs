@@ -54,7 +54,7 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style"];
+const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const NOFRESH = ["probe", "look"].includes(MODE) || /test$/.test(MODE);
@@ -62,7 +62,7 @@ const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflhistory: 120, nfldraft: 60, colgap: 150 }[MODE];
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60 }[MODE];
 const PAGE = ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 const started = Date.now();
 
@@ -155,6 +155,13 @@ async function main() {
   console.log(`[${MODE}] signed in to ${SITE}`);
   CFTOK = sess.token; CF0 = await cfbdLeft(); if (CF0 != null) console.log(`::notice title=CFBD::calls left at the start of this ${MODE} run: ${CF0.toLocaleString()}`);
 
+  /* MODE=punt: college punts and returns from CFBD, 2015 on (job/cfbpunt.mjs, Oct 28 — Sam: yes); finished seasons are kept and never fetched again */
+  if (MODE === "punt") { const { buildPunts } = await import("./cfbpunt.mjs");
+    const getIndex = async () => { try { const r = await fetch(SITE + "/api/pack-index", { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? (await r.json()).packs : null } catch { return null } };
+    const d = await buildPunts({ site: SITE, token: sess.token, api, getIndex, log: x => console.log(x) });
+    for (const x of d.seasons) console.log(`::notice title=punts ${x.y}::${x.stopped ? "stopped (CFBD budget floor)" : `${x.plays} punts · ${x.punters ?? 0} punters · ${x.returners ?? 0} returners${x.kb ? ` · ${x.kb} KB` : ""}${x.short ? " · too few, not written" : ""}`}`);
+    console.log(`::notice title=punts::${d.calls} CFBD calls`);
+    await report(true, `punts · ${d.seasons.length} seasons · ${d.calls} calls`); return }
   /* MODE=colgap: college missed-game check from box scores (job/colgap.mjs, Oct 24) */
   if (MODE === "colgap") { const { buildColGap, uploadColGap } = await import("./colgap.mjs");
     let hand = []; try { hand = (await (await fetch(SITE + "/data/col-injuries.json")).json()).p || [] } catch { }

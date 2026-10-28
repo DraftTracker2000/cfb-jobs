@@ -2,6 +2,19 @@
    async function evaluated in the page (w(ms) waits, W is the width). Return {ok, ...whatever helps}. Keep results short. */
 const res = `const R=()=>performance.getEntriesByType("resource").map(e=>decodeURIComponent(e.name));`;
 export const PROBES = [
+  /* Oct 28 (Sam: "who are the coaches that broke the sports reference rule"): read only — which coach pages we read cite a Sports Reference site
+     (college: the top section we read; NBA: the whole page we read the record table from). Changes nothing. */
+  { name: "srcoach", node: `const H={Authorization:"Bearer "+TOKEN};const gp=async n=>{let r=await fetch(SITE+"/api/pack/"+n,{headers:H});if(r.status===401){const s=await fetch(SITE+"/api/job/session",{method:"POST",headers:{Authorization:"Bearer "+TOKEN}}).then(r=>r.json()).catch(()=>null);if(s&&s.token){H.Authorization="Bearer "+s.token;r=await fetch(SITE+"/api/pack/"+n,{headers:H})}}return r.ok?r.json():null};
+const SR=/sports-reference|basketball-reference|pro-football-reference|hockey-reference|baseball-reference|fbref\.com|stathead\.com/i,UA={"User-Agent":"mycbbbigboard.com data job (source check, read only)"},sl=ms=>new Promise(z=>setTimeout(z,ms));
+const q=async(titles,sec)=>{for(let k=0;k<5;k++){const r=await fetch("https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main"+(sec?"&rvsection=0":"")+"&redirects=1&format=json&formatversion=2&titles="+encodeURIComponent(titles.join("|")),{headers:UA}).catch(()=>null);if(r&&r.ok)return r.json();await sl(4000*(k+1))}return null};
+const txt=p=>p&&p.revisions&&p.revisions[0]?(p.revisions[0].slots?p.revisions[0].slots.main.content:p.revisions[0].content):"";
+const W=await gp("p2000_cbb-wiki"),T=[...new Set(Object.values((W&&W.c)||{}).filter(x=>x.t).map(x=>x.t))],hitC=[],okC=[];let failC=0;
+for(let i=0;i<T.length;i+=40){const j=await q(T.slice(i,i+40),1);if(!j||!j.query){failC+=Math.min(40,T.length-i);continue}for(const p of j.query.pages||[]){const w=txt(p);if(!w)continue;(SR.test(w)?hitC:okC).push(p.title)}await sl(1200)}
+const K=await gp("p2000_cbb-nbastats"),N=Object.keys((K&&K.coh)||{}),hitN=[],okN=[];let failN=0;
+for(let i=0;i<N.length;i+=15){const b=N.slice(i,i+15),V=n=>[n,n+" (basketball)",n+" (basketball coach)"],j=await q(b.flatMap(V),0);if(!j||!j.query){failN+=b.length;continue}const m={};for(const x of j.query.normalized||[])m[x.from]=x.to;for(const x of j.query.redirects||[])m[x.from]=x.to;const pg=Object.fromEntries((j.query.pages||[]).map(p=>[p.title,p]));
+for(const n of b){let got="";for(const t0 of V(n)){let t=m[t0]||t0;t=m[t]||t;const w=txt(pg[t]);if(w&&!/may refer to|\{\{\s*(disambiguation|hndis)/i.test(w)&&/coach/i.test(w)){got=w;break}}if(got)(SR.test(got)?hitN:okN).push(n);else failN++}await sl(1200)}
+console.log("SRCOACH college cite ("+hitC.length+"): "+hitC.sort().join(" | "));console.log("SRCOACH college clean ("+okC.length+"): "+okC.sort().join(" | "));console.log("SRCOACH nba cite ("+hitN.length+"): "+hitN.sort().join(" | "));console.log("SRCOACH nba clean ("+okN.length+"): "+okN.sort().join(" | "));
+return {ok:true,college:{pages:T.length,cite:hitC.length,clean:okC.length,unread:failC},nba:{coaches:N.length,cite:hitN.length,clean:okN.length,unread:failN},note:"full name lists are in the run log (SRCOACH lines)"}` },
   /* Oct 26 (#52): can college basketball injuries be kept from now on — does ESPN list them, and do game summaries carry them */
   { name: "cbbinj", node: `const o={ok:true};const a=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/injuries");o.list=a.status+" "+(a.ok?JSON.stringify(await a.json()).slice(0,300):"");
 const sb=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=20260314&groups=50&limit=5").then(r=>r.json()).catch(()=>null);const ev=sb&&sb.events&&sb.events[0];o.ev=ev&&ev.id;

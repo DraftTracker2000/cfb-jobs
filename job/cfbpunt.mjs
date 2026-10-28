@@ -22,7 +22,9 @@ export async function buildPunts({ site, token, api, getIndex, log = console.log
         if (r.status === 400 || r.status === 404) return null; if (r.status === 429) await new Promise(z => setTimeout(z, 20000)) } catch (e) { } await new Promise(z => setTimeout(z, 2000 * (k + 1))) } throw new Error("CFBD " + path + " failed 3 times") };
   const left = async () => { const j = await cf("/info"); return j && j.remainingCalls != null ? +j.remainingCalls : null };
   const now = new Date(), cur = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
-  const idx = (await getIndex()) || {}, out = [];
+  /* the index is written once at the end (Oct 28): the site keeps it in KV, and back-to-back writes a few seconds apart read a cached copy
+     and drop each other's entries (2025 and 2026 drive scores went missing that way) */
+  const idx = (await getIndex()) || {}, out = [], IX = {};
   for (let y = first; y <= cur; y++) {
     if (y < cur && idx[puntName(y)]) { log(`punts ${y}: kept`); continue }
     const lf = await left(); if (lf != null && lf < minLeft) { log(`punts: stopped before ${y}, ${lf} CFBD calls left (floor ${minLeft})`); out.push({ y, stopped: true }); break }
@@ -37,7 +39,7 @@ export async function buildPunts({ site, token, api, getIndex, log = console.log
     if (y < cur && plays.length < 1000) { log(`punts ${y}: only ${plays.length} punts — not written, will try again next run`); out.push({ y, plays: plays.length, players: players.length, short: true }); continue }
     const gz = gzipSync(Buffer.from(JSON.stringify({ cfbpunt: { v: 1, t: Date.now(), season: y, players, cols: COLS, plays } })));
     const r = await api("PUT", `/api/pack/${puntName(y)}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
-    await api("PUT", "/api/pack-index", { body: { [puntName(y)]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });
+    IX[puntName(y)] = { sha: r.sha, bytes: r.bytes, at: Date.now() };
     const pun = players.filter(x => x.punting).length, ret = players.filter(x => x.returning).length;
     log(`punts ${y}: ${plays.length} punts · ${pun} punters · ${ret} returners · ${(r.bytes / 1024).toFixed(0)} KB`); out.push({ y, plays: plays.length, punters: pun, returners: ret, kb: Math.round(r.bytes / 1024) }) }
   /* the score when each punt happened (Oct 28 — Sam: "this could easily be sorted out from play by play"): the punt rows carry their drive
@@ -52,7 +54,8 @@ export async function buildPunts({ site, token, api, getIndex, log = console.log
     if (n < 1000) { log(`punt scores ${y}: only ${n} drives — not written`); continue }
     const gz = gzipSync(Buffer.from(JSON.stringify({ cfbpuntsc: { v: 1, t: Date.now(), season: y, s: S } })));
     const r = await api("PUT", `/api/pack/${scName(y)}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
-    await api("PUT", "/api/pack-index", { body: { [scName(y)]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });
+    IX[scName(y)] = { sha: r.sha, bytes: r.bytes, at: Date.now() };
     log(`punt scores ${y}: ${n} drives · ${(r.bytes / 1024).toFixed(0)} KB`); sc.push({ y, drives: n }) }
+  if (Object.keys(IX).length) await api("PUT", "/api/pack-index", { body: IX });
   return { calls, seasons: out, scores: sc }
 }

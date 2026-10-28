@@ -1,6 +1,6 @@
 /* College basketball national awards and consensus All-America teams (Oct 26 — Sam: "yes" to "I can add All-American teams and the
    national awards"). Read from each award's Wikipedia page and each season's "NCAA Men's Basketball All-Americans" page — but only a page
-   whose text never cites Sports Reference (Sam's rule); a page that does is skipped and logged, and that award waits for another source.
+   — a winner whose own table line cites Sports Reference is left out and logged (Sam's rule; per line since Oct 28, per page before).
    Seasons from 2008–09 on (where our college data starts). Read once a week.
 
    Pack p2000_cbb-awards { v, t, src: { key: page title }, skipped: [title], rows: [[season, key, name, school]] } — season is the year the
@@ -8,6 +8,7 @@
 
 const WUA = { headers: { "User-Agent": "mycbbbigboard.com data job (college basketball stats site; contact via the site)" } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const SRX = /sports-reference|basketball-reference/i;
 export const AWARDS = [["wooden", "John R. Wooden Award"], ["naismith", "Naismith College Player of the Year"], ["appoy", "Associated Press College Basketball Player of the Year"],
   ["oscar", "Oscar Robertson Trophy"], ["nabcpoy", "NABC Player of the Year"], ["nabcdpoy", "NABC Defensive Player of the Year"], ["naisdpoy", "Naismith Defensive Player of the Year"],
   ["frosh", "USBWA National Freshman of the Year"], ["cousy", "Bob Cousy Award"], ["west", "Jerry West Award"], ["erving", "Julius Erving Award"], ["malone", "Karl Malone Award"], ["kareem", "Kareem Abdul-Jabbar Award"]];
@@ -48,27 +49,29 @@ const seasonOf = t => { const m = String(t).match(/(\d{4})\s*[–-]\s*(\d{2,4})/
 
 export async function buildAwards({ getPack, putPack, log = console.log, force = false, nowY }) {
   const old = await getPack("p2000_cbb-awards").catch(() => null);
-  if (!force && old && old.v === 1 && Date.now() - (old.t || 0) < 7 * 864e5) return old;
+  if (!force && old && old.v === 2 && Date.now() - (old.t || 0) < 7 * 864e5) return old;
   const rows = [], src = {}, skipped = []; const Y1 = nowY || new Date().getUTCFullYear();
   for (const [key, title] of AWARDS) { const w0 = await wiki(title); await sleep(2500); if (!w0) { skipped.push(title + " (not read)"); continue }
-    if (/sports-reference|basketball-reference/i.test(w0)) { skipped.push(title + " (cites Sports Reference)"); continue }
-    src[key] = title; const w = noRefs(w0); let n = 0;
+    /* Oct 28 (Sam: "yes" to the per-line check — probe awline: +36 winners, 0 dropped): a page that cites Sports Reference somewhere is
+       still read; only a winner whose own table row cites it is left out (and logged) */
+    src[key] = title; let n = 0, cut = 0;
     /* the men's Division I table only — these pages also list women's winners and other divisions */
-    for (const T of tables(w)) { let H = T.heads; if (/women|division (ii|iii|2|3)\b|naia|junior|njcaa|two-year|small college|high school|coach|key/i.test(T.heading + " " + T.caption)) continue;
+    for (const T of tables(w0)) { let H = T.heads.map(h => cellText(noRefs(h)).toLowerCase()); if (/women|division (ii|iii|2|3)\b|naia|junior|njcaa|two-year|small college|high school|coach|key/i.test(cellText(noRefs(T.heading + " " + T.caption)))) continue;
       /* a table whose header row didn't parse (a caption on the same line): season, player, school, in that order, when the first cell is a season */
-      if (!H.length) { if (!T.rows.some(r => seasonOf(cellText(r[0] || "")))) continue; H = ["season", "player", "school"] } const iS = H.findIndex(h => /season|year/.test(h)), iP = H.findIndex(h => /player|winner|recipient|name/.test(h)), iT = H.findIndex(h => /^(school|team|college)/.test(h)); if (iS < 0 || iP < 0) continue;
-      for (const r of T.rows) { const y = seasonOf(cellText(r[iS] || "")); if (!y || y < 2009 || y > Y1 + 1) continue; const nm = cellText(r[iP] || "").replace(/\s*\(\d+\)$/, ""); if (!nm || /vacated|not awarded/i.test(nm)) continue;
-        const sc = iT >= 0 ? cellText(r[iT] || "") : ""; rows.push([y, key, nm, sc]); n++ } }
-    log(`awards: ${title} — ${n} winners since 2008–09`) }
+      if (!H.length) { if (!T.rows.some(r => seasonOf(cellText(noRefs(r[0] || ""))))) continue; H = ["season", "player", "school"] } const iS = H.findIndex(h => /season|year/.test(h)), iP = H.findIndex(h => /player|winner|recipient|name/.test(h)), iT = H.findIndex(h => /^(school|team|college)/.test(h)); if (iS < 0 || iP < 0) continue;
+      for (const r of T.rows) { const y = seasonOf(cellText(noRefs(r[iS] || ""))); if (!y || y < 2009 || y > Y1 + 1) continue; const nm = cellText(noRefs(r[iP] || "")).replace(/\s*\(\d+\)$/, ""); if (!nm || /vacated|not awarded/i.test(nm)) continue;
+        if (SRX.test(r.join(" "))) { cut++; skipped.push(`${title}: ${y} ${nm} (that line cites Sports Reference)`); continue }
+        const sc = iT >= 0 ? cellText(noRefs(r[iT] || "")) : ""; rows.push([y, key, nm, sc]); n++ } }
+    log(`awards: ${title} — ${n} winners since 2008–09${cut ? `, ${cut} left out (their line cites Sports Reference)` : ""}`) }
   /* consensus All-America teams, one page a season */
   for (let y = 2009; y <= Y1; y++) { const title = `${y} NCAA Men's Basketball All-Americans`; const w0 = await wiki(title); await sleep(2500); if (!w0) continue;
-    if (/sports-reference|basketball-reference/i.test(w0)) { skipped.push(title + " (cites Sports Reference)"); continue }
-    const w = noRefs(w0); let n = 0;
-    for (const T of tables(w)) { const key = /consensus first team/i.test(T.caption) ? "aa1" : /consensus second team/i.test(T.caption) ? "aa2" : null; if (!key) continue;
-      const H = T.heads, iP = Math.max(0, H.findIndex(h => /player/.test(h))), iT = H.findIndex(h => /team|school/.test(h));
-      for (const r of T.rows) { const nm = cellText(r[iP] || ""); if (!nm) continue; rows.push([y, key, nm, cellText(r[iT >= 0 ? iT : r.length - 1] || "")]); n++ } }
+    let n = 0;
+    for (const T of tables(w0)) { const cap = cellText(noRefs(T.caption)), key = /consensus first team/i.test(cap) ? "aa1" : /consensus second team/i.test(cap) ? "aa2" : null; if (!key) continue;
+      const H = T.heads.map(h => cellText(noRefs(h)).toLowerCase()), iP = Math.max(0, H.findIndex(h => /player/.test(h))), iT = H.findIndex(h => /team|school/.test(h));
+      for (const r of T.rows) { const nm = cellText(noRefs(r[iP] || "")); if (!nm) continue; if (SRX.test(r.join(" "))) { skipped.push(`${title}: ${nm} (that line cites Sports Reference)`); continue }
+        rows.push([y, key, nm, cellText(noRefs(r[iT >= 0 ? iT : r.length - 1] || ""))]); n++ } }
     if (n) src["aa" + y] = title; log(`awards: ${y} consensus All-Americans — ${n}`) }
   if (skipped.length) log(`awards: skipped ${skipped.join("; ")}`);
-  const P = { v: 1, t: Date.now(), src, skipped, rows };
+  const P = { v: 2, t: Date.now(), src, skipped, rows };
   if (rows.length >= 50 || !old) await putPack("p2000_cbb-awards", P); else log(`awards: only ${rows.length} rows — kept the old pack`);
   return P }

@@ -4,7 +4,6 @@
    to the site. The site keeps the admin's own edits unless Wikipedia's entry for that team changes afterwards
    (see src/api/staff.js), so a correction by hand is never undone by a stale page, and a new firing still comes through.
    Wikipedia's text is CC BY-SA; only the names are used. */
-import { noSR, srSkipped } from "./wikisr.mjs";
 
 const PAGES = { oc: "List_of_current_NFL_offensive_coordinators", dc: "List_of_current_NFL_defensive_coordinators" };
 /* head coaches: nflverse's schedule file carried last season's coach into 2026 for some teams (Gannon at Arizona, Morris at
@@ -108,13 +107,13 @@ export async function buildStaff({ log = console.log } = {}) {
   const teams = {};
   try {
     const r = await fetch(`https://en.wikipedia.org/w/api.php?action=parse&page=${HC_PAGE}&prop=wikitext&format=json&formatversion=2`, { headers: { "User-Agent": "mycfbbigboard.com data job (staff names)" } });
-    const H = r.ok ? parseHC(noSR(await r.json())?.parse?.wikitext || "") : {};
+    const H = r.ok ? parseHC((await r.json())?.parse?.wikitext || "") : {};
     log(`staff: hc ${Object.keys(H).length} teams`);
     if (Object.keys(H).length >= 28) for (const [t, h] of Object.entries(H)) Object.assign(teams[t] = teams[t] || {}, { hc: h.hc, hcSince: h.since, hcInterim: h.interim });
   } catch (e) { log("staff: hc " + e.message) }
   try {
     const r = await fetch(`https://en.wikipedia.org/w/api.php?action=parse&page=${GM_PAGE}&prop=wikitext&format=json&formatversion=2&redirects=1`, { headers: { "User-Agent": "mycfbbigboard.com data job (staff names)" } });
-    const M = r.ok ? parseGM(noSR(await r.json())?.parse?.wikitext || "") : {};
+    const M = r.ok ? parseGM((await r.json())?.parse?.wikitext || "") : {};
     log(`staff: gm ${Object.keys(M).length} teams`);
     if (Object.keys(M).length >= 28) for (const [t, g] of Object.entries(M)) Object.assign(teams[t] = teams[t] || {}, { gm: g.gm, gmSince: g.since, gmHired: g.hired });
   } catch (e) { log("staff: gm " + e.message) }
@@ -122,7 +121,7 @@ export async function buildStaff({ log = console.log } = {}) {
     const r = await fetch(`https://en.wikipedia.org/w/api.php?action=parse&page=${page}&prop=wikitext&format=json&formatversion=2`,
       { headers: { "User-Agent": "mycfbbigboard.com data job (staff names)" } });
     if (!r.ok) { log(`staff: ${page} → ${r.status}`); continue }
-    const wt = noSR(await r.json())?.parse?.wikitext || "";
+    const wt = (await r.json())?.parse?.wikitext || "";
     const L = parseList(wt), n = Object.keys(L).length;
     log(`staff: ${k} ${n} teams`);
     if (n < 28) continue;                                   // a page mid-edit or reformatted: don't trust a partial read

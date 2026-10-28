@@ -3,7 +3,6 @@
    piece a team received — a player, a draft pick, cash or draft consideration — and who it came from. The site matches players to its
    own season lines by name and reads each team's record from the season's games.
    Pack p2000_cbb-nbatrades: { v: 1, t, r: [[date "YYYY-MM-DD", trade id, received-by team name, from team name, what, NBA.com player id (0 = not a player)]] } */
-import { noSR, srSkipped } from "./wikisr.mjs";
 const URL = "https://stats.nba.com/js/data/playermovement/NBA_Player_Movement.json";
 const H = { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Referer": "https://www.nba.com/", "Origin": "https://www.nba.com", "Accept": "application/json, text/plain, */*" };
 export function parseTradeRow(x) {
@@ -70,12 +69,12 @@ export async function buildNbaBrackets({ getPack, putPack, log = console.log, up
   const need = []; for (let y = 1970; y <= last; y++) if (!(S[y] && S[y].length && y < last)) need.push(y);
   for (let k = 0; k < need.length; k += 4) { const Y = need.slice(k, k + 4), titles = Y.map(y => y + " NBA playoffs"); let j = null;
     for (let a = 0; a < 4 && !j; a++) { try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(titles.join("|"))}`, { headers: WUA }); reads++;
-      if (r.ok) j = noSR(await r.json()); else { log(`nba brackets: ${r.status}`); await new Promise(z => setTimeout(z, 3000 * (a + 1))) } } catch (e) { await new Promise(z => setTimeout(z, 3000 * (a + 1))) } }
-    if (!j) { for (const y of Y) { try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(y + " NBA playoffs")}`, { headers: WUA }); reads++; const j2 = noSR(await r.json()), p2 = ((j2.query || {}).pages || [])[0], w = p2 && p2.revisions && p2.revisions[0] && p2.revisions[0].slots.main.content, B = w && parseNbaBracket(w); if (B && B.s.length) { S[y] = B.s; RD[y] = B.rd } else bad.push(y + ":" + r.status) } catch (e) { bad.push(y + ":" + e.message) } await new Promise(z => setTimeout(z, 800)) } continue }
+      if (r.ok) j = await r.json(); else { log(`nba brackets: ${r.status}`); await new Promise(z => setTimeout(z, 3000 * (a + 1))) } } catch (e) { await new Promise(z => setTimeout(z, 3000 * (a + 1))) } }
+    if (!j) { for (const y of Y) { try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(y + " NBA playoffs")}`, { headers: WUA }); reads++; const j2 = await r.json(), p2 = ((j2.query || {}).pages || [])[0], w = p2 && p2.revisions && p2.revisions[0] && p2.revisions[0].slots.main.content, B = w && parseNbaBracket(w); if (B && B.s.length) { S[y] = B.s; RD[y] = B.rd } else bad.push(y + ":" + r.status) } catch (e) { bad.push(y + ":" + e.message) } await new Promise(z => setTimeout(z, 800)) } continue }
     const red = {}; for (const x of (j.query && j.query.redirects) || []) red[x.to] = x.from;
     for (const pg of (j.query && j.query.pages) || []) { const ti = red[pg.title] || pg.title, y = +String(ti).slice(0, 4); let w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content;
       /* a batch can leave a page's text out (it continues in a later read): fetch that one on its own */
-      if (!w) try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(y + " NBA playoffs")}`, { headers: WUA }); reads++; const j2 = noSR(await r.json()), p2 = ((j2.query || {}).pages || [])[0]; w = p2 && p2.revisions && p2.revisions[0] && p2.revisions[0].slots.main.content; await new Promise(z => setTimeout(z, 600)) } catch (e) { }
+      if (!w) try { const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(y + " NBA playoffs")}`, { headers: WUA }); reads++; const j2 = await r.json(), p2 = ((j2.query || {}).pages || [])[0]; w = p2 && p2.revisions && p2.revisions[0] && p2.revisions[0].slots.main.content; await new Promise(z => setTimeout(z, 600)) } catch (e) { }
       const B = w && parseNbaBracket(w); if (B && B.s.length) { S[y] = B.s; RD[y] = B.rd } else bad.push(y) }
     await new Promise(z => setTimeout(z, 1000)) }
   await putPack("p2000_cbb-nbabrk", { v: 2, t: Date.now(), s: S, rd: RD }); log(`nba brackets: ${Object.keys(S).length} seasons, ${reads} Wikipedia reads${bad.length ? `, no bracket: ${bad.join(" ")}` : ""}`); return S;
@@ -146,7 +145,7 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
   /* the names first (500 a read, each player once however many teams he played for), then the top of each page — the infobox —
      fifty players a read */
   const P = {}, HN = {}, AW = {}, OR = {}, T = new Set(); let reads = 0; const miss = [];
-  const call = async q => { for (let a = 0; a < 4; a++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", ...q }), { headers: WUA }); reads++; if (r.ok) { const j = noSR(await r.json()); if (!j.error) return j; log(`nba careers: ${j.error.code} ${j.error.info}`) } else log(`nba careers: ${r.status}`) } catch (e) { log(`nba careers: ${e.message}`) } await new Promise(z => setTimeout(z, 3000 * (a + 1))) } return null };
+  const call = async q => { for (let a = 0; a < 4; a++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", ...q }), { headers: WUA }); reads++; if (r.ok) { const j = await r.json(); if (!j.error) return j; log(`nba careers: ${j.error.code} ${j.error.info}`) } else log(`nba careers: ${r.status}`) } catch (e) { log(`nba careers: ${e.message}`) } await new Promise(z => setTimeout(z, 3000 * (a + 1))) } return null };
   /* a category whose listing fails is tried again (Oct 24: the Lakers' and Pistons' lists failed once, and Kobe, Magic and Isiah — one team
      each — went missing) */
   for (const cat of cats) for (let tryN = 0; tryN < 3; tryN++) { let cont = {}, n = 0, ok = true;
@@ -170,5 +169,5 @@ export async function buildNbaCareers({ getPack, putPack, log = console.log }) {
 }
 /* probe (MODE=probe, PROBE=nba-careers-test): the infobox honors of a few players, raw and as read */
 export async function run() { const L = ["Magic Johnson", "LeBron James"];
-  const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", prop: "revisions", rvprop: "content", rvslots: "main", rvsection: "0", titles: L.join("|") }), { headers: WUA }); const j = noSR(await r.json());
+  const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", prop: "revisions", rvprop: "content", rvslots: "main", rvsection: "0", titles: L.join("|") }), { headers: WUA }); const j = await r.json();
   return (j.query.pages || []).map(p => { const w = p.revisions[0].slots.main.content, k = w.search(/\n\s*\|\s*highlights\s*=/); return { t: p.title, hof: (w.match(/\n\s*\|\s*(?:bbhof|hof\w*|halloffame|hof_player)\s*=[^\n]*/gi) || []).join(" ").slice(0, 300), hl: k < 0 ? null : w.slice(k, k + 6000).split("\n").filter(l => /champion|MVP|Most Valuable/i.test(l)).map(l => l.slice(0, 220)).join("\n"), aw: nbaAwards(w).filter(x => x[0] === "champ" || x[0] === "mvp") } }) }

@@ -251,6 +251,17 @@ export function tendAdd(TD, o) {
   else if (o.sack !== "1" && o.qb_scramble !== "1") { const i = { left: 0, middle: 1, right: 2 }[o.pass_location]; if (i != null) x.loc[i]++;
     if (o.pass_length === "short") x.len[0]++; else if (o.pass_length === "deep") x.len[1]++ }
 }
+/* coach's challenges (Oct 28 — Sam's go on data set 10, "NFL challenges from our pbp"): the play-by-play's own line, "Kansas City challenged
+   the short of the line to gain ruling, and the play was REVERSED" (won) or "… Upheld" (lost) → team[t].ch = [challenges, won]. Booth reviews
+   ("The Replay Official reviewed …") aren't the coach's and aren't counted. */
+const CH_NAME = { "Arizona": "ARI", "Atlanta": "ATL", "Baltimore": "BAL", "Buffalo": "BUF", "Carolina": "CAR", "Chicago": "CHI", "Cincinnati": "CIN", "Cleveland": "CLE", "Dallas": "DAL", "Denver": "DEN",
+  "Detroit": "DET", "Green Bay": "GB", "Houston": "HOU", "Indianapolis": "IND", "Jacksonville": "JAX", "Kansas City": "KC", "Las Vegas": "LV", "Oakland": "LV", "Los Angeles Chargers": "LAC", "San Diego": "LAC",
+  "Los Angeles Rams": "LA", "St. Louis": "LA", "Miami": "MIA", "Minnesota": "MIN", "New England": "NE", "New Orleans": "NO", "New York Giants": "NYG", "New York Jets": "NYJ", "Philadelphia": "PHI",
+  "Pittsburgh": "PIT", "San Francisco": "SF", "Seattle": "SEA", "Tampa Bay": "TB", "Tennessee": "TEN", "Washington": "WAS" };
+export function chAdd(CH, o) { const d = o.desc; if (!d || d.indexOf("challenged") < 0) return;
+  const re = /([A-Z][A-Za-z.]+(?: [A-Z][A-Za-z.]+)*) challenged the .+? ruling, and the play was (REVERSED|Upheld)/g; let m;
+  while ((m = re.exec(d))) { const nm = m[1].split(". ").pop(), t = CH_NAME[nm] || ([o.posteam, o.defteam].find(x => x && CH_NAME[nm] === x)); if (!t) continue;
+    const x = CH[t] = CH[t] || [0, 0]; x[0]++; if (m[2] === "REVERSED") x[1]++ } }
 export async function pbp(S, log) {
   const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null;
   const LGD = {}, LYH = {};
@@ -269,7 +280,7 @@ export async function pbp(S, log) {
   const df = (id, t) => { const d = DF[id] = DF[id] || { t, P: {}, R: { L: [0, 0], M: [0, 0], R: [0, 0] }, Q: [0, 0, 0, 0, 0, 0], sk: 0, qbh: 0, ff: 0, tfl: 0, g: new Set() }; d.t = t; return d };
   const ids = (o, ks) => { const out = []; for (const k of ks) if (o[k] && o[k] !== "NA" && !out.includes(o[k])) out.push(o[k]); return out };
   const hsF = o => num(o.total_home_score) != null && num(o.total_away_score) != null;
-  const WPS = {}, YACS = [], TD = {};
+  const WPS = {}, YACS = [], TD = {}, CH = {};
   const pl = (M, id) => M[id] = M[id] || { Z: {}, all: line(), late: line(), third: [0, 0], rz: line(), two: line() };
   /* field position of a snap: backed up (own 1–10), own 11 to midfield, their 49–21, red zone 20–11, inside the 10; short yardage = 3rd or 4th and 1–2 */
   const fpos = o => { const y = num(o.yardline_100) || 50; return y >= 90 ? "bk" : y >= 50 ? "own" : y >= 21 ? "opp" : y >= 11 ? "rz2" : "i10" }, shortY = o => num(o.down) >= 3 && (num(o.ydstogo) || 99) <= 2;
@@ -323,7 +334,7 @@ export async function pbp(S, log) {
     const hs = num(o.total_home_score), as = num(o.total_away_score), q = num(o.qtr);
     if (hs != null && as != null) { const m = hs - as, x = G[g] = G[g] || [null, null, 0, 0, o.home_team, o.away_team];
       if (q <= 2) x[0] = m; if (q <= 3) x[1] = m; if (m < x[2]) x[2] = m; if (m > x[3]) x[3] = m }
-    tendAdd(TD, o);
+    tendAdd(TD, o); chAdd(CH, o);
     if (o.two_point_attempt === "1" || o.qb_spike === "1" || o.qb_kneel === "1" || o.aborted_play === "1") return;
     /* pass protection (Sam, Oct 1: the best offensive lines): dropbacks, sacks and QB hits, for the offense (prO, and game by game prG)
        and the defense (prD) — so a line's sack rate can be read against the pass rushes it faced */
@@ -484,6 +495,7 @@ export async function pbp(S, log) {
     for (const [id, k, y] of YACS) { const a = avg[k]; if (!a || a[0] < 20) continue; const x = pl(R, id), e = x.yacx = x.yacx || [0, 0]; e[0]++; e[1] += y - a[1] / a[0] } }
   for (const t in T) if (T[t].sit) for (const side of ["o", "d"]) { const z = T[t].sit[side], v = Object.values(z.rzd); z.rz = [v.length, v.filter(Boolean).length]; delete z.rzd }
   for (const t in TD) (T[t] = T[t] || { off: {}, def: {} }).tend = TD[t];
+  for (const t in CH) (T[t] = T[t] || { off: {}, def: {} }).ch = CH[t];
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
     gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], tendCols: TEND_COLS, pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, bon: BON,
@@ -1010,7 +1022,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
      being played) is built once at this version and skipped after — its packs stay as they are. Bump NFL_DONE_V when what a season's
      packs hold changes, and every finished season is rebuilt once. */
   SNAP_PUT = (n, o) => put(n, o);
-  const NFL_DONE_V = 4;   /* 4 (Oct 28): the pbp pack carries each offense's play-call tendencies (team.tend) */ let DONE = { s: {} }; try { DONE = (getPack && (await getPack(P("done")))) || DONE } catch { } DONE.s = DONE.s || {};
+  const NFL_DONE_V = 5;   /* 4 (Oct 28): the pbp pack carries each offense's play-call tendencies (team.tend); 5 (Oct 28, Sam: yes): coach's challenges (team.ch) */ let DONE = { s: {} }; try { DONE = (getPack && (await getPack(P("done")))) || DONE } catch { } DONE.s = DONE.s || {};
   if (!all) for (let i = seasons.length - 1; i >= 0; i--) if (seasons[i] < lastPlayed && DONE.s[seasons[i]] === NFL_DONE_V) { log(`nfl: ${seasons[i]} finished, kept`); seasons.splice(i, 1) }
   const LOGS = {}, WXP = {}, STN = {};
   /* starts for every season (mode nfldraft: just the starts and the draft grades, every season — the first fill, or a rebuild) */

@@ -37,3 +37,10 @@ to work freely. Read them at the start of every session.
 
 ## 6. Own mistakes plainly
 - When something goes wrong, say exactly what happened and what's live, check it, fix it, and write down the rule that prevents it.
+
+## 7. Show the numbers after every run
+- After any data run, model change or refit, send Sam a short before → after table in chat (the measure, the old number, the new one, a
+  one-line verdict), like the backtest tables he's used to: "Draft slot + NFL value .557 → .568 · better on every measure". Say what was
+  kept and what was left out because it didn't help.
+- Keep the model scorecard (public/lab/scorecard.json, shown at /lab/scorecard) current: every model's latest test numbers with the date
+  and what changed, so improving or slipping shows at a glance.

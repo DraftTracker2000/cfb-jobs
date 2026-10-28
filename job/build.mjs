@@ -173,6 +173,11 @@ async function main() {
     for (let i = 0, k = 0; i < C.length && k < 6; k++) { let s = ""; while (i < C.length && (s + C[i]).length < 5800) s += C[i++] + " | "; console.log(`::notice title=college gaps check ${k + 1}::${s}`) }
     console.log(`::notice title=college gaps unplaced::${d.miss.join(", ").slice(0, 5800)}`);
     await report(true, `college gaps · ${n} players · ${gaps} stretches · ${d.calls} calls`); return }
+  /* punts and returns, this season's file (Oct 28): every weekly run refreshes the season being played; finished seasons are kept (~18 CFBD calls) */
+  if (MODE === "weekly") { try { const { buildPunts } = await import("./cfbpunt.mjs");
+      const getIndex = async () => { try { const r = await fetch(SITE + "/api/pack-index", { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? (await r.json()).packs : null } catch { return null } };
+      const d = await buildPunts({ site: SITE, token: sess.token, api, getIndex, log: x => console.log(x) }); const c = d.seasons[d.seasons.length - 1];
+      console.log(`::notice title=punts::${c ? `${c.y}: ${c.plays} punts` : "nothing new"} · ${d.calls} CFBD calls`) } catch (e) { console.log(`::warning title=punts failed::${String(e && e.message || e).slice(0, 1500)}`) } }
   /* style matchups (Oct 25, job/stylepack.mjs): every weekly run, or MODE=style by hand → pack p2000_cfbstyle */
   if (MODE === "style" || MODE === "weekly") { try { const { buildStyle } = await import("./stylepack.mjs"); const { gzipSync } = await import("node:zlib");
       const now = new Date(), y = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, d = await buildStyle({ site: SITE, token: sess.token, year: y });

@@ -43,6 +43,7 @@
      on failure      window.__BUILDER = { error:"…" }                                          */
 
 import { gzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import { refreshRefs } from "./refs.mjs";
 import { buildAvailability, uploadAvailability } from "./avail.mjs";
 import { buildInjHist, uploadInjHist } from "./injhist.mjs";
@@ -256,14 +257,29 @@ async function main() {
   /* detail packs: overwritten in place, then listed in one index */
   const index = {}, held = [];
   /* a pack under 40% of its last size is held back (Oct 6: an empty NFL schedule went out once) */
-  let prevIx = {}; try { const ss = await api("POST", "/api/job/session"); const r = await fetch(SITE + "/api/pack-index", { headers: { Authorization: "Bearer " + (ss && ss.token) } }); if (r.ok) prevIx = (await r.json()).packs || {} } catch { }
+  let prevIx = {}, ssTok = null; try { const ss = await api("POST", "/api/job/session"); ssTok = ss && ss.token; const r = await fetch(SITE + "/api/pack-index", { headers: { Authorization: "Bearer " + ssTok } }); if (r.ok) prevIx = (await r.json()).packs || {} } catch { }
+  /* Oct 28: a season's grade detail also comes as pieces (p<season>_res-ds<k>, written by the page's resShards). They're listed in that
+     season's p<season>_res-dsix (each piece's sha), not in the pack index, and a piece whose sha matches the last list isn't uploaded again. */
+  const DS = /^(p\d{4})_res-ds(\d+)$/, dsPrev = {}, dsNew = {}; let dsPut = 0, dsSame = 0;
+  const dsPrevOf = async pre => { if (!(pre in dsPrev)) { dsPrev[pre] = null; try { const r = await fetch(`${SITE}/api/pack/${pre}_res-dsix`, { headers: { Authorization: "Bearer " + ssTok } }); if (r.ok) dsPrev[pre] = (await r.json()).res || null } catch { } } return dsPrev[pre] };
   for (const name of B.packNames) {
     const txt = await page.evaluate(n => JSON.stringify(window.__PACKS[n]), name);
     const gz = gzipSync(Buffer.from(txt));
+    { const dm = DS.exec(name); if (dm) { if (held.includes(`${dm[1]}_res-detail`)) continue; const sha = createHash("sha256").update(gz).digest("hex").slice(0, 16), k = +dm[2], pv = await dsPrevOf(dm[1]);
+      if (pv && Array.isArray(pv.s) && pv.s[k] === sha) dsSame++; else { await api("PUT", `/api/pack/${name}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } }); dsPut++ }
+      (dsNew[dm[1]] = dsNew[dm[1]] || [])[k] = sha; continue } }
     const was = prevIx[name] && prevIx[name].bytes; if (was > 4096 && gz.length < .4 * was) { held.push(name); console.log(`HELD ${name}: ${gz.length} bytes vs ${was} last time`); continue }
     const r = await api("PUT", `/api/pack/${name}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
     index[name] = { sha: r.sha, bytes: r.bytes, at: Date.now() };
   }
+  for (const [pre, s] of Object.entries(dsNew)) {
+    /* the list goes out only when every piece is there and the season's whole detail file wasn't held back */
+    if (held.includes(`${pre}_res-detail`) || s.length < 2 || s.some(x => !x)) { console.log(`::warning title=detail pieces::${pre}: list not updated (${held.includes(`${pre}_res-detail`) ? "detail held back" : "pieces missing"})`); continue }
+    const gz = gzipSync(Buffer.from(JSON.stringify({ res: { n: s.length, s, at: Date.now() } })));
+    const r = await api("PUT", `/api/pack/${pre}_res-dsix`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+    index[`${pre}_res-dsix`] = { sha: r.sha, bytes: r.bytes, at: Date.now() };
+  }
+  if (dsPut || dsSame) console.log(`detail pieces: ${dsPut} uploaded, ${dsSame} unchanged`);
   if (held.length) B.note = (B.note || MODE) + ` · HELD BACK (under 40% of last size): ${held.join(", ")}`;
   /* Oct 11: the run's logs can't be read from here, so what went wrong goes on the run as annotations — held packs and the builder's own
      messages (first and last few, and how many) */

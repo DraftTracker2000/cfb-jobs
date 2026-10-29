@@ -332,6 +332,20 @@ export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots,
   for (const [tid, A] of Object.entries(R.ets || {})) if (out.teams[tid] && A[0]) out.teams[tid].espn = A;
   const refs = Object.fromEntries(Object.entries(R.refs || {}).filter(([, X]) => X[0] >= 10).map(([n, X]) => [n, { g: X[0], fh: Math.round(10 * X[1] / X[0]) / 10, fa: Math.round(10 * X[2] / X[0]) / 10, hm: Math.round(10 * X[3] / X[0]) / 10, fta: Math.round(10 * X[4] / X[0]) / 10 }]));
   await putPack(`p${S}_cbb-pbp`, { season: S, through: new Date().toISOString().slice(0, 10), games: have.size, espnGames: R.espnN || 0, diag: R.diag || null, refs, ...out });
+  /* Oct 28 (Sam: "i thought we were building it to be low pulls on phones"): the same numbers in parts, so a page loads only what it
+     shows. p{S}_cbb-pbp is 11 MB and almost every basketball page loaded all of it (10 MB of it the players' detail). Now:
+       p{S}_cbb-pbpc  — the lean core: every team, the refs, and each player's small numbers (name, team, minutes, on/off, clutch, wins
+                        added, halves …) — what the lists that rank every player read
+       p{S}_cbb-pbpg-<group> — one player detail group each (matchups, defense, own shots, minute shares, teammates, play types, feeds,
+                        assists, subs, rotations, starts), keyed by player id
+     The full pack stays exactly as it is; a page that still asks for everything gets everything. */
+  { const GROUPS = { mu: ["mu"], def: ["def"], own: ["own"], share: ["share"], mates: ["mates"], ph: ["ph"], fed: ["fed"], ast: ["ast"], sub: ["subBy", "rot", "st"] };
+    const inG = new Set(Object.values(GROUPS).flat()), core = {}, parts = Object.fromEntries(Object.keys(GROUPS).map(g => [g, {}]));
+    for (const [id, x] of Object.entries(out.players)) { const c = {}; for (const [k, v] of Object.entries(x)) if (!inG.has(k)) c[k] = v; core[id] = c;
+      for (const [g, ks] of Object.entries(GROUPS)) { const o = {}; let any = 0; for (const k of ks) if (x[k] !== undefined) { o[k] = x[k]; any = 1 } if (any) parts[g][id] = o } }
+    const head = { season: S, through: new Date().toISOString().slice(0, 10), games: have.size, espnGames: R.espnN || 0 };
+    await putPack(`p${S}_cbb-pbpc`, { ...head, diag: R.diag || null, refs, teams: out.teams, players: core, groups: Object.keys(GROUPS) });
+    for (const [g, o] of Object.entries(parts)) await putPack(`p${S}_cbb-pbpg-${g}`, { ...head, g, players: o }) }
   /* the shot chart from the same pass */
   const avg = shots.ZONES.map(() => [0, 0]); for (const [id, X] of Object.entries(R.sh.teams)) if (D1.has(+id)) X.o.z.forEach((v, i) => { avg[i][0] += v[0]; avg[i][1] += v[1] });
   const keep = {}; for (const [id, A] of Object.entries(R.sh.players)) if (A.z.reduce((a, v) => a + v[1], 0) + A.r.reduce((a, v) => a + v[1], 0) >= 25 || A.ft[1] >= 25) keep[id] = A;

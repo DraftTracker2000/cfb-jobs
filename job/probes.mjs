@@ -295,4 +295,10 @@ out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(",
     const Y=new Date().getFullYear(),P=await gp("p"+Y+"_nfl-ingame-"+Y),o={ok:!!P,v:P&&P.v,cols:P&&P.cols};if(!P)return o;let rec=0,out=0,left=0,back=0,seen=0;const src={},ex=[];
     for(const g in P.p)for(const gid in P.p[g]){const r=P.p[g][gid];rec++;if(r[4])out++;if(r[3])back++;if(r[5])seen++;const shown=r[4]||(!r[3]&&!r[5]);if(shown)left++;const k=r[6]||"espn (v4)";src[k]=(src[k]||0)+1;if(shown&&ex.length<25)ex.push([g,gid,r[0],r[1],r[2],k])}
     Object.assign(o,{players:Object.keys(P.p).length,records:rec,ruledOutOrConcussion:out,announcedReturn:back,seenAgain:seen,shownAsLeftGame:left,bySource:src,examples:ex});return o` },
+  { name: "nflsit", node: `const H={Authorization:"Bearer "+TOKEN};const gp=async n=>{let r=await fetch(SITE+"/api/pack/"+n,{headers:H});if(r.status===401){const s=await fetch(SITE+"/api/job/session",{method:"POST",headers:{Authorization:"Bearer "+TOKEN}}).then(r=>r.json()).catch(()=>null);if(s&&s.token){H.Authorization="Bearer "+s.token;r=await fetch(SITE+"/api/pack/"+n,{headers:H})}}return r.ok?r.json():null};
+    /* Oct 29: did the QB/WR/TE situation fields land (sides, target share, behind the line, 3rd and long)? */
+    const Y=new Date().getFullYear(),o={ok:true},D=await gp("p"+Y+"_nfl-done");o.done=D&&D.s;
+    for(const s of [2016,2020,2025,Y]){const B=await gp("p"+Y+"_nfl-pbp-"+s);if(!B){o[s]="none";continue}const R=Object.entries(B.rec||{}).sort((a,b)=>(b[1].all||[0])[0]-(a[1].all||[0])[0])[0],P=Object.entries(B.pass||{}).sort((a,b)=>(b[1].all||[0])[0]-(a[1].all||[0])[0])[0];
+      o[s]={rec:R&&{id:R[0],tgt:R[1].all[0],sd:!!R[1].sd,tts:R[1].tts&&R[1].tts.all,tl:R[1].tl&&R[1].tl[0],bl:R[1].bl&&R[1].bl.all},pass:P&&{id:P[0],att:P[1].all[0],sd:P[1].sd&&P[1].sd.all,tl:P[1].tl&&P[1].tl[0]}}}
+    return o` },
 ];

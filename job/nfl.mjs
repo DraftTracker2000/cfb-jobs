@@ -285,7 +285,7 @@ export async function pbp(S, log) {
   const WPS = {}, YACS = [], TD = {}, CH = {};
   const pl = (M, id) => M[id] = M[id] || { Z: {}, all: line(), late: line(), third: [0, 0], rz: line(), two: line() };
   /* field position of a snap: backed up (own 1–10), own 11 to midfield, their 49–21, red zone 20–11, inside the 10; short yardage = 3rd or 4th and 1–2 */
-  const fpos = o => { const y = num(o.yardline_100) || 50; return y >= 90 ? "bk" : y >= 50 ? "own" : y >= 21 ? "opp" : y >= 11 ? "rz2" : "i10" }, shortY = o => num(o.down) >= 3 && (num(o.ydstogo) || 99) <= 2;
+  const fpos = o => { const y = num(o.yardline_100) || 50; return y >= 90 ? "bk" : y >= 50 ? "own" : y >= 21 ? "opp" : y >= 11 ? "rz2" : "i10" }, shortY = o => num(o.down) >= 3 && (num(o.ydstogo) || 99) <= 2, longY = o => num(o.down) >= 3 && (num(o.ydstogo) || 0) >= 7;   /* 3rd/4th and 7+ (Oct 29, Sam: "for receivers it should really be 3rd and long … who the QBs most reliable receivers are") */
   const zc = (Z, k) => Z[k] = Z[k] || [0, 0, 0, 0, 0, 0];   // att, cmp, yds, td, int, epa
   rows(t, ["game_id", "season_type", "home_team", "away_team", "posteam", "defteam", "qtr", "down", "ydstogo", "yardline_100", "play_type", "yards_gained", "pass_location",
     "air_yards", "run_location", "epa", "score_differential", "total_home_score", "total_away_score", "complete_pass", "interception", "touchdown", "sack", "fumble_lost",
@@ -410,13 +410,13 @@ export async function pbp(S, log) {
       const p = pl(P, o.passer_player_id); addPass(p.all, ev); if (late) addPass(p.late, ev); if (rz) addPass(p.rz, ev); if (two) addPass(p.two, ev);
       /* Oct 29 (Sam: "that same data should be on the QBs and WR & TEs"): the same situations as a back's runs — short yardage and field
          position — and, below, which side each throw went (left / middle / right) in each of them */
-      { const zb = fpos(o); addPass(p[zb] = p[zb] || line(), ev); if (shortY(o)) addPass(p.sy = p.sy || line(), ev) }
+      { const zb = fpos(o); addPass(p[zb] = p[zb] || line(), ev); if (shortY(o)) addPass(p.sy = p.sy || line(), ev); if (longY(o)) addPass(p.tl = p.tl || line(), ev) }
       if (third && !ev.sack) { p.third[0]++; if (o.third_down_converted === "1") p.third[1]++ }
-      if (!ev.sack && o.receiver_player_id && o.receiver_player_id !== "NA" && o.posteam) { const tg = (TTG[g + "|" + o.posteam] = TTG[g + "|" + o.posteam] || {}); for (const k2 of ["all", ...(late ? ["late"] : []), ...(rz ? ["rz"] : []), fpos(o), ...(shortY(o) ? ["sy"] : [])]) tg[k2] = (tg[k2] || 0) + 1 }
+      if (!ev.sack && o.receiver_player_id && o.receiver_player_id !== "NA" && o.posteam) { const tg = (TTG[g + "|" + o.posteam] = TTG[g + "|" + o.posteam] || {}); for (const k2 of ["all", ...(late ? ["late"] : []), ...(rz ? ["rz"] : []), fpos(o), ...(shortY(o) ? ["sy"] : []), ...(longY(o) ? ["tl"] : [])]) tg[k2] = (tg[k2] || 0) + 1 }
       const z = ZONE(num(o.air_yards)), d = LOC[o.pass_location];
       if (!ev.sack && z && d) { const k = z + d, add = A => { A[0]++; if (ev.cmp) { A[1]++; A[2] += yds } if (ev.td) A[3]++; if (ev.int) A[4]++; A[5] += epa };
         add(zc(p.Z, k));
-        const di = d === "L" ? 0 : d === "M" ? 1 : 2, sit3 = obj => { const S3 = obj.sd = obj.sd || {}, b = key => (S3[key] = S3[key] || [0, 0, 0])[di]++; b("all"); if (late) b("late"); if (rz) b("rz"); b(fpos(o)); if (shortY(o)) b("sy") }; sit3(p);
+        const di = d === "L" ? 0 : d === "M" ? 1 : 2, sit3 = obj => { const S3 = obj.sd = obj.sd || {}, b = key => (S3[key] = S3[key] || [0, 0, 0])[di]++; b("all"); if (late) b("late"); if (rz) b("rz"); b(fpos(o)); if (shortY(o)) b("sy"); if (longY(o)) b("tl") }; sit3(p);
         const off = T[o.posteam] = T[o.posteam] || { off: {}, def: {} }, def = T[o.defteam] = T[o.defteam] || { off: {}, def: {} };
         add(zc(off.off, k)); add(zc(def.def, k));
         if (o.receiver_player_id) { const rid = o.receiver_player_id, ry = ev.cmp ? yds : 0;
@@ -426,10 +426,10 @@ export async function pbp(S, log) {
           const rzr = (RZ[rid] = RZ[rid] || {})[k] = RZ[rid][k] || [0, 0]; rzr[0]++; rzr[1] += ry; const lz = LZ[k] = LZ[k] || [0, 0]; lz[0]++; lz[1] += ry;
           const dzx = ((DZ[o.defteam] = DZ[o.defteam] || {})[k] = DZ[o.defteam][k] || {}), xz = dzx[rid] = dzx[rid] || [0, 0]; xz[0]++; xz[1] += ry;
           const r = pl(R, o.receiver_player_id); add(zc(r.Z, k)); addPass(r.all, ev); if (late) addPass(r.late, ev); if (rz) addPass(r.rz, ev); if (two) addPass(r.two, ev);
-          { const zb = fpos(o); addPass(r[zb] = r[zb] || line(), ev); if (shortY(o)) addPass(r.sy = r.sy || line(), ev) } sit3(r);
+          { const zb = fpos(o); addPass(r[zb] = r[zb] || line(), ev); if (shortY(o)) addPass(r.sy = r.sy || line(), ev); if (longY(o)) addPass(r.tl = r.tl || line(), ev) } sit3(r);
           /* the team's targets in the same situations, in the games he was targeted (his target share there), and his targets behind the line
              of scrimmage (screens, swings, flips — caught in the backfield) */
-          const sits = ["all", ...(late ? ["late"] : []), ...(rz ? ["rz"] : []), fpos(o), ...(shortY(o) ? ["sy"] : [])];
+          const sits = ["all", ...(late ? ["late"] : []), ...(rz ? ["rz"] : []), fpos(o), ...(shortY(o) ? ["sy"] : []), ...(longY(o) ? ["tl"] : [])];
           (RGM[rid] = RGM[rid] || new Set()).add(g + "|" + o.posteam);
           if (num(o.air_yards) < 0) { const bl = r.bl = r.bl || {}; for (const k2 of sits) { const x = bl[k2] = bl[k2] || [0, 0, 0]; x[0]++; if (ev.cmp) { x[1]++; x[2] += yds } } }
           if (third) { r.third[0]++; if (o.third_down_converted === "1") r.third[1]++ } } }
@@ -1058,7 +1058,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
      being played) is built once at this version and skipped after — its packs stay as they are. Bump NFL_DONE_V when what a season's
      packs hold changes, and every finished season is rebuilt once. */
   SNAP_PUT = (n, o) => put(n, o);
-  const NFL_DONE_V = 6;   /* 6 (Oct 29, Sam: QB/WR/TE by situation): throws and targets by side in each situation, field position and short yardage lines, target share, catches behind the line */   /* 4 (Oct 28): the pbp pack carries each offense's play-call tendencies (team.tend); 5 (Oct 28, Sam: yes): coach's challenges (team.ch) */ let DONE = { s: {} }; try { DONE = (getPack && (await getPack(P("done")))) || DONE } catch { } DONE.s = DONE.s || {};
+  const NFL_DONE_V = 7;   /* 7 (Oct 29, 11:39 pm): 3rd/4th and long (tl) for QBs and receivers */   /* 6 (Oct 29, Sam: QB/WR/TE by situation): throws and targets by side in each situation, field position and short yardage lines, target share, catches behind the line */   /* 4 (Oct 28): the pbp pack carries each offense's play-call tendencies (team.tend); 5 (Oct 28, Sam: yes): coach's challenges (team.ch) */ let DONE = { s: {} }; try { DONE = (getPack && (await getPack(P("done")))) || DONE } catch { } DONE.s = DONE.s || {};
   if (!all) for (let i = seasons.length - 1; i >= 0; i--) if (seasons[i] < lastPlayed && DONE.s[seasons[i]] === NFL_DONE_V) { log(`nfl: ${seasons[i]} finished, kept`); seasons.splice(i, 1) }
   const LOGS = {}, WXP = {}, STN = {}, PBPIG = {};
   /* starts for every season (mode nfldraft: just the starts and the draft grades, every season — the first fill, or a rebuild) */

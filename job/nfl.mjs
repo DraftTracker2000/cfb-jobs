@@ -266,6 +266,7 @@ export async function pbp(S, log) {
   const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null;
   const LGD = {}, LYH = {};
   const P = {}, R = {}, U = {}, T = {}, G = {}, WX = {}, DRV = {}, FS = {}, DF = {}, OPQ = {}, INJ = {}, BON = {};
+  const GPL = {}, SEEN_KEYS = ["passer_player_id", "receiver_player_id", "rusher_player_id", "solo_tackle_1_player_id", "solo_tackle_2_player_id", "assist_tackle_1_player_id", "assist_tackle_2_player_id", "tackle_with_assist_1_player_id", "tackle_with_assist_2_player_id", "pass_defense_1_player_id", "pass_defense_2_player_id", "interception_player_id", "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id", "qb_hit_1_player_id", "qb_hit_2_player_id", "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id", "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id", "lateral_receiver_player_id", "lateral_rusher_player_id"];
   /* who was thrown at on each side (Sam, Sept 30: "Detroit's best side" means nothing if Detroit gets torn apart everywhere): each
      receiver's targets and yards by side, and against each defense by side — so a side can be judged against who was thrown at */
   const RS = {}, DS = {}, LG = { L: [0, 0], M: [0, 0], R: [0, 0] }, RZ = {}, DZ = {}, LZ = {};   // the same by zone (depth × side)
@@ -294,6 +295,11 @@ export async function pbp(S, log) {
     "qb_hit_1_player_id", "qb_hit_2_player_id", "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id", "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id", "desc", "wp", "pass_touchdown", "rush_touchdown", "return_touchdown", "td_player_id", "receiving_yards", "rushing_yards",
     "lateral_receiver_player_id", "lateral_receiving_yards", "lateral_rusher_player_id", "lateral_rushing_yards", "cpoe", "comp_air_epa", "comp_yac_epa", "qb_scramble", "pass_oe", "qb_dropback", "game_seconds_remaining", "spread_line", "yards_after_catch", "shotgun", "no_huddle", "pass_length"], o => {
     const g = o.game_id; if (!g) return;
+    /* Oct 29 (Sam: in-game injuries from our own play-by-play): each game's plays in order, each offense's snaps so far, and the last play every
+       player was named on (carry, catch, throw, tackle, sack, pass defended…) — to tell whether a man hurt on a play ever came back */
+    const GQ = GPL[g] = GPL[g] || { n: 0, off: {}, seen: {} }, pi = ++GQ.n;
+    if (o.posteam && /^(pass|run|qb_kneel|qb_spike|no_play)$/.test(o.play_type || "")) GQ.off[o.posteam] = (GQ.off[o.posteam] || 0) + 1;
+    for (const k of SEEN_KEYS) { const v = o[k]; if (v && v !== "NA") GQ.seen[v] = pi }
     /* fantasy bonuses by player and game: [pass TD 40+, 50+, rush TD 40+, 50+, catch TD 40+, 50+, pick-six thrown, completion 40+, run 40+, catch 40+] */
     if (o.two_point_attempt !== "1") { const yg = num(o.yards_gained), id = x => x && x !== "NA" ? x : null;
       const b = (pid, i) => { if (!pid) return; const m = BON[pid] = BON[pid] || {}; (m[g] = m[g] || new Array(BON_N).fill(0))[i]++ };
@@ -311,7 +317,7 @@ export async function pbp(S, log) {
     /* hurt during a game (Sam, Oct 3: "why don't you see it when it says a player was injured during the play?"): the play-by-play's own line,
        "L.McConkey was injured during the play." — kept by game with the quarter; matched to players after the logs are built */
     if (o.desc && o.desc.includes("injured")) { const re = /((?:[A-Z][a-z]?\.){1,2}\s?(?:St\.\s?)?[A-Z][A-Za-z'\-]+(?:\s(?:Jr|Sr|II|III|IV|V)\.?)?) was injured/g; let mm;
-      while ((mm = re.exec(o.desc))) (INJ[g] = INJ[g] || []).push([mm[1], num(o.qtr) || null, o.posteam || null, o.defteam || null]) }
+      while ((mm = re.exec(o.desc))) (INJ[g] = INJ[g] || []).push([mm[1], num(o.qtr) || null, o.posteam || null, o.defteam || null, pi, GQ.off[o.posteam] || 0, GQ.off[o.defteam] || 0]) }
     /* each ball-carrier's and target's opportunities, by where they came (Sam, Oct 3: "where his usage is on the field, middle, redzone,
        what down"): carries by field position, targets by depth, red-zone and end-zone targets, how many came while the game was still
        competitive (win probability 10–90%), and on 3rd/4th down. Values come later, fitted on the past. */
@@ -498,7 +504,7 @@ export async function pbp(S, log) {
   for (const t in CH) (T[t] = T[t] || { off: {}, def: {} }).ch = CH[t];
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
-    gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], tendCols: TEND_COLS, pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, bon: BON,
+    gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], tendCols: TEND_COLS, pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, gpl: GPL, bon: BON,
     dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF };
 }
 /* rain or snow at kickoff, from the play-by-play's weather line ("Light Rain Temp: 45° F, …"): 0 clear or dry, 1 rain, 2 snow,
@@ -957,11 +963,11 @@ export function packProblem(name, o) {
    matched through the game's box score (team + first initial + last name, one man only) to his ESPN id, then to his gsis id.
    → p<Y>_nfl-ingame-<S>: { s, cols, p: { gsis: { nflverseGameId: [quarter, status, type, returned 0/1, out 0/1] } }, done: [game ids] }
    out = declared out (status Out), or a concussion with no return. Finished games are read once. */
-export async function inGame(s, prev, espnToGsis, log = console.log, nameToGsis = {}) {
+export async function inGame(s, prev, espnToGsis, log = console.log, nameToGsis = {}, base = {}) {
   const SUMU = id => `https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${id}`;
   const t = (await get("schedules/games.csv.gz", log)) || (await get("schedules/games.csv", log)); const G = [];
   rows(t, ["game_id", "season", "espn", "home_score", "game_type"], o => { if (+o.season === s && o.home_score !== "" && o.home_score != null && o.espn) G.push([o.game_id, String(Math.round(+o.espn))]) });
-  const out = prev && prev.s === s && prev.p && prev.v === 4 ? prev : { v: 4, s, cols: ["quarter", "status", "type", "returned", "out", "seenAgain"], p: {}, done: [] };   /* v2: only men hurt in the game (a play-text line) — ESPN's injury list also carries players out before kickoff */ const done = new Set(out.done || []); let read = 0, fail = 0;
+  const out = prev && prev.s === s && prev.espn && prev.v === 5 ? prev : { v: 5, s, cols: ["quarter", "status", "type", "returned", "out", "seenAgain", "source"], espn: {}, p: {}, done: [] };   /* v5 (Oct 29): our play-by-play first (base), ESPN kept apart (espn) and only filling gaps; p = the two merged each run */   /* v2: only men hurt in the game (a play-text line) — ESPN's injury list also carries players out before kickoff */ const done = new Set(out.done || []); let read = 0, fail = 0;
   const nk = v => String(v || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "");
   for (const [gid, eid] of G) { if (done.has(gid)) continue;
     let j = null; try { const r = await fetch(SUMU(eid)); if (r.ok) j = await r.json() } catch { } if (!j) { fail++; continue } read++;
@@ -986,9 +992,19 @@ export async function inGame(s, prev, espnToGsis, log = console.log, nameToGsis 
       const r = rec(e), st = String(i.status || "").toLowerCase(), ty = String((i.details && i.details.type) || ""); if (st && (!r[1] || st === "out")) r[1] = st; if (ty) r[2] = ty }
     const NM = {}; for (const tm of (j.boxscore && j.boxscore.players) || []) for (const c of tm.statistics || []) for (const a of c.athletes || []) if (a.athlete) NM[String(a.athlete.id)] = a.athlete.displayName;
     for (const t2 of j.injuries || []) for (const i of t2.injuries || []) if (i.athlete) NM[String(i.athlete.id)] = i.athlete.displayName;
-    for (const [e, r] of Object.entries(R)) { const nl = nameToGsis[nk(NM[e])], g = espnToGsis[e] || (nl && nl.length === 1 ? nl[0] : null); if (!g || r[0] == null || /coach/i.test(r[2])) continue;   /* a rookie without an ESPN id in nflverse: by full name (one man only) */   /* hurt during this game only */ r[4] = !r[3] && (r[1] === "out" || /concussion/i.test(r[2])) ? 1 : 0; (out.p[g] = out.p[g] || {})[gid] = r }
+    for (const [e, r] of Object.entries(R)) { const nl = nameToGsis[nk(NM[e])], g = espnToGsis[e] || (nl && nl.length === 1 ? nl[0] : null); if (!g || r[0] == null || /coach/i.test(r[2])) continue;   /* a rookie without an ESPN id in nflverse: by full name (one man only) */   /* hurt during this game only */ r[4] = !r[3] && (r[1] === "out" || /concussion/i.test(r[2])) ? 1 : 0; (out.espn[g] = out.espn[g] || {})[gid] = r }
     done.add(gid); await new Promise(z => setTimeout(z, 150)) }
-  out.done = [...done]; log(`nfl: in-game injuries ${s}: ${read} games read${fail ? `, ${fail} not reached` : ""} · ${Object.keys(out.p).length} players`); return out }
+  out.done = [...done];
+  /* merge: our play-by-play decides who was hurt and whether he came back; ESPN adds what the play-by-play can't say (ruled out, the injury,
+     an announced return) and covers a man our play-by-play missed */
+  out.p = {}; let nb = 0, ne = 0, nboth = 0;
+  for (const g of new Set([...Object.keys(base || {}), ...Object.keys(out.espn)])) for (const gid of new Set([...Object.keys((base || {})[g] || {}), ...Object.keys(out.espn[g] || {})])) {
+    const b = base && base[g] && base[g][gid], e = out.espn[g] && out.espn[g][gid]; let r;
+    if (b && e) { r = [b[0] ?? e[0], e[1] || "", e[2] || "", e[3] ? 1 : 0, 0, b[5] || e[5] || e[3] ? 1 : 0, b[6] + "+espn"]; nboth++ }
+    else if (b) { r = b.slice(); nb++ } else { r = e.slice(0, 6).concat(["espn"]); ne++ }
+    r[4] = !r[3] && (r[1] === "out" || (/concussion/i.test(r[2]) && !r[5])) ? 1 : 0;   // out = ruled out, or a concussion he never came back from (Oct 25)
+    (out.p[g] = out.p[g] || {})[gid] = r }
+  log(`nfl: in-game injuries ${s}: ${read} games read${fail ? `, ${fail} not reached` : ""} · ${Object.keys(out.p).length} players (play-by-play only ${nb}, both ${nboth}, ESPN only ${ne})`); return out }
 
 export async function buildNfl({ api, getPack, getIndex, curYear, all = false, startsOnly = false, staff = {}, log = console.log }) {
   const t0 = Date.now(), up = {}, index = {}, held = [];
@@ -1024,7 +1040,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   SNAP_PUT = (n, o) => put(n, o);
   const NFL_DONE_V = 5;   /* 4 (Oct 28): the pbp pack carries each offense's play-call tendencies (team.tend); 5 (Oct 28, Sam: yes): coach's challenges (team.ch) */ let DONE = { s: {} }; try { DONE = (getPack && (await getPack(P("done")))) || DONE } catch { } DONE.s = DONE.s || {};
   if (!all) for (let i = seasons.length - 1; i >= 0; i--) if (seasons[i] < lastPlayed && DONE.s[seasons[i]] === NFL_DONE_V) { log(`nfl: ${seasons[i]} finished, kept`); seasons.splice(i, 1) }
-  const LOGS = {}, WXP = {}, STN = {};
+  const LOGS = {}, WXP = {}, STN = {}, PBPIG = {};
   /* starts for every season (mode nfldraft: just the starts and the draft grades, every season — the first fill, or a rebuild) */
   const KICK = {};
   if (startsOnly) { for (let s = 2001; s <= lastPlayed; s++) { try { const x = await starts(s, G, log); if (x) STN[s] = x; log(`nfl: starts ${s} ${x ? Object.keys(x.n).length : 0}`) } catch (e) { log("nfl: starts " + s + ": " + e.message) } }
@@ -1040,20 +1056,31 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
       if (s >= 2001) { try { B.ol = await olStarters(s, G, log) } catch (e) { log("nfl: OL starters " + s + ": " + e.message) }
         try { const x = await starts(s, G, log); if (x) STN[s] = x } catch (e) { log("nfl: starts " + s + ": " + e.message) } } for (const g in B.wx) if (B.wx[g] != null) WXP[g] = B.wx[g]; delete B.wx;
       /* opportunity quality and in-game injuries, game by game (private inputs for the fantasy projections) */
-      { const O = B.opq, IJ = B.inj; delete B.opq; delete B.inj; const inj = {}; const L = LOGS[s];
+      { const O = B.opq, IJ = B.inj, GP = B.gpl; delete B.opq; delete B.inj; delete B.gpl; const inj = {}; const L = LOGS[s];
         if (L && L.p) { const nk = n => String(n || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "");
           /* "L.McConkey", "C.J.Stroud", "A.St. Brown" against "Ladd McConkey", "C.J. Stroud", "Amon-Ra St. Brown": first initial + last name */
           const sfx = x => String(x || "").replace(/\s(Jr|Sr|II|III|IV|V)\.?$/, "").trim();
           const abbr = id => { const x = sfx(PLN[id]); if (!x) return null; const parts = x.split(/\s+/); return parts.length < 2 ? null : nk(parts[0][0] + parts.slice(1).join("")) };
           const dkey = nm => { const x = sfx(nm), rest = x.replace(/^(?:[A-Z][a-z]?\.(?!\s))+/, ""); return nk(x[0] + rest) };
           const byGame = {}; for (const id in L.p) for (const r of L.p[id]) if (r[2]) (byGame[r[2]] = byGame[r[2]] || []).push(id);
-          for (const g in IJ) for (const [nm, q] of IJ[g]) { const k = dkey(nm), hit = (byGame[g] || []).filter(id => abbr(id) === k); if (hit.length === 1) (inj[hit[0]] = inj[hit[0]] || {})[g] = q || 0 } }
+          for (const g in IJ) for (const [nm, q] of IJ[g]) { const k = dkey(nm), hit = (byGame[g] || []).filter(id => abbr(id) === k); if (hit.length === 1) (inj[hit[0]] = inj[hit[0]] || {})[g] = q || 0 } 
+          /* Oct 29 (Sam: "in-game injuries from our own play-by-play … we only fill gaps with ESPN when needed"): for this season, each man hurt
+             on a play — did he come back? Yes if he's named on a later play of that game (a carry, catch, tackle, sack…), or, for the offense,
+             if his snaps that game (Sleeper's count) run past what he'd have played by then (his usual share of the plays so far) by 3 or more.
+             Otherwise he left the game. ESPN's game pages only fill what this can't see (inGame below). */
+          if (s === lastPlayed && GP) { const cx = Object.fromEntries(LOG_COLS.map((c, i) => [c, i]));
+            for (const g in IJ) for (const [nm, q, pt, dt, pi, offP, offD] of IJ[g]) { const k = dkey(nm), hit = (byGame[g] || []).filter(id => abbr(id) === k); if (hit.length !== 1 || !pi) continue; const id = hit[0];
+              const rows0 = L.p[id] || [], row = rows0.find(r => r[2] === g), tm = row && row[cx.team], snp = row ? row[cx.snp] : null, onOff = tm && tm === pt;
+              const sh = rows0.filter(r => r !== row && r[cx.tsnp] > 0 && r[cx.snp] != null).map(r => r[cx.snp] / r[cx.tsnp]).sort((a, b) => a - b), med = sh.length ? sh[sh.length >> 1] : 1;
+              const named = ((GP[g] && GP[g].seen) || {})[id] > pi, bySnaps = onOff && snp != null && snp >= Math.round(med * offP) + 3;
+              const prevQ = PBPIG[id] && PBPIG[id][g]; if (prevQ && prevQ[0] != null && q != null && prevQ[0] <= q) continue;
+              (PBPIG[id] = PBPIG[id] || {})[g] = [q || null, "", "", 0, 0, named || bySnaps ? 1 : 0, named ? "pbp:named" : bySnaps ? "pbp:snaps" : onOff && snp != null ? "pbp:snaps" : "pbp:named"] } } }
         await put(P("opp-" + s), { s, cols: OPQ_COLS, p: O, inj, injNote: "inj[gsis][game] = quarter he was hurt (play-by-play 'was injured during the play')" }) } await put(P("pbp-" + s), B) }
   }
   /* in-game injuries this season (ESPN game pages; finished games kept) */
   if (!startsOnly) try { const eg = {}; for (const [e, g] of Object.entries(ESPN || {})) eg[e] = g; for (const [e, g] of Object.entries(SNAP_ESPN)) if (!eg[e]) eg[e] = g;
     let pv = null; try { pv = getPack ? await getPack(P("ingame-" + lastPlayed)) : null } catch { } const n2g = {}, nk2 = v => String(v || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, ""); for (const [g, nm] of Object.entries(PLN)) (n2g[nk2(nm)] = n2g[nk2(nm)] || []).push(g);
-    const IG = await inGame(lastPlayed, pv, eg, log, n2g); if (IG) await put(P("ingame-" + lastPlayed), IG) } catch (e) { log("nfl: in-game injuries: " + e.message) }
+    const IG = await inGame(lastPlayed, pv, eg, log, n2g, PBPIG); if (IG) await put(P("ingame-" + lastPlayed), IG) } catch (e) { log("nfl: in-game injuries: " + e.message) }
   for (const s of seasons) if (s < lastPlayed && LOGS[s]) DONE.s[s] = NFL_DONE_V; await put(P("done"), DONE);
   /* dynasty inputs (Oct 20, job/dyn.mjs): each player's last 18 league weeks and the windows before, for the page's dynasty model */
   if (!startsOnly) try { const DY = await dynFeatures({ G, PLp: PLP, log, logsOf: async s => LOGS[s] || (getPack ? await getPack(P("logs-" + s)).catch(() => null) : null) });

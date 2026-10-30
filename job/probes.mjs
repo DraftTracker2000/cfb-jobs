@@ -290,4 +290,9 @@ out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(",
     /* players from years ago (ESPN ids of 2015–2018 college players, undrafted and drafted) */
     const old=[];for(const id of [2580912,2581184,2991055,3133602,3133628,3064514,3135045,2990992,3134907,3133838]){const c=await fetch("https://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/athletes/"+id,H).then(r=>r.json()).catch(()=>null);old.push(id+":"+(c?(c.fullName||"?")+" "+(c.dateOfBirth||"no dob"):"none"))}
     o.old=old;return o` },
+  { name: "ingame", node: `const H={Authorization:"Bearer "+TOKEN};const gp=async n=>{let r=await fetch(SITE+"/api/pack/"+n,{headers:H});if(r.status===401){const s=await fetch(SITE+"/api/job/session",{method:"POST",headers:{Authorization:"Bearer "+TOKEN}}).then(r=>r.json()).catch(()=>null);if(s&&s.token){H.Authorization="Bearer "+s.token;r=await fetch(SITE+"/api/pack/"+n,{headers:H})}}return r.ok?r.json():null};
+    /* Oct 29: before/after for the in-game injuries switch to our own play-by-play — what the page's "Left games hurt" list would show */
+    const Y=new Date().getFullYear(),P=await gp("p"+Y+"_nfl-ingame-"+Y),o={ok:!!P,v:P&&P.v,cols:P&&P.cols};if(!P)return o;let rec=0,out=0,left=0,back=0,seen=0;const src={},ex=[];
+    for(const g in P.p)for(const gid in P.p[g]){const r=P.p[g][gid];rec++;if(r[4])out++;if(r[3])back++;if(r[5])seen++;const shown=r[4]||(!r[3]&&!r[5]);if(shown)left++;const k=r[6]||"espn (v4)";src[k]=(src[k]||0)+1;if(shown&&ex.length<25)ex.push([g,gid,r[0],r[1],r[2],k])}
+    Object.assign(o,{players:Object.keys(P.p).length,records:rec,ruledOutOrConcussion:out,announcedReturn:back,seenAgain:seen,shownAsLeftGame:left,bySource:src,examples:ex});return o` },
 ];

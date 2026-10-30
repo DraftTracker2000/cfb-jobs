@@ -28,6 +28,9 @@
               next to the live one → pYYYY_grtest, packs only
      oltest   the OL draft chance: every FBS lineman, refit and graded → pYYYY_oltest + pYYYY_olgrade, packs only (weekly, Wednesday)
      avail    NFL availability only (weekly roster status 2016 on → weeks active / injured / away), a few minutes; also runs with weekly and history
+     prefetch finished-season CFBD answers pulled once and kept for good as builder-cache packs (job/prefetch.mjs, Oct 30): plays 2014–25,
+              games/players 2021–25, the defender-grade pulls 2011–25; always the Lab page; stops at 4,000 CFBD calls left;
+              PREFETCH_DRY=1 lists what it would ask for (no browser, no CFBD call) → packs only
 
    Needs:  SITE_URL   e.g. https://yourdomain.com
            JOB_TOKEN  from the admin page (Data & updates → Job token)
@@ -55,16 +58,17 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt"];
+const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const NOFRESH = ["probe", "look"].includes(MODE) || /test$/.test(MODE);
-const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest"];   // these write packs only; the shared data version is unchanged
+const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest", "prefetch"];   // these write packs only; the shared data version is unchanged
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60 }[MODE];
-const PAGE = ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180 }[MODE];
+/* prefetch always runs on the Lab page: the hook it needs (window.__PREFETCH) is a Lab builder */
+const PAGE = MODE === "prefetch" ? "/lab/" : ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 const started = Date.now();
 
 if (!SITE || !JOB) { console.error("SITE_URL and JOB_TOKEN are required"); process.exit(1) }
@@ -146,14 +150,28 @@ async function main() {
   }
   const { chromium } = await import("playwright"); const { lookCheck, lookMsg } = await import("./look.mjs");
 
-  /* the big public files first, so the board's build can use them */
-  const refs = await refreshRefs({ site: SITE, jobToken: JOB, mode: MODE });
-  console.log(`reference files: ${refs.refreshed} refreshed of ${refs.checked}`);
+  /* the big public files first, so the board's build can use them (prefetch builds nothing, so it leaves them alone) */
+  if (MODE !== "prefetch") { const refs = await refreshRefs({ site: SITE, jobToken: JOB, mode: MODE });
+    console.log(`reference files: ${refs.refreshed} refreshed of ${refs.checked}`) }
 
   /* Oct 26: runs that only look (probe, look) or test (…test) sign in as the probe user, so their page loads share the server's copies
      of current-season CFBD data instead of paying fresh calls (src/cfbd.js) */
   const sess = await api("POST", "/api/job/session", { body: NOFRESH ? { who: "probe" } : undefined });
   console.log(`[${MODE}] signed in to ${SITE}`);
+  /* MODE=prefetch, PREFETCH_DRY=1: the list and what's already kept, from the pack index only — no browser, no CFBD call (not even /info) */
+  const PF_DRY = MODE === "prefetch" && process.env.PREFETCH_DRY === "1";
+  let PF = null; const PFS = {};
+  if (MODE === "prefetch") { PF = await import("./prefetch.mjs");
+    let idx = null; try { const r = await fetch(SITE + "/api/pack-index", { headers: { Authorization: "Bearer " + sess.token } }); if (r.ok) idx = (await r.json()).packs || null } catch { }
+    if (!idx) throw new Error("prefetch: couldn't read the pack index, so it can't tell what's already kept — stopped before asking CFBD for anything");
+    const list = PF.prefetchPaths(PF.pageSeason()), plan = PF.planLines(PF.prefetchPlan(list, idx));
+    console.log(`prefetch: ${list.length} paths · ${Object.keys(idx).filter(k => /_bc-api\d+-/.test(k)).length} builder-cache answers in the pack index`);
+    for (const p of plan) console.log(`::notice title=prefetch ${p.g}${PF_DRY ? " (dry run)" : ""}::${p.line.slice(0, 3500)}`);
+    console.log(`::notice title=prefetch built packs::${PF.derivedLine(idx)}`);
+    if (PF_DRY) { const k = plan.reduce((a, p) => a + p.kept, 0);
+      console.log(`::notice title=prefetch dry run::${list.length} paths · ${k} already kept as packs · ${list.length - k} would be asked for (each 0 calls if the proxy kept it since Oct 24, else 1) · floor ${PF.FLOOR.toLocaleString()} CFBD calls left · nothing fetched`);
+      return }
+    PFS.idx = idx; PFS.list = list }
   CFTOK = sess.token; CF0 = await cfbdLeft(); if (CF0 != null) console.log(`::notice title=CFBD::calls left at the start of this ${MODE} run: ${CF0.toLocaleString()}`);
 
   /* MODE=punt: college punts and returns from CFBD, 2015 on (job/cfbpunt.mjs, Oct 28 — Sam: yes); finished seasons are kept and never fetched again */
@@ -198,7 +216,7 @@ async function main() {
     console.log(`::${L.ok ? "notice" : "warning"} title=look ${PAGE}::${lookMsg(L).replace(/[\r\n]+/g, " ")}`); return }
   /* the live version's files seed the build, so unchanged history isn't downloaded again */
   let seed = {};
-  if (MODE !== "history") {
+  if (MODE !== "history" && MODE !== "prefetch") {
     try {
       const meta = await api("GET", "/api/snap-meta", { token: sess.token });
       for (const name of Object.keys((meta && meta.files) || {})) {
@@ -217,6 +235,8 @@ async function main() {
   await page.evaluate(t => { localStorage.clear(); localStorage.setItem("cfbTok", t) }, sess.token);
   await page.goto(`${SITE}${PAGE}?builder=${MODE}${SUNDAY_CATCHUP ? "&catchup=1" : ""}`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => typeof window.__BUILDER_SEED === "function" || window.__BUILDER, null, { timeout: 120000 });
+  /* a page without the prefetch hook would take "prefetch" for an ordinary build — stop before it starts */
+  if (MODE === "prefetch" && !(await page.evaluate(() => window.__PREFETCH_V === 1))) { await browser.close(); throw new Error(`prefetch: ${PAGE} has no prefetch hook (window.__PREFETCH_V) — is the Lab change live?`) }
   await page.evaluate(s => window.__BUILDER_SEED && window.__BUILDER_SEED(s), seed);
 
   let lastStage = "";
@@ -237,6 +257,18 @@ async function main() {
   tick("(done)");
   if (B.error) throw new Error("Board reported: " + B.error);
   B = await page.evaluate(() => { const b = window.__BUILDER; return { fileNames: b.fileNames || [], packNames: b.packNames || [], coverage: b.coverage, finishedThrough: b.finishedThrough, note: b.note } });
+  /* MODE=prefetch: the page is ready; hand it the paths one at a time (job/prefetch.mjs). Each kept answer is uploaded as it comes, and the
+     pack index is written once at the end. */
+  if (MODE === "prefetch") {
+    if (!(await page.evaluate(() => typeof window.__PREFETCH === "function"))) throw new Error("prefetch: the page didn't set up window.__PREFETCH");
+    const cur = await page.evaluate(() => CURYEAR);
+    if (cur !== PF.pageSeason()) throw new Error(`prefetch: the page's season ${cur} isn't the job's ${PF.pageSeason()} — stopped`);
+    const putPack = async (n, gz) => api("PUT", `/api/pack/${n}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+    const putIndex = async ix => api("PUT", "/api/pack-index", { body: ix });
+    const R = await PF.runPrefetch({ page, list: PFS.list, idx: PFS.idx, left: cfbdLeft, putPack, putIndex, deadline: deadline - 10 * 60e3, log: x => console.log(x) });
+    for (const [g, v] of Object.entries(R.perGroup)) console.log(`::notice title=prefetch ${g}::${PF.GROUP_NAME[g] || g} · ${v.stored} already kept · ${v.proxyKept} from the proxy's kept copy · ${v.fetched} fetched from CFBD · ${v.empty} empty · ${v.errors} failed · ${v.calls} CFBD calls`);
+    console.log(`::${R.stop && !/floor|time/.test(R.stop) ? "warning" : "notice"} title=prefetch::${R.packs} packs uploaded (${(R.kb / 1024).toFixed(1)} MB) · ${R.calls} CFBD calls${R.left != null ? ` · about ${R.left.toLocaleString()} left` : ""}${R.stop ? ` · stopped: ${R.stop}` : " · list finished"}${R.indexFailed ? " · PACK INDEX WRITE FAILED" : ""}`);
+    B.note = `prefetch · ${R.packs} answers kept · ${R.stored} already kept · ${R.calls} CFBD calls${R.stop ? ` · stopped: ${R.stop}` : ""}`; B.packNames = []; PFS.R = R }
   /* Oct 12: finished-season answers the page saved this run (BC_NEW, see apiFin) go up in every mode, so the next run reads them instead of CFBD */
   { const extra = await page.evaluate(() => { try { const P = window.__PACKS = window.__PACKS || {}; const L = []; for (const [k, v] of Object.entries(typeof BC_NEW === "object" ? BC_NEW : {})) if (!P[k]) { P[k] = v; L.push(k) } return L } catch (e) { return [] } });
     if (extra.length) { B.packNames = [...B.packNames, ...extra]; console.log(`saved for next runs: ${extra.length} finished-season answers`) } }
@@ -296,6 +328,7 @@ async function main() {
   if (PACKS_ONLY.includes(MODE)) {          // packs only — the shared data version is unchanged
     const mins = ((Date.now() - started) / 60e3).toFixed(1);
     console.log(`coaches: ${B.packNames.join(", ")} · ${mins} min`);
+    if (MODE === "prefetch") { await report(!PFS.R.stop || /floor|time/.test(PFS.R.stop), B.note); return }
     await report(true, `${B.note || MODE} · ${B.packNames.length} pack${B.packNames.length === 1 ? "" : "s"}`); return;
   }
   const pub = await api("POST", "/api/snap/publish", { body: { version, files: names, coverage: B.coverage || {}, finishedThrough: B.finishedThrough || 0, note: B.note || MODE } });

@@ -266,7 +266,7 @@ export async function pbp(S, log) {
   const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null;
   const LGD = {}, LYH = {};
   const P = {}, R = {}, U = {}, T = {}, G = {}, WX = {}, DRV = {}, FS = {}, DF = {}, OPQ = {}, INJ = {}, BON = {};
-  const TTG = {}, RGM = {};
+  const TTG = {}, RGM = {}, TCH = {}, UGM = {};   /* TCH: team touches (carries + catches) by game and situation; UGM: the games each back carried in (Oct 30) */
   const GPL = {}, SEEN_KEYS = ["passer_player_id", "receiver_player_id", "rusher_player_id", "solo_tackle_1_player_id", "solo_tackle_2_player_id", "assist_tackle_1_player_id", "assist_tackle_2_player_id", "tackle_with_assist_1_player_id", "tackle_with_assist_2_player_id", "pass_defense_1_player_id", "pass_defense_2_player_id", "interception_player_id", "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id", "qb_hit_1_player_id", "qb_hit_2_player_id", "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id", "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id", "lateral_receiver_player_id", "lateral_rusher_player_id"];
   /* who was thrown at on each side (Sam, Sept 30: "Detroit's best side" means nothing if Detroit gets torn apart everywhere): each
      receiver's targets and yards by side, and against each defense by side — so a side can be judged against who was thrown at */
@@ -412,6 +412,7 @@ export async function pbp(S, log) {
          position — and, below, which side each throw went (left / middle / right) in each of them */
       { const zb = fpos(o); addPass(p[zb] = p[zb] || line(), ev); if (shortY(o)) addPass(p.sy = p.sy || line(), ev); if (longY(o)) addPass(p.tl = p.tl || line(), ev) }
       if (third && !ev.sack) { p.third[0]++; if (o.third_down_converted === "1") p.third[1]++ }
+      if (!ev.sack && o.receiver_player_id && o.receiver_player_id !== "NA" && o.posteam && o.complete_pass === "1") { const tc = TCH[g + "|" + o.posteam] = TCH[g + "|" + o.posteam] || {}; for (const k2 of ["all", ...(late ? ["late"] : []), ...(rz ? ["rz"] : []), fpos(o), ...(shortY(o) ? ["sy"] : []), ...(longY(o) ? ["tl"] : [])]) tc[k2] = (tc[k2] || 0) + 1 }
       if (!ev.sack && o.receiver_player_id && o.receiver_player_id !== "NA" && o.posteam) { const tg = (TTG[g + "|" + o.posteam] = TTG[g + "|" + o.posteam] || {}); for (const k2 of ["all", ...(late ? ["late"] : []), ...(rz ? ["rz"] : []), fpos(o), ...(shortY(o) ? ["sy"] : []), ...(longY(o) ? ["tl"] : [])]) tg[k2] = (tg[k2] || 0) + 1 }
       const z = ZONE(num(o.air_yards)), d = LOC[o.pass_location];
       if (!ev.sack && z && d) { const k = z + d, add = A => { A[0]++; if (ev.cmp) { A[1]++; A[2] += yds } if (ev.td) A[3]++; if (ev.int) A[4]++; A[5] += epa };
@@ -458,6 +459,9 @@ export async function pbp(S, log) {
       const add = A => { A[0]++; A[1] += yds; if (td) A[2]++; A[3] += epa };
       add(u.all); if (late) add(u.late); if (rz) add(u.rz); { const zb = fpos(o); add(u[zb] = u[zb] || [0, 0, 0, 0]); if (shortY(o)) { add(u.sy = u.sy || [0, 0, 0, 0]); if (o.first_down === "1" || td) (u.syc = u.syc || [0])[0]++ } } const d = LOC[o.run_location] || "M"; add(u.dir[d] = u.dir[d] || [0, 0, 0, 0]);
       if (third) { u.third[0]++; if (o.third_down_converted === "1") u.third[1]++ }
+      /* touch share (Oct 30 — Sam: "the touch share for rbs in the same situations"): his team's carries in each situation, game by game */
+      if (o.posteam) { const tc = TCH[g + "|" + o.posteam] = TCH[g + "|" + o.posteam] || {}; for (const k2 of ["all", ...(late ? ["late"] : []), ...(rz ? ["rz"] : []), fpos(o), ...(shortY(o) ? ["sy"] : []), ...(longY(o) ? ["tl"] : [])]) tc[k2] = (tc[k2] || 0) + 1;
+        (UGM[o.rusher_player_id] = UGM[o.rusher_player_id] || new Set()).add(g + "|" + o.posteam) }
       /* how his carries go (Oct 16 — Sam on Jeanty: "that jeanty one is eye opening"): every designed carry's yards, counted by yard
          (yards → carries), for the back, the offense, the defense facing it and the league, so the site can split carries into stuffed
          (0 or less) / short (1–3) / good (4–9) / big (10+), find the typical carry, and take out his longest runs. Scrambles left out. */
@@ -516,6 +520,10 @@ export async function pbp(S, log) {
   for (const t in CH) (T[t] = T[t] || { off: {}, def: {} }).ch = CH[t];
   /* his team's targets in each situation, summed over the games he was targeted — his target share there = his targets ÷ this (Oct 29) */
   for (const rid in RGM) { const x = R[rid]; if (!x) continue; const tts = x.tts = {}; for (const gk of RGM[rid]) { const tg = TTG[gk]; if (tg) for (const k in tg) tts[k] = (tts[k] || 0) + tg[k] } }
+  /* his team's touches (carries + catches) in each situation over every game he carried or was targeted in → touch share = (his carries +
+     his catches) ÷ this. On his run line and his catch line alike, so backs, receivers and tight ends all get it (Oct 30) */
+  for (const id of new Set([...Object.keys(UGM), ...Object.keys(RGM)])) { if (!U[id] && !R[id]) continue; const gs = new Set([...(UGM[id] || []), ...(RGM[id] || [])]), tt = {};
+    for (const gk of gs) { const tc = TCH[gk]; if (tc) for (const k in tc) tt[k] = (tt[k] || 0) + tc[k] } if (U[id]) U[id].tch = tt; if (R[id]) R[id].tch = { ...tt } }
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
     gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], tendCols: TEND_COLS, pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, gpl: GPL, bon: BON,

@@ -39,8 +39,9 @@ export function parseHof(w) {
   const cp = unlink(clean(field(w, "career_position"))).trim(), pos = cp || unlink(clean(field(w, "position"))).trim();
   /* teams and their seasons — "As player" only */
   let pt = clean(field(w, "pastteams") || field(w, "teams")); const co = pt.search(/As (?:a )?(?:head )?coach|As executive|'''Coach/i); if (co > 0) pt = pt.slice(0, co);
-  const T = []; for (const l of pt.split("\n")) { if (!/^\s*\*/.test(l) || /practice squad|offseason|\*\s*\{\{\s*small/i.test(l)) continue; const t = frOf(unlink(l.split("(")[0])) || frOf(l.split("(")[0]); if (!t) continue;
-    const y = seasons(l.slice(l.indexOf("(") >= 0 ? l.indexOf("(") : l.length)); if (y.length) T.push([t, Math.min(...y), Math.max(...y)]) }
+  /* link targets dropped first: "[[Boston Braves (NFL)|Boston Braves / Redskins]] / [[Washington Redskins]] (1932–1937)" (Oct 30) */
+  const T = []; for (const l0 of pt.split("\n")) { if (!/^\s*\*/.test(l0) || /practice squad|offseason|\*\s*\{\{\s*small/i.test(l0)) continue; const l = unlink(l0), k = l.search(/\s\(/), t = frOf(k >= 0 ? l.slice(0, k) : l); if (!t) continue;
+    const y = seasons(k >= 0 ? l.slice(k) : ""); if (y.length) T.push([t, Math.min(...y), Math.max(...y)]) }
   let h = clean(field(w, "highlights")); const hc = h.search(/'''\s*As (?:a )?(?:head )?coach|'''\s*As executive|\n;\s*As (?:a )?(?:head )?coach|\n;\s*As (?:an )?executive/i); if (hc > 0) h = h.slice(0, hc);
   const A = []; for (const l0 of h.split("\n")) { if (!/^\s*\*/.test(l0)) continue; const l = unlink(l0); const kd = KIND.find(([re]) => re.test(l)); if (!kd || !kd[1]) continue;
     const k = kd[1], cnt = +((l.match(/(\d+)\s*×/) || [])[1] || 1), par = l.slice(l.indexOf("(") >= 0 ? l.indexOf("(") : l.length), ys = seasons(par, k === "sb" || k === "sbmvp");
@@ -61,7 +62,9 @@ export async function buildNflHof({ putPack, putIndex, extra = [], dry = false, 
     if (!j) { miss.push(...part.map(x => x[0])); continue }
     const red = Object.fromEntries(((j.query && j.query.redirects) || []).map(r => [r.to, r.from]));
     for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content; const src = red[pg.title] || pg.title; if (!w) { miss.push(src); continue }
-      const X = parseHof(w); if (!X.t.length || !X.cp && /coach|owner|executive|commissioner|general manager|official|contributor|founder|president/i.test(X.pos) && !/(back|end|tackle|guard|center|quarterback|linebacker|receiver|safety|kicker|punter|lineman)/i.test(X.pos)) { skip.push(src + (X.t.length ? "" : " (no playing teams read)")); continue }
+      const X = parseHof(w); /* players whose teams are long gone (Akron Pros, Brooklyn Dodgers) stay in, with no franchise to count toward */
+      const PLAYER = /(back|end|tackle|guard|center|quarterback|linebacker|receiver|safety|kicker|punter|lineman|tailback|fullback|halfback|wingback)/i;
+      if (!X.t.length && !PLAYER.test(X.pos) || !X.cp && /coach|owner|executive|commissioner|general manager|official|contributor|founder|president/i.test(X.pos) && !/(back|end|tackle|guard|center|quarterback|linebacker|receiver|safety|kicker|punter|lineman)/i.test(X.pos)) { skip.push(src + (X.t.length ? "" : " (no playing teams read)")); continue }
       const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim();
       P[nm] = { w: pg.title, hof: hofOf[src] ?? hofOf[pg.title] ?? 1, pos: X.pos.replace(/\s+/g, " ").slice(0, 60), t: X.t, aw: X.aw.map(([k, y]) => [k, y, y ? teamIn(X.t, y) : null]) } }
     await new Promise(z => setTimeout(z, 400)) }

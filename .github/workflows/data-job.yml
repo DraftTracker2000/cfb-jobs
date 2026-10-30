@@ -10,7 +10,7 @@ on:
         description: "live · catchup · weekly · look · qb · views · avail · coaches · cdef · nfl · nflhistory · nfldraft · history · full"
         default: live
         type: choice
-        options: [live, cavail, look, probe, extras, honors, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, grtest, nfl, nflhistory, nfldraft, history, full, colgap, style, punt, prefetch]
+        options: [live, cavail, look, probe, extras, honors, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, grtest, nfl, nflhistory, nfldraft, history, full, colgap, style, punt, prefetch, nflhof]
       page:
         description: "Which version of the site runs the build: / (live) or /lab/"
         default: "/"
@@ -21,7 +21,7 @@ on:
         default: ""
         type: string
       dry:
-        description: "MODE=prefetch only: list what it would ask CFBD for and what's already kept, without calling CFBD"
+        description: "MODE=prefetch / nflhof: a dry run — prefetch lists what it would ask CFBD for; nflhof reads and reports but writes nothing"
         default: false
         type: boolean
 

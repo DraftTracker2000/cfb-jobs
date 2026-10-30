@@ -20,6 +20,7 @@
      nfldraft    games started by every player, every season since 2001 (depth charts), and every team's draft classes graded (pack nfl-draft); ~10 min
      honors   the bowl / playoff / conference-title file for the team History picture (p1990_honors) → packs only, a few minutes
      extras   the small college files the game-day build also makes (value per play pYYYY_ppa, Trending's numbers pYYYY_ct) → packs only, a few minutes
+     nflhof   Pro Football Hall of Famers and their awards, from Wikipedia (job/nflhof.mjs) → pack p1990_nfl-hof, ~10 reads
      probe    single-feature checks in a browser (job/probes.mjs; PROBE picks them) → notices on the GitHub run, nothing written
      look     the look check only (job/look.mjs) on PAGE_PATH → notice on the run
      cdef     the college defense chart (every FBS team's defenders, from the charted plays) → packs only
@@ -182,6 +183,15 @@ async function main() {
     console.log(`::notice title=punt scores::${(d.scores || []).map(x => x.y + ": " + x.drives).join(" · ") || "none new"}`);
     console.log(`::notice title=punts::${d.calls} CFBD calls`);
     await report(true, `punts · ${d.seasons.length} seasons · ${d.calls} calls`); return }
+  /* MODE=nflhof: Pro Football Hall of Famers and their awards from Wikipedia (job/nflhof.mjs, Oct 30 — Sam: "yes on the hall of famers");
+     ~10 Wikipedia reads, no CFBD; job/nflhof-extra.json = page titles of players who track as Hall of Famers but aren't eligible yet (Sam sets the bar); dry (the
+     run's dry box) writes nothing */
+  if (MODE === "nflhof") { const { buildNflHof } = await import("./nflhof.mjs"); const { gzipSync } = await import("node:zlib");
+    const putPack = async (n, gz) => api("PUT", `/api/pack/${n}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+    const putIndex = async ix => api("PUT", "/api/pack-index", { body: ix });
+    let extra = []; try { extra = JSON.parse((await import("node:fs")).readFileSync(new URL("./nflhof-extra.json", import.meta.url), "utf8")) } catch { }
+    const d = await buildNflHof({ putPack, putIndex, extra, dry: process.env.PREFETCH_DRY === "1", log: x => console.log(x) });
+    await report(true, `nfl hof · ${d.nh} Hall of Famers + ${d.n - d.nh} not yet eligible · ${d.reads} Wikipedia reads`); return }
   /* MODE=colgap: college missed-game check from box scores (job/colgap.mjs, Oct 24) */
   if (MODE === "colgap") { const { buildColGap, uploadColGap } = await import("./colgap.mjs");
     let hand = []; try { hand = (await (await fetch(SITE + "/data/col-injuries.json")).json()).p || [] } catch { }

@@ -25,21 +25,22 @@ const clean = s => String(s).replace(/<ref[^>]*\/>/g, "").replace(/<ref[^>]*>[\s
 const unlink = s => s.replace(/\[\[[^\]|]*\|([^\]]*)\]\]/g, "$1").replace(/\[\[([^\]]*)\]\]/g, "$1");
 /* seasons named in a piece of text: {{nfly|1985}}, a plain year, Super Bowl numerals (Super Bowl N = the 1965+N season), ranges with – */
 function seasons(par, sb) {
-  const marks = []; for (const m of par.matchAll(/\{\{\s*(?:nfly|nfl year|afly)\s*\|\s*(\d{4})[^}]*\}\}|\b((?:19|20)\d{2})\b|\b([IVXL]+)\b|([–-])/g)) {
-    if (m[4]) { marks.push("-"); continue } if (m[1] || m[2]) { marks.push(+(m[1] || m[2])); continue } if (sb && m[3]) { const n = ROMAN(m[3]); if (n && n < 80) marks.push(1965 + n) } }
+  const marks = []; for (const m of par.matchAll(/\{\{\s*(?:[Nn]fly|[Aa]fly|[Nn][Ff][Ll] [Yy]ear|[Aa][Ff][Ll] [Yy]ear)\s*\|\s*(\d{4})(?:\s*\|\s*(\d{4}))?[^}]*\}\}|\b((?:19|20)\d{2})\b|\b([IVXL]+)\b|([–-])/g)) {
+    if (m[5]) { marks.push("-"); continue } if (m[1]) { marks.push(+m[1]); if (m[2]) marks.push("-", +m[2]); continue } if (m[3]) { marks.push(+m[3]); continue }
+    m[3] = m[4]; if (sb && m[3]) { const n = ROMAN(m[3]); if (n && n < 80) marks.push(1965 + n) } }
   const S = []; for (let i = 0; i < marks.length; i++) { if (marks[i] === "-") continue; if (marks[i + 1] === "-" && typeof marks[i + 2] === "number") { for (let y = marks[i]; y <= marks[i + 2] && y - marks[i] < 25; y++) S.push(y); i += 2 } else S.push(marks[i]) }
   return [...new Set(S)] }
 const KIND = [[/Super Bowl (?:Most Valuable|MVP)/i, "sbmvp"], [/Super Bowl champion/i, "sb"], [/\b(?:NFL|AFL|AAFC) champion/i, "champ"], [/Pro Bowl MVP|Pro Bowl Most/i, null],
-  [/UPI|NEA\b|Bert Bell|PFWA|Sporting News|Kansas City Committee|Newspaper Enterprise/i, null], [/Second-team All-Pro/i, null], [/Comeback Player/i, "cpoy"], [/Walter Payton|Man of the Year/i, "wpmoy"], [/Offensive Rookie of the Year/i, "oroy"], [/Defensive Rookie of the Year/i, "droy"], [/Rookie of the Year/i, "roy"],
+  [/UPI|NEA\b|Bert Bell|PFWA|Sporting News|Kansas City Committee|Newspaper Enterprise/i, null], [/Second-team All-Pro/i, null], [/Comeback Player/i, "cpoy"], [/Walter Payton|Man of the Year/i, "wpmoy"], [/All-Rookie|Rookie of the (?:Week|Month)/i, null], [/Offensive Rookie of the Year/i, "oroy"], [/Defensive Rookie of the Year/i, "droy"], [/(?:NFL|AP|AFL)\b.*Rookie of the Year/i, "roy"], [/Rookie of the Year/i, null],
   [/Offensive Player of the Year/i, "opoy"], [/Defensive Player of the Year/i, "dpoy"], [/Most Valuable Player|\bMVP\b/i, "mvp"],
   [/First-team All-Pro|All-Pro \(first team\)|\bAll-Pro\b(?!.*Second)/i, "ap1"], [/Pro Bowl|AFL All-Star/i, "pb"], [/All-Decade/i, "dec"], [/Anniversary|All-Time Team/i, "ann"]];
 export function parseHof(w) {
   const pos = unlink(clean(field(w, "position"))).trim();
   /* teams and their seasons — "As player" only */
-  let pt = clean(field(w, "pastteams")); const co = pt.search(/As (?:head )?coach|As executive|'''Coach/i); if (co > 0) pt = pt.slice(0, co);
+  let pt = clean(field(w, "pastteams") || field(w, "teams")); const co = pt.search(/As (?:a )?(?:head )?coach|As executive|'''Coach/i); if (co > 0) pt = pt.slice(0, co);
   const T = []; for (const l of pt.split("\n")) { if (!/^\s*\*/.test(l) || /practice squad|offseason|\*\s*\{\{\s*small/i.test(l)) continue; const t = frOf(unlink(l.split("(")[0])) || frOf(l.split("(")[0]); if (!t) continue;
     const y = seasons(l.slice(l.indexOf("(") >= 0 ? l.indexOf("(") : l.length)); if (y.length) T.push([t, Math.min(...y), Math.max(...y)]) }
-  let h = clean(field(w, "highlights")); const hc = h.search(/'''\s*As (?:head )?coach|'''\s*As executive/i); if (hc > 0) h = h.slice(0, hc);
+  let h = clean(field(w, "highlights")); const hc = h.search(/'''\s*As (?:a )?(?:head )?coach|'''\s*As executive|\n;\s*As (?:a )?(?:head )?coach|\n;\s*As (?:an )?executive/i); if (hc > 0) h = h.slice(0, hc);
   const A = []; for (const l0 of h.split("\n")) { if (!/^\s*\*/.test(l0)) continue; const l = unlink(l0); const kd = KIND.find(([re]) => re.test(l)); if (!kd || !kd[1]) continue;
     const k = kd[1], cnt = +((l.match(/(\d+)\s*×/) || [])[1] || 1), par = l.slice(l.indexOf("(") >= 0 ? l.indexOf("(") : l.length), ys = seasons(par, k === "sb" || k === "sbmvp");
     if (k === "dec" || k === "ann") { A.push([k, ys[0] || 0]); continue }

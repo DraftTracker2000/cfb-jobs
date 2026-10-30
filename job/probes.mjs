@@ -301,4 +301,30 @@ out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(",
     for(const s of [2016,2020,2025,Y]){const B=await gp("p"+Y+"_nfl-pbp-"+s);if(!B){o[s]="none";continue}const R=Object.entries(B.rec||{}).sort((a,b)=>(b[1].all||[0])[0]-(a[1].all||[0])[0])[0],P=Object.entries(B.pass||{}).sort((a,b)=>(b[1].all||[0])[0]-(a[1].all||[0])[0])[0];
       o[s]={rec:R&&{id:R[0],tgt:R[1].all[0],sd:!!R[1].sd,tts:R[1].tts&&R[1].tts.all,tl:R[1].tl&&R[1].tl[0],bl:R[1].bl&&R[1].bl.all},pass:P&&{id:P[0],att:P[1].all[0],sd:P[1].sd&&P[1].sd.all,tl:P[1].tl&&P[1].tl[0]}}}
     return o` },
+  { name: "ncstest", node: `/* Oct 30 (Sam, Oct 29: "you should always test things on your own and bring me the results"): would an NFL value that also counts
+       return seasons and years on a roster tell us more? Test: from a player's first four NFL seasons, which version better predicts that
+       teams kept him — 8+ games in seasons 5-7? Drafted RB/WR/TE, classes 2006-2018, nflverse season stats and draft picks (CC BY 4.0). */
+    const NFLV="https://github.com/nflverse/nflverse-data/releases/download/";
+    const csv=t=>{const L=t.split(/\\r?\\n/).filter(Boolean),sp=l=>{const o=[];let c="",q=false;for(const ch of l){if(ch==='"'){q=!q;continue}if(ch===","&&!q){o.push(c);c="";continue}c+=ch}o.push(c);return o};const H=sp(L[0]);return {H,R:L.slice(1).map(l=>{const v=sp(l),o={};H.forEach((h,i)=>o[h]=v[i]);return o})}};
+    const get=async u=>{const r=await fetch(u,{redirect:"follow"});if(!r.ok)throw new Error(r.status+" "+u);return r.text()};
+    const o={ok:true},S={},cols=new Set();
+    for(let y=2006;y<=2025;y++){const {H,R}=csv(await get(NFLV+"stats_player/stats_player_reg_"+y+".csv"));if(y===2006)H.filter(h=>/return|special|games/.test(h)).forEach(h=>cols.add(h));
+      for(const x of R){const n=k=>+x[k]||0;(S[x.player_id]=S[x.player_id]||{})[y]={pos:x.position,g:n("games"),scr:n("rushing_yards")+n("receiving_yards")+40*(n("rushing_tds")+n("receiving_tds")),ret:n("punt_return_yards")+n("kickoff_return_yards")+40*n("special_teams_tds")}}}
+    o.cols=[...cols];
+    const nth=(a,n)=>{a.sort((x,y)=>y-x);return a[Math.min(a.length-1,n-1)]||1},N={RB:40,WR:72,TE:32},LN={},RL={};
+    for(let y=2006;y<=2025;y++){const by={RB:[],WR:[],TE:[]},rr=[];for(const id in S){const u=S[id][y];if(!u||!u.g)continue;if(by[u.pos])by[u.pos].push(u.scr);if(u.ret>0)rr.push(u.ret)}for(const p in by)LN[p+"|"+y]=nth(by[p],N[p]);RL[y]=nth(rr,32)}
+    const {R:DP}=csv(await get(NFLV+"draft_picks/draft_picks.csv"));
+    const auc=(Z,k)=>{const P=Z.filter(z=>z.y),Q=Z.filter(z=>!z.y);if(!P.length||!Q.length)return null;let w=0;for(const a of P)for(const b of Q)w+=a[k]>b[k]?1:a[k]===b[k]?.5:0;return +(w/P.length/Q.length).toFixed(4)};
+    const Z=[],ex=[];
+    for(const d of DP){const y0=+d.season,pos=d.position==="FB"?"RB":d.position;if(y0<2006||y0>2018||!N[pos]||!d.gsis_id||!S[d.gsis_id])continue;const s=S[d.gsis_id];
+      let v1=0,ret=0,ros=0;for(let y=y0;y<y0+4;y++){const u=s[y];if(!u||!u.g)continue;const l=LN[pos+"|"+y];v1+=Math.min(2,Math.max(0,u.scr/l));ret+=Math.min(1,Math.max(0,u.ret/RL[y]));ros+=u.g>=8?1:0}
+      let later=0;for(let y=y0+4;y<y0+7;y++)later+=(s[y]&&s[y].g)||0;
+      const z={pos,y0,y:later>=8?1:0,v1,ret,ros,a:v1+ret,b:v1+.25*ros,c:v1+ret+.25*ros,pk:-(+d.pick||300),n:d.pfr_player_name||d.player_name||d.gsis_id};Z.push(z);if(ret>=1.5)ex.push([z.n,pos,y0,+v1.toFixed(2),+ret.toFixed(2),z.y])}
+    const K=[["v1","now"],["a","+ returns"],["b","+ roster years"],["c","+ both"],["pk","draft slot (for scale)"]];
+    for(const P of ["RB","WR","TE","all"]){const ZZ=P==="all"?Z:Z.filter(z=>z.pos===P);o[P]={n:ZZ.length,kept:ZZ.filter(z=>z.y).length};for(const [k,l] of K)o[P][l]=auc(ZZ,k)}
+    /* steady or noise: the same check on each half of the classes, and the roster weight at 0.1 / 0.25 / 0.5 */
+    for(const z of Z){z.b1=z.v1+.1*z.ros;z.b5=z.v1+.5*z.ros;z.a5=z.v1+.5*z.ret}
+    o.halves={};for(const [h,f] of [["2006-12",z=>z.y0<=2012],["2013-18",z=>z.y0>=2013]]){const ZZ=Z.filter(f);o.halves[h]={n:ZZ.length,now:auc(ZZ,"v1"),"+returns":auc(ZZ,"a"),"+roster .25":auc(ZZ,"b"),"+both":auc(ZZ,"c")}}
+    o.weights={"roster .1":auc(Z,"b1"),"roster .25":auc(Z,"b"),"roster .5":auc(Z,"b5"),"returns 1":auc(Z,"a"),"returns .5":auc(Z,"a5")};
+    o.withReturns=Z.filter(z=>z.ret>0).length;o.returners=ex.sort((a,b)=>b[4]-a[4]).slice(0,15);return o` },
 ];

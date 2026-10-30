@@ -266,6 +266,7 @@ export async function pbp(S, log) {
   const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null;
   const LGD = {}, LYH = {};
   const P = {}, R = {}, U = {}, T = {}, G = {}, WX = {}, DRV = {}, FS = {}, DF = {}, OPQ = {}, INJ = {}, BON = {};
+  const TTG = {}, RGM = {};
   const GPL = {}, SEEN_KEYS = ["passer_player_id", "receiver_player_id", "rusher_player_id", "solo_tackle_1_player_id", "solo_tackle_2_player_id", "assist_tackle_1_player_id", "assist_tackle_2_player_id", "tackle_with_assist_1_player_id", "tackle_with_assist_2_player_id", "pass_defense_1_player_id", "pass_defense_2_player_id", "interception_player_id", "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id", "qb_hit_1_player_id", "qb_hit_2_player_id", "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id", "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id", "lateral_receiver_player_id", "lateral_rusher_player_id"];
   /* who was thrown at on each side (Sam, Sept 30: "Detroit's best side" means nothing if Detroit gets torn apart everywhere): each
      receiver's targets and yards by side, and against each defense by side — so a side can be judged against who was thrown at */
@@ -407,10 +408,15 @@ export async function pbp(S, log) {
     if (pt === "pass" && o.passer_player_id) {
       const ev = { sack: o.sack === "1", cmp: o.complete_pass === "1", int: o.interception === "1", td: td && o.interception !== "1", fl, yds, epa, fd: o.first_down === "1" };
       const p = pl(P, o.passer_player_id); addPass(p.all, ev); if (late) addPass(p.late, ev); if (rz) addPass(p.rz, ev); if (two) addPass(p.two, ev);
+      /* Oct 29 (Sam: "that same data should be on the QBs and WR & TEs"): the same situations as a back's runs — short yardage and field
+         position — and, below, which side each throw went (left / middle / right) in each of them */
+      { const zb = fpos(o); addPass(p[zb] = p[zb] || line(), ev); if (shortY(o)) addPass(p.sy = p.sy || line(), ev) }
       if (third && !ev.sack) { p.third[0]++; if (o.third_down_converted === "1") p.third[1]++ }
+      if (!ev.sack && o.receiver_player_id && o.receiver_player_id !== "NA" && o.posteam) { const tg = (TTG[g + "|" + o.posteam] = TTG[g + "|" + o.posteam] || {}); for (const k2 of ["all", ...(late ? ["late"] : []), ...(rz ? ["rz"] : []), fpos(o), ...(shortY(o) ? ["sy"] : [])]) tg[k2] = (tg[k2] || 0) + 1 }
       const z = ZONE(num(o.air_yards)), d = LOC[o.pass_location];
       if (!ev.sack && z && d) { const k = z + d, add = A => { A[0]++; if (ev.cmp) { A[1]++; A[2] += yds } if (ev.td) A[3]++; if (ev.int) A[4]++; A[5] += epa };
         add(zc(p.Z, k));
+        const di = d === "L" ? 0 : d === "M" ? 1 : 2, sit3 = obj => { const S3 = obj.sd = obj.sd || {}, b = key => (S3[key] = S3[key] || [0, 0, 0])[di]++; b("all"); if (late) b("late"); if (rz) b("rz"); b(fpos(o)); if (shortY(o)) b("sy") }; sit3(p);
         const off = T[o.posteam] = T[o.posteam] || { off: {}, def: {} }, def = T[o.defteam] = T[o.defteam] || { off: {}, def: {} };
         add(zc(off.off, k)); add(zc(def.def, k));
         if (o.receiver_player_id) { const rid = o.receiver_player_id, ry = ev.cmp ? yds : 0;
@@ -420,6 +426,12 @@ export async function pbp(S, log) {
           const rzr = (RZ[rid] = RZ[rid] || {})[k] = RZ[rid][k] || [0, 0]; rzr[0]++; rzr[1] += ry; const lz = LZ[k] = LZ[k] || [0, 0]; lz[0]++; lz[1] += ry;
           const dzx = ((DZ[o.defteam] = DZ[o.defteam] || {})[k] = DZ[o.defteam][k] || {}), xz = dzx[rid] = dzx[rid] || [0, 0]; xz[0]++; xz[1] += ry;
           const r = pl(R, o.receiver_player_id); add(zc(r.Z, k)); addPass(r.all, ev); if (late) addPass(r.late, ev); if (rz) addPass(r.rz, ev); if (two) addPass(r.two, ev);
+          { const zb = fpos(o); addPass(r[zb] = r[zb] || line(), ev); if (shortY(o)) addPass(r.sy = r.sy || line(), ev) } sit3(r);
+          /* the team's targets in the same situations, in the games he was targeted (his target share there), and his targets behind the line
+             of scrimmage (screens, swings, flips — caught in the backfield) */
+          const sits = ["all", ...(late ? ["late"] : []), ...(rz ? ["rz"] : []), fpos(o), ...(shortY(o) ? ["sy"] : [])];
+          (RGM[rid] = RGM[rid] || new Set()).add(g + "|" + o.posteam);
+          if (num(o.air_yards) < 0) { const bl = r.bl = r.bl || {}; for (const k2 of sits) { const x = bl[k2] = bl[k2] || [0, 0, 0]; x[0]++; if (ev.cmp) { x[1]++; x[2] += yds } } }
           if (third) { r.third[0]++; if (o.third_down_converted === "1") r.third[1]++ } } }
     } else if (pt === "run" && o.rusher_player_id) {
       /* the line by gap (Sam, Sept 30: OL and DL by side): each run's gap — left end / tackle / guard, middle, right guard / tackle / end —
@@ -502,6 +514,8 @@ export async function pbp(S, log) {
   for (const t in T) if (T[t].sit) for (const side of ["o", "d"]) { const z = T[t].sit[side], v = Object.values(z.rzd); z.rz = [v.length, v.filter(Boolean).length]; delete z.rzd }
   for (const t in TD) (T[t] = T[t] || { off: {}, def: {} }).tend = TD[t];
   for (const t in CH) (T[t] = T[t] || { off: {}, def: {} }).ch = CH[t];
+  /* his team's targets in each situation, summed over the games he was targeted — his target share there = his targets ÷ this (Oct 29) */
+  for (const rid in RGM) { const x = R[rid]; if (!x) continue; const tts = x.tts = {}; for (const gk of RGM[rid]) { const tg = TTG[gk]; if (tg) for (const k in tg) tts[k] = (tts[k] || 0) + tg[k] } }
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
     gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], tendCols: TEND_COLS, pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, gpl: GPL, bon: BON,
@@ -969,6 +983,12 @@ export async function inGame(s, prev, espnToGsis, log = console.log, nameToGsis 
   rows(t, ["game_id", "season", "espn", "home_score", "game_type"], o => { if (+o.season === s && o.home_score !== "" && o.home_score != null && o.espn) G.push([o.game_id, String(Math.round(+o.espn))]) });
   const out = prev && prev.s === s && prev.espn && prev.v === 5 ? prev : { v: 5, s, cols: ["quarter", "status", "type", "returned", "out", "seenAgain", "source"], espn: {}, p: {}, done: [] };   /* v5 (Oct 29): our play-by-play first (base), ESPN kept apart (espn) and only filling gaps; p = the two merged each run */   /* v2: only men hurt in the game (a play-text line) — ESPN's injury list also carries players out before kickoff */ const done = new Set(out.done || []); let read = 0, fail = 0;
   const nk = v => String(v || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "");
+  /* Oct 29 repair (my mistake): the switch to v5 re-read every game from ESPN instead of carrying the v4 records over, and ESPN's game
+     injury list now shows a later status — ten men ruled out at the time came back as "questionable". Their "out" from the v4 pack
+     (read right after each game, saved in the probe before the switch) is put back once; v5 keeps each game's first read from here on */
+  if (!out.fix1) { const OUT_V4 = [["00-0038625", "2026_06_DAL_GB"], ["00-0037255", "2026_03_NYJ_DET"], ["Breece Hall", "2026_03_NYJ_DET"], ["00-0036411", "2026_04_GB_TB"], ["00-0036874", "2026_04_DEN_SF"], ["00-0036934", "2026_04_DET_CAR"], ["Deebo Samuel Sr.", "2026_05_SF_SEA"], ["00-0039013", "2026_06_CAR_PHI"], ["KaVontae Turpin", "2026_06_DAL_GB"], ["Terry McLaurin", "2026_06_WAS_SF"]];
+    let nf = 0; for (const [who, gid] of OUT_V4) { const L = /^00-/.test(who) ? [who] : (nameToGsis[nk(who)] || []); if (L.length !== 1) continue; const e = out.espn[L[0]] && out.espn[L[0]][gid]; if (e) { e[1] = "out"; e[3] = 0; e[4] = 1; nf++ } }
+    out.fix1 = nf; log(`nfl: in-game injuries: put back ${nf} of 10 "ruled out" from the v4 pack`) }
   for (const [gid, eid] of G) { if (done.has(gid)) continue;
     let j = null; try { const r = await fetch(SUMU(eid)); if (r.ok) j = await r.json() } catch { } if (!j) { fail++; continue } read++;
     const W = {}, put0 = (tm, nm, id) => { const w = String(nm || "").trim().split(/\s+/); if (w.length < 2 || !tm || !id) return; const k = tm + "|" + w[0][0].toUpperCase() + "|" + nk(w.slice(1).join(" ")); const L = W[k] = W[k] || []; if (!L.includes(String(id))) L.push(String(id)) };
@@ -1038,7 +1058,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
      being played) is built once at this version and skipped after — its packs stay as they are. Bump NFL_DONE_V when what a season's
      packs hold changes, and every finished season is rebuilt once. */
   SNAP_PUT = (n, o) => put(n, o);
-  const NFL_DONE_V = 5;   /* 4 (Oct 28): the pbp pack carries each offense's play-call tendencies (team.tend); 5 (Oct 28, Sam: yes): coach's challenges (team.ch) */ let DONE = { s: {} }; try { DONE = (getPack && (await getPack(P("done")))) || DONE } catch { } DONE.s = DONE.s || {};
+  const NFL_DONE_V = 6;   /* 6 (Oct 29, Sam: QB/WR/TE by situation): throws and targets by side in each situation, field position and short yardage lines, target share, catches behind the line */   /* 4 (Oct 28): the pbp pack carries each offense's play-call tendencies (team.tend); 5 (Oct 28, Sam: yes): coach's challenges (team.ch) */ let DONE = { s: {} }; try { DONE = (getPack && (await getPack(P("done")))) || DONE } catch { } DONE.s = DONE.s || {};
   if (!all) for (let i = seasons.length - 1; i >= 0; i--) if (seasons[i] < lastPlayed && DONE.s[seasons[i]] === NFL_DONE_V) { log(`nfl: ${seasons[i]} finished, kept`); seasons.splice(i, 1) }
   const LOGS = {}, WXP = {}, STN = {}, PBPIG = {};
   /* starts for every season (mode nfldraft: just the starts and the draft grades, every season — the first fill, or a rebuild) */

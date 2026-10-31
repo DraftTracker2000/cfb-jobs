@@ -191,7 +191,7 @@ async function main() {
     const putIndex = async ix => api("PUT", "/api/pack-index", { body: ix });
     let extra = []; try { extra = JSON.parse((await import("node:fs")).readFileSync(new URL("./nflhof-extra.json", import.meta.url), "utf8")) } catch { }
     const d = await buildNflHof({ putPack, putIndex, extra, dry: process.env.PREFETCH_DRY === "1", log: x => console.log(x) });
-    await report(true, `nfl hof · ${d.nh} Hall of Famers + ${d.n - d.nh} not yet eligible · ${d.reads} Wikipedia reads`); return }
+    await report(true, `nfl hof · ${d.nh} Hall of Famers + ${d.n - d.nh} not yet eligible + ${d.ns} snubs · ${d.reads} Wikipedia reads${process.env.PREFETCH_DRY === "1" ? " · dry run" : ""}`); return }
   /* MODE=colgap: college missed-game check from box scores (job/colgap.mjs, Oct 24) */
   if (MODE === "colgap") { const { buildColGap, uploadColGap } = await import("./colgap.mjs");
     let hand = []; try { hand = (await (await fetch(SITE + "/data/col-injuries.json")).json()).p || [] } catch { }

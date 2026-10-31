@@ -208,14 +208,6 @@ async function main() {
       const getIndex = async () => { try { const r = await fetch(SITE + "/api/pack-index", { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? (await r.json()).packs : null } catch { return null } };
       const d = await buildPunts({ site: SITE, token: sess.token, api, getIndex, log: x => console.log(x) }); const c = d.seasons[d.seasons.length - 1];
       console.log(`::notice title=punts::${c ? `${c.y}: ${c.plays} punts` : "nothing new"} · ${d.calls} CFBD calls`) } catch (e) { console.log(`::warning title=punts failed::${String(e && e.message || e).slice(0, 1500)}`) } }
-  /* the Hall of Fame pack on the schedule (Oct 31 — Sam: "everything we ever do across sites stats wises needs to be auto updating …
-     something that just runs"): every weekly run re-reads it (~10 Wikipedia reads, ~1 min), so new classes and honors land on their own */
-  if (MODE === "weekly") { try { const { buildNflHof } = await import("./nflhof.mjs");
-      const putPack = async (n, gz) => api("PUT", `/api/pack/${n}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
-      const putIndex = async ix => api("PUT", "/api/pack-index", { body: ix });
-      let extra = []; try { extra = JSON.parse((await import("node:fs")).readFileSync(new URL("./nflhof-extra.json", import.meta.url), "utf8")) } catch { }
-      const d = await buildNflHof({ putPack, putIndex, extra, dry: false, log: x => console.log(x) });
-      console.log(`::notice title=nfl hof::${d.nh} Hall of Famers + ${d.n - d.nh} not yet eligible · ${d.reads} Wikipedia reads`) } catch (e) { console.log(`::warning title=nfl hof failed::${String(e && e.message || e).slice(0, 1500)}`) } }
   /* style matchups (Oct 25, job/stylepack.mjs): every weekly run, or MODE=style by hand → pack p2000_cfbstyle */
   if (MODE === "style" || MODE === "weekly") { try { const { buildStyle } = await import("./stylepack.mjs"); const { gzipSync } = await import("node:zlib");
       const now = new Date(), y = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, d = await buildStyle({ site: SITE, token: sess.token, year: y });

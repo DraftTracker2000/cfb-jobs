@@ -216,8 +216,10 @@ export async function findSnubs({ have, api, log = () => { }, nowY = new Date().
     if (!j) throw new Error(`nflhof snubs: the players' pages didn't answer (${wikiFail}) — not writing`);
     for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content, p = F[pg.title]; if (!w || !p) continue;
       const last = p.x.t.length ? Math.max(...p.x.t.map(t => t[2])) : null, B = ballotYears(w, last, nowY), L = src[pg.title] || {};
-      /* the list's years too must fall in his modern-era window (first eligible class to 30 seasons after — as for his page's years) */
-      const inEra = y => !last || (y >= last + 6 && y <= last + 30), off = Object.keys(L).map(Number).filter(y => !inEra(y)); if (off.length) offEra.push(`${String(pg.title).replace(/\s*\([^)]*\)\s*$/, "")} ${off.join(", ")}`);
+      /* the list's years must not be the senior ballot (more than 30 seasons after his last — as for his page's years). No lower bound: a
+         reported finalist year is after he was eligible, and an infobox can name an offseason-only stint as his last season (Reggie Wayne:
+         Patriots 2015*, so "last" reads 2015 and would have dropped his 2020 finalist year) */
+      const inEra = y => !last || y <= last + 30, off = Object.keys(L).map(Number).filter(y => !inEra(y)); if (off.length) offEra.push(`${String(pg.title).replace(/\s*\([^)]*\)\s*$/, "")} ${off.join(", ")}`);
       const finals = [...new Set([...B.finals, ...Object.keys(L).map(Number).filter(inEra)])].sort((a, b) => a - b), semis = B.semis.filter(y => !finals.includes(y));
       const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim();
       /* Oct 31 5:13 pm (naming Holt, Taylor, Matthews Jr. and Harrison — Matthews and Harrison finalists once): one modern-era finalist

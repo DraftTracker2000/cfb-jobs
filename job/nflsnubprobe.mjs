@@ -57,4 +57,8 @@ export async function run() {
       if (n + parts > 6) { left.push(t + " (no room)"); continue }
       for (let i = 0; i < parts; i++, n++) console.log(`::notice title=fx ${i + 1}/${parts} ${t}::${s.slice(i * 3800, (i + 1) * 3800)}`) }
     if (left.length) say("left", left) }
+  if (step === "6") {   /* why a finalists-list name isn't read as a player: its title, infobox name, position and teams fields */
+    const j = await api({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", rvsection: "0", redirects: "1", titles: process.env.TITLES || "" });
+    for (const pg of (j && j.query && j.query.pages) || []) { const w = (pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content) || "", k = w.search(/\{\{\s*Infobox/i);
+      say("page " + pg.title, { redirects: (j.query.redirects || []).map(r => r.from + "→" + r.to), len: w.length, infobox: k < 0 ? w.slice(0, 300) : w.slice(k, k + 1600) }) } }
   say("reads", String(reads)); return { ok: true, step, reads } }

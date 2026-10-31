@@ -240,7 +240,10 @@ async function main() {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   page.on("pageerror", e => console.log("page error:", e.message));
-  const BLOG = []; page.on("console", m => { if (/^\[builder\]/.test(m.text())) { console.log(m.text()); if (BLOG.length < 400) BLOG.push(m.text()) } });
+  /* Oct 31: a builder line that starts "[builder] ::notice title=…::" or "::warning" goes on the run as its own annotation (the college play-by-play
+     additions' before → after line, cgNotice in the page) — the "builder messages" annotation keeps only the first 6 and last 4 lines */
+  const BLOG = []; page.on("console", m => { const t = m.text(); if (/^\[builder\] ::(notice|warning) /.test(t)) { console.log(t.slice(10)); return }
+    if (/^\[builder\]/.test(t)) { console.log(t); if (BLOG.length < 400) BLOG.push(t) } });
   await page.goto(SITE + "/404");                                     // any page on the site, to set storage
   await page.evaluate(t => { localStorage.clear(); localStorage.setItem("cfbTok", t) }, sess.token);
   await page.goto(`${SITE}${PAGE}?builder=${MODE}${SUNDAY_CATCHUP ? "&catchup=1" : ""}`, { waitUntil: "domcontentloaded" });

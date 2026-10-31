@@ -7,11 +7,19 @@
    Sources: CFBD through the site's proxy (rosters' homeCity/homeState, high-school recruiting city/state, teams' locations), Wikipedia
    (coordinates of old stadiums), NASA POWER climatology (origin climate), Open-Meteo (elevation; ERA5 archive for kickoff weather). */
 
+import { gzipSync } from "node:zlib";
 const UA = { "User-Agent": "mycfbbigboard.com data job (NFL climate study; contact via site)" };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const trim = (v, n = 400) => { const s = typeof v === "string" ? v : JSON.stringify(v); return s && s.length > n ? s.slice(0, n) + `…<${s.length}>` : s };
 
 async function getJ(u, opt = {}) { const r = await fetch(u, { headers: { ...UA, ...(opt.headers || {}) } }); const t = await r.text(); let j = null; try { j = JSON.parse(t) } catch { } return { st: r.status, j, t, h: Object.fromEntries([...r.headers].filter(([k]) => /ratelimit|x-kept|content-length|retry/i.test(k))) } }
+
+/* a result too big for one annotation: gzip + base64, cut into 3,900-character pieces titled "<tag> i/n" */
+export function emit(tag, obj, log = console.log, level = "notice") {
+  const b = gzipSync(Buffer.from(JSON.stringify(obj))).toString("base64"), N = Math.ceil(b.length / 3900);
+  for (let i = 0; i < N; i++) log(`::${Array.isArray(level) ? level[Math.floor(i / 10)] || "error" : level} title=clim ${tag} ${i + 1}/${N}::${b.slice(i * 3900, (i + 1) * 3900)}`);
+  return N;
+}
 
 export async function run({ site, token, log = console.log }) {
   const STAGE = process.env.STAGE || "disc";
@@ -39,9 +47,12 @@ export async function run({ site, token, log = console.log }) {
     const rc = await cf("/recruiting/players?year=2012&classification=HighSchool"); o.recruit = { st: rc.st, kept: rc.kept, n: rc.j && rc.j.length, ex: rc.j && trim(rc.j[0], 600) };
     const ro2 = await cf("/roster?year=2006"); o.roster2006 = { st: ro2.st, kept: ro2.kept, n: ro2.j && ro2.j.length, withHome: ro2.j && ro2.j.filter(x => x.homeCity).length };
     const after = await cf("/info"); o.cfbdLeftAfter = after.j && after.j.remainingCalls;
-    /* how big a notice can be, and how many come back: 12 notices of growing size */
-    for (const n of [100, 1000, 8000, 20000, 40000, 60000, 64000, 70000, 100000, 200, 300, 400]) log(`::notice title=climsize ${n}::${"x".repeat(n - 20)}END`);
-    return o;
+    /* GitHub keeps 10 annotations of each level per step, 4,096 characters each (disc run 1, Oct 31): the answer goes out gzipped in chunks,
+       and this run checks whether warning and error annotations come back too */
+    emit("disc", o, log);
+    for (let i = 0; i < 10; i++) log(`::warning title=climlvl w${i}::w${i}`);
+    for (let i = 0; i < 10; i++) log(`::error title=climlvl e${i}::e${i}`);
+    return { ok: true, n: Object.keys(o).length };
   }
   return { ok: false, error: "unknown STAGE " + STAGE };
 }

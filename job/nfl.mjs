@@ -4,7 +4,7 @@
 
      p<Y>_nfl-games        every game 1999 on: teams, score, site, rest, closing spread/total/moneylines, coaches, roof,
                            surface, weather, stadium, starting QBs
-     p<Y>_nfl-players      every QB/RB/WR/TE who played 1999 on: bio, college, draft, years, headshot
+     p<Y>_nfl-players      every QB/RB/WR/TE who played 1999 on: bio, college, draft, years, headshot, jersey (Oct 31: this season's weekly roster, else the players file)
      p<Y>_nfl-logs-<S>     one season of game logs for those players (regular season and playoffs)
      p<Y>_nfl-pbp-<S>      one season of play-by-play boiled down: passing zones (air yards × direction) for every passer,
                            receiver and defense; late-and-close, third down and red zone lines; runs by direction;
@@ -13,7 +13,8 @@
                            depth, shotgun, no huddle, red zone — Oct 28)
      p<Y>_nfl-picks        who owns each pick of the next three drafts (trades read from ESPN's transaction feed)
      p<Y>_nfl-teams        each season's defense: yards allowed a game (pass, run), points, and FBS-style ranks
-     p<Y>_nfl-depth        this week's depth charts (offense, OL and defense), the injury report, who's on reserve, and rookies
+     p<Y>_nfl-depth        this week's depth charts (offense, OL and defense), the injury report, who's on reserve, and rookies;
+                           spec[t] = the long snapper and holder (LS, H) outside teams[t]; jersey[gsis] for everyone on a roster this week (Oct 31)
      p<Y>_nfl-dplayers     every defender 1999 on (DL, LB, DB): bio, college, draft
      p<Y>_nfl-def-<S>      one season of defensive game logs (tackles, TFL, sacks, QB hits, INT, passes defended, forced fumbles)
                            The pbp pack also carries each defender's plays by zone and side (df), each game's runs by gap (team.gapG)
@@ -38,7 +39,7 @@ const DGRP = p => { p = (p || "").toUpperCase(); return /^(DE|DT|NT|DL|EDGE)$/.t
    chart): keep the last one of each */
 const MEMO = {};
 async function get(path, log) {
-  const k = (path.match(/^(depth_charts|stats_player|pbp)\//) || [])[1];
+  const k = (path.match(/^(depth_charts|stats_player|pbp|weekly_rosters)\//) || [])[1];
   if (k) { if (MEMO[k] && MEMO[k].path === path) return MEMO[k].txt; let txt = await get0(path, log); if (k === "depth_charts") txt = await depthIdFix(path, txt, log); MEMO[k] = { path, txt }; return txt }
   return get0(path, log);
 }
@@ -120,11 +121,25 @@ export async function games(log) {
 }
 
 /* ── players ── */
-const PLAYER_COLS = ["gsis", "name", "pos", "college", "born", "ht", "wt", "draftYear", "round", "pick", "draftTeam", "rookie", "last", "team", "status", "espn", "headshot"];
-export async function players(log) {
+/* jersey (Oct 31, Sam OK'd: "our NFL packs should carry each player's jersey number"): added as the last column, so every reader that goes by
+   "cols" (or by position) reads the other fields as before */
+const PLAYER_COLS = ["gsis", "name", "pos", "college", "born", "ht", "wt", "draftYear", "round", "pick", "draftTeam", "rookie", "last", "team", "status", "espn", "headshot", "jersey"];
+/* each player's jersey from this season's weekly rosters (the newest regular-season week he's on, not "cut" if he has another row that week);
+   nflverse's players file leaves it blank for ~200 current skill players (Oct 31 count: 200 of 955 differ or are blank) */
+export async function rosterJerseys(S, log) {
+  const J = {}, at = {}; if (!S) return J;
+  rows(await get(`weekly_rosters/roster_weekly_${S}.csv`, log), ["gsis_id", "week", "game_type", "status", "jersey_number"], o => {
+    if (!o.gsis_id || (o.game_type && o.game_type !== "REG")) return; const n = num(o.jersey_number); if (n == null) return;
+    const w = +o.week * 2 + (o.status === "CUT" ? 0 : 1); if (at[o.gsis_id] != null && w < at[o.gsis_id]) return; at[o.gsis_id] = w; J[o.gsis_id] = n });
+  return J;
+}
+/* the players file's jersey: 0 is a real number only since 2023 (the league allowed it then); before that the file's 0 means "not known" */
+const fileJersey = (o, last) => { const n = num(o.jersey_number); return n == null || (n === 0 && !(last >= 2023)) ? null : n };
+export async function players(log, S) {
   const t = await get("players/players.csv", log); const out = {}, def = {}, drafted = [], espn = {}, kp = {}, ol = {};
+  let RJ = {}; try { RJ = await rosterJerseys(S, log) } catch (e) { log && log("nfl: roster jerseys: " + e.message) }
   rows(t, ["gsis_id", "display_name", "position", "college_name", "birth_date", "height", "weight", "draft_year", "draft_round", "draft_pick", "draft_team", "rookie_season",
-    "last_season", "latest_team", "status", "espn_id", "headshot"], o => {
+    "last_season", "latest_team", "status", "espn_id", "headshot", "jersey_number"], o => {
     if (!o.gsis_id) return; const last = num(o.last_season);
     if (o.espn_id && last != null && last >= new Date().getFullYear() - 3) espn[String(Math.round(+o.espn_id))] = o.gsis_id;
     /* for matching Sleeper's snaps to our ids: every ESPN id, and name + position */
@@ -138,13 +153,13 @@ export async function players(log) {
     if (last != null && last < FIRST) return;
     if (DGRP(o.position)) { def[o.gsis_id] = [o.display_name, o.position, o.college_name || null, o.birth_date || null, num(o.height), num(o.weight),
       num(o.draft_year), num(o.draft_round), num(o.draft_pick), o.draft_team || null, num(o.rookie_season), last, o.latest_team || null, o.status || null,
-      o.espn_id ? String(Math.round(+o.espn_id)) : null, last != null && last >= new Date().getFullYear() - 2 ? o.headshot || null : null]; return }   // photos only for current players (keeps the file small)
+      o.espn_id ? String(Math.round(+o.espn_id)) : null, last != null && last >= new Date().getFullYear() - 2 ? o.headshot || null : null, RJ[o.gsis_id] ?? fileJersey(o, last)]; return }   // photos only for current players (keeps the file small)
     /* current offensive linemen: birthday and draft slot (Oct 1: the NFL trade machine ages every player) */
     if (/^(OL|OT|OG|C|G|T|LT|LG|RG|RT|IOL)$/i.test(o.position || "") && last != null && last >= new Date().getFullYear() - 1) { ol[o.gsis_id] = [o.birth_date || null, num(o.draft_year), num(o.draft_round), num(o.draft_pick), o.display_name || null, last, (o.position || "").toUpperCase()]; return }   // name/last/pos added Oct 7 (free-agent linemen in Be the GM)
     if (!SKILL.has((o.position || "").toUpperCase())) return;
     out[o.gsis_id] = [o.display_name, o.position === "HB" ? "RB" : o.position, o.college_name || null, o.birth_date || null, num(o.height), num(o.weight),
       num(o.draft_year), num(o.draft_round), num(o.draft_pick), o.draft_team || null, num(o.rookie_season), last, o.latest_team || null, o.status || null,
-      o.espn_id ? String(Math.round(+o.espn_id)) : null, o.headshot || null];
+      o.espn_id ? String(Math.round(+o.espn_id)) : null, o.headshot || null, RJ[o.gsis_id] ?? fileJersey(o, last)];
   });
   return { cols: PLAYER_COLS.slice(1), p: out, def, drafted, espn, kp, ol, olCols: ["born", "draftYear", "round", "pick", "name", "last", "pos"] };
 }
@@ -830,14 +845,18 @@ export async function depth(S, log) {
   rows(t, ["dt", "team", "gsis_id", "player_name", "pos_abb", "pos_slot", "pos_rank"], o => { if (!latest[o.team] || o.dt > latest[o.team]) latest[o.team] = o.dt; (dates[o.team] = dates[o.team] || new Set()).add(o.dt) });
   /* the chart a week earlier (the newest one at least 6 days older), for "what changed this week" (Sam, Sept 30) */
   const before = {}; for (const tm in latest) { const cut = new Date(new Date(latest[tm]).getTime() - 6 * 864e5).toISOString(); before[tm] = [...dates[tm]].filter(d => d <= cut).sort().pop() || null }
-  const top = { now: {}, then: {} }, mem = { now: {}, then: {} };
+  const top = { now: {}, then: {} }, mem = { now: {}, then: {} }, spec = {};
   rows(t, ["dt", "team", "gsis_id", "player_name", "pos_abb", "pos_slot", "pos_rank"], o => {
+    /* the long snapper and the holder (Oct 31, Sam OK'd: keep them): their own key, "spec", outside "teams", so every reader that walks the
+       units of teams[t] sees exactly what it saw before */
+    if (o.dt === latest[o.team] && /^(LS|H)$/i.test(o.pos_abb || "")) { const S2 = spec[o.team] = spec[o.team] || { LS: [], H: [] }; S2[o.pos_abb.toUpperCase()].push([o.gsis_id || null, o.player_name, +o.pos_rank || 9, o.pos_abb.toUpperCase(), +o.pos_slot || 0]) }
     const which = o.dt === latest[o.team] ? "now" : o.dt === before[o.team] ? "then" : null;
     if (which && o.gsis_id) (mem[which][o.team] = mem[which][o.team] || {})[o.gsis_id] = [o.player_name, (o.pos_abb || "").toUpperCase()];
     if (which && (+o.pos_rank || 9) === 1 && o.pos_abb && !/^(KR|PR|H|LS)$/i.test(o.pos_abb)) ((top[which][o.team] = top[which][o.team] || {})[o.pos_abb.toUpperCase() + "|" + (+o.pos_slot || 0)] = [o.gsis_id || null, o.player_name]);
     if (o.dt !== latest[o.team]) return; const p = (o.pos_abb || "").toUpperCase(); const k = p === "QB" ? "QB" : p === "RB" || p === "HB" || p === "FB" ? "RB" : p === "WR" || /^[LRS]?WR$/.test(p) ? "WR" : p === "TE" ? "TE" : /^(LT|LG|C|RG|RT)$/.test(p) ? "OL" : /^(LDE|RDE|LDT|RDT|NT|DE|DT|DL|LOLB|ROLB|EDGE)$/.test(p) ? "DL" : /^(SLB|WLB|MLB|LILB|RILB|ILB|OLB|LB)$/.test(p) ? "LB" : /^(LCB|RCB|CB|NB|FS|SS|S|DB)$/.test(p) ? "DB" : null;
     if (!k) return; const T = byTeam[o.team] = byTeam[o.team] || { QB: [], RB: [], WR: [], TE: [], OL: [], DL: [], LB: [], DB: [] };
     T[k].push([o.gsis_id || null, o.player_name, +o.pos_rank || 9, p, +o.pos_slot || 0]) });
+  for (const t in spec) for (const k in spec[t]) { const seen = new Set(); spec[t][k] = spec[t][k].sort((a, b) => a[2] - b[2]).filter(x => { const id = x[0] || x[1]; if (seen.has(id)) return false; seen.add(id); return true }).map(x => [x[0], x[1], x[2], x[3]]) }
   for (const t in byTeam) for (const k in byTeam[t]) { const seen = new Set(); byTeam[t][k] = byTeam[t][k].sort((a, b) => a[2] - b[2] || a[4] - b[4]).filter(x => { const id = x[0] || x[1]; if (seen.has(id)) return false; seen.add(id); return true }).map(x => [x[0], x[1], x[2], x[3]]) }
   /* the injury report: each player's latest week */
   const inj = {}, wk = {}, injW = {};
@@ -847,7 +866,7 @@ export async function depth(S, log) {
     inj[o.gsis_id] = [w, o.report_status || null, o.report_primary_injury || null, o.practice_status || null, o.team || null] });
   /* reserve lists: the latest week of the weekly rosters */
   const res = {}; let lw = 0; const RR = [];
-  rows(await get(`weekly_rosters/roster_weekly_${S}.csv`, log), ["gsis_id", "full_name", "team", "position", "status", "status_description_abbr", "week", "rookie_year", "entry_year", "years_exp", "game_type"], o => {
+  rows(await get(`weekly_rosters/roster_weekly_${S}.csv`, log), ["gsis_id", "full_name", "team", "position", "status", "status_description_abbr", "week", "rookie_year", "entry_year", "years_exp", "game_type", "jersey_number"], o => {
     if (o.game_type && o.game_type !== "REG") return; RR.push(o); if (+o.week > lw) lw = +o.week });
   const rookie = {};
   /* every position on reserve now (Sam, Sept 30: an Injuries page for every team), with the week this stint on reserve started and
@@ -908,7 +927,9 @@ export async function depth(S, log) {
   const ps = {}; for (const o of RR) { if (+o.week !== (tlw[o.team] || lw) || o.status !== "DEV" || !o.gsis_id) continue; const pos = (o.position || "").toUpperCase();
     (ps[o.team] = ps[o.team] || []).push([o.gsis_id, o.full_name, pos === "HB" || pos === "FB" ? "RB" : pos]) }
   for (const t in ps) ps[t].sort((a, b) => a[2].localeCompare(b[2]) || a[1].localeCompare(b[1]));
-  return { s: S, at: Date.now(), week: lw, dt, onRoster, ps, psCols: ["gsis", "name", "pos"], cols: ["gsis", "name", "rank", "slot"], teams: byTeam, injCols: ["week", "status", "injury", "practice", "team"], resCols: ["gsis", "name", "pos", "code", "since", "dtr"], inj, reserve: res, rookie,
+  /* jersey numbers (Oct 31) for everyone on a team's own latest roster week, any position (linemen, kickers, snappers included), not cut/retired */
+  const jersey = {}; for (const o of RR) { if (+o.week !== (tlw[o.team] || lw) || !o.gsis_id || /^(CUT|RET)$/.test(o.status || "")) continue; const n = num(o.jersey_number); if (n != null) jersey[o.gsis_id] = n }
+  return { spec, specCols: ["gsis", "name", "rank", "slot"], jersey, s: S, at: Date.now(), week: lw, dt, onRoster, ps, psCols: ["gsis", "name", "pos"], cols: ["gsis", "name", "rank", "slot"], teams: byTeam, injCols: ["week", "status", "injury", "practice", "team"], resCols: ["gsis", "name", "pos", "code", "since", "dtr"], inj, reserve: res, rookie,
     chg, chgCols: { moves: ["gsis", "name", "pos", "move", "team"], dc: ["slot", "in gsis", "in", "out gsis", "out"], inj: ["gsis", "name", "pos", "status", "injury", "was"] }, chgSince: before, chgInjWeek };
 }
 
@@ -1055,9 +1076,14 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   /* this season's head coaches where nflverse still has last season's (job/staff.mjs) */
   { const hc = {}; for (const [t, v] of Object.entries(staff || {})) if (v.hc) hc[t] = { hc: v.hc, since: v.hcSince, interim: v.hcInterim }; fixCoaches(G, Y, hc, log) }
   await put(P("games"), G);
-  const POS = {}, PLN = {};
+  const POS = {}, PLN = {}; let JN0 = [0, 0, 0, 0], jnAfter = [0, 0, 0, 0];
   let DRAFTED = [], ESPN = {}, KP = {}, PLP = {};
-  { const PL = await players(log), DP = PL.def; DRAFTED = PL.drafted; ESPN = PL.espn; KP = PL.kp; delete PL.def; delete PL.drafted; delete PL.espn; delete PL.kp; PLP = PL.p; for (const id in PL.p) { POS[id] = PL.p[id][1]; PLN[id] = PL.p[id][0] } await put(P("players"), PL); await put(P("dplayers"), { cols: PLAYER_COLS.slice(1), p: DP }) }
+  /* before → after for the jersey and specialists fields (Oct 31): the last published packs against this run's, in the run's annotations */
+  const jn = o => { const i = o && o.cols ? o.cols.indexOf("jersey") : -1; return i < 0 ? 0 : Object.values(o.p || {}).filter(r => r[i] != null).length };
+  const kb = n => prevIx[n] && prevIx[n].bytes ? (prevIx[n].bytes / 1024).toFixed(0) + " KB" : "?";
+  const spN = (o, k) => Object.values((o && o.spec) || {}).filter(x => x[k] && x[k].length).length;
+  { let b0 = null, d0 = null; try { b0 = getPack ? await getPack(P("players")) : null } catch { } try { d0 = getPack ? await getPack(P("dplayers")) : null } catch { } JN0 = [jn(b0), b0 && b0.p ? Object.keys(b0.p).length : 0, jn(d0), d0 && d0.p ? Object.keys(d0.p).length : 0] }
+  { const PL = await players(log, Y), DP = PL.def; DRAFTED = PL.drafted; ESPN = PL.espn; KP = PL.kp; delete PL.def; delete PL.drafted; delete PL.espn; delete PL.kp; PLP = PL.p; for (const id in PL.p) { POS[id] = PL.p[id][1]; PLN[id] = PL.p[id][0] } await put(P("players"), PL); await put(P("dplayers"), { cols: PLAYER_COLS.slice(1), p: DP }); jnAfter = [jn(PL), Object.keys(PL.p).length, jn({ cols: PLAYER_COLS.slice(1), p: DP }), Object.keys(DP).length] }
   const lastPlayed = Math.max(...G.g.filter(g => g[7] != null).map(g => g[1]));
   /* first run under a new year prefix (the calendar rolls over in March): write every season again so the page's p<Y> set is complete */
   if (!all && getPack) { let have = null; try { have = await getPack(P("logs-" + FIRST)) } catch { } if (!have) { all = true; log(`nfl: no ${P("logs-" + FIRST)} yet: writing every season`) } }
@@ -1134,7 +1160,9 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   let prev = null; try { const r = getPack ? (await getPack(P("teams"))) || (await getPack(`p${Y - 1}_nfl-teams`)) : null; prev = r && r.s ? r : null } catch { }
   const TT = teamsFrom(G, LOGS); if (prev) TT.s = { ...prev.s, ...TT.s };
   await put(P("teams"), TT);
-  try { await put(P("depth"), await depth(Y, log)) } catch (e) { log("nfl: depth charts: " + e.message) }
+  try { let d0 = null; try { d0 = getPack ? await getPack(P("depth")) : null } catch { } const DPK = await depth(Y, log); await put(P("depth"), DPK);
+    const pl1 = jnAfter, cur = Object.entries(PLP).filter(([, r]) => r[11] >= Y - 1), curJ = cur.filter(([, r]) => r[16] != null).length;
+    log(`::notice title=NFL jersey and specialists::players pack: jersey ${JN0[0]} → ${pl1[0]} of ${JN0[1]} → ${pl1[1]} players (played ${Y - 1}+: ${curJ} of ${cur.length}) · defenders pack: jersey ${JN0[2]} → ${pl1[2]} of ${JN0[3]} → ${pl1[3]} · depth pack: teams with a long snapper ${spN(d0, "LS")} → ${spN(DPK, "LS")}, with a holder ${spN(d0, "H")} → ${spN(DPK, "H")}, jerseys ${Object.keys((d0 && d0.jersey) || {}).length} → ${Object.keys(DPK.jersey || {}).length} · teams with a named QB ${Object.values((d0 && d0.teams) || {}).filter(t => t.QB && t.QB.length).length} → ${Object.values(DPK.teams || {}).filter(t => t.QB && t.QB.length).length} · sizes players ${kb(P("players"))} → ${((up[P("players")] || 0) / 1024).toFixed(0)} KB, dplayers ${kb(P("dplayers"))} → ${((up[P("dplayers")] || 0) / 1024).toFixed(0)} KB, depth ${kb(P("depth"))} → ${((up[P("depth")] || 0) / 1024).toFixed(0)} KB${held.length ? " · held: " + held.join(", ") : ""}`) } catch (e) { log("nfl: depth charts: " + e.message) }
   try { const WO = await weeklyOut(Y, log); if (WO && Object.keys(WO.w).length) await put(P("wkout"), WO) } catch (e) { log("nfl: weekly out: " + e.message) }
   try { let prev = null; try { prev = getPack ? await getPack(P("refs")) : null } catch { } const RF = await refsPack(Y, log, prev); if (RF && RF.g && RF.g.length > 1000) await put(P("refs"), RF) } catch (e) { log("nfl: refs: " + e.message) }
   try { const FA = await freeAgents(Y, DRAFTED, log, ESPN); if (FA && FA.p.length >= 200) await put(P("fa"), FA) } catch (e) { log("nfl: free agents: " + e.message) }

@@ -174,5 +174,46 @@ export async function run({ site, token, log = console.log }) {
     emit("origins", { O, SL, CL, EL }, log, ["warning", "error", "notice"]);
     return { ok: true, players: P.length };
   }
+  if (STAGE === "games") {
+    const t0 = Date.now(), FROM = +(process.env.FROM || 2005);
+    const GM = objs(await getText(NFLV + "schedules/games.csv.gz")).filter(g => +g.season >= FROM && g.home_score !== "" && g.home_score != null);
+    /* old grounds: Wikipedia coordinates (one read), the two college stadiums from CFBD's school list (kept, no call) */
+    const w = await getJ("https://en.wikipedia.org/w/api.php?action=query&prop=coordinates&redirects=1&format=json&titles=" + encodeURIComponent(OLD_WIKI.map(x => x[1]).join("|")));
+    const WK = {}; if (w.j) { const red = {}; for (const r of w.j.query.redirects || []) red[r.to] = r.from; for (const p of Object.values(w.j.query.pages)) if (p.coordinates) WK[red[p.title] || p.title] = [+p.coordinates[0].lat.toFixed(4), +p.coordinates[0].lon.toFixed(4)] }
+    const TM = (await cf("/teams?year=2025")).j || [], CV = {}; for (const t of TM) if (t.location && t.location.latitude != null) CV[t.school] = [+(+t.location.latitude).toFixed(4), +(+t.location.longitude).toFixed(4)];
+    const spotByName = st => { for (const [re, t] of OLD_WIKI) if (re.test(st)) return WK[t] ? [...WK[t], "wikipedia:" + t] : null; for (const [re, t] of OLD_CFBD) if (re.test(st)) return CV[t] ? [...CV[t], "cfbd:" + t] : null;
+      for (const [re, c] of NFL_ABROAD) if (re.test(st)) return [...c, "site:NFL_ABROAD"]; return null };
+    const homeOf = {}; for (const g of GM) if (g.location !== "Neutral" && g.stadium) homeOf[g.stadium] = g.home_team;
+    const spot = g => { const st = g.stadium || ""; const a = spotByName(st); if (a) return a; const h = g.location !== "Neutral" ? g.home_team : homeOf[st]; return h && NFL_STAD[h] ? [NFL_STAD[h][0], NFL_STAD[h][1], "site:NFL_STAD." + h] : null };
+    const G = D.gw || {}, S = D.st || {}, groups = new Map(), unplaced = {}; let nOut = 0, nCtl = 0, nUnk = 0;
+    for (const g of GM) { const roof = fixRoof(g.roof, g.stadium), cls = roof === "outdoors" || roof === "open" ? "o" : roof === "dome" || roof === "closed" ? "c" : "u";
+      const sp = spot(g); if (!sp) { unplaced[g.stadium] = (unplaced[g.stadium] || 0) + 1 } const sk = sp ? sp[0] + "," + sp[1] : null; if (sp && !S[sk]) S[sk] = [sp[0], sp[1], null, sp[2], []]; if (sp && !S[sk][4].includes(g.stadium)) S[sk][4].push(g.stadium);
+      const ko = etToUtc(g.gameday, g.gametime); if (cls === "o") nOut++; else if (cls === "c") nCtl++; else nUnk++;
+      if (!G[g.game_id] || G[g.game_id][2] == null && cls === "o") G[g.game_id] = [cls, sk, null, null, null, null, ko];
+      if (cls === "o" && sk && G[g.game_id][2] == null) { const k = sk + "|" + g.season; (groups.get(k) || groups.set(k, []).get(k)).push(g.game_id) } }
+    /* kickoff weather: Open-Meteo's ERA5 archive, one request per stadium and season (hourly temperature, dew point, precipitation, wind) —
+       the mean of the kickoff hour and the next three for temperature, dew point and wind, precipitation summed over the four hours after kickoff */
+    let req = 0, w429 = 0, fail = 0; const day = t => new Date(t).toISOString().slice(0, 10);
+    for (const [k, ids] of groups) { if (Date.now() - t0 > 30 * 60e3) break; const sk = k.split("|")[0], [la, lo] = sk.split(","); const kos = ids.map(id => G[id][6]);
+      const a0 = day(Math.min(...kos)), a1 = day(Math.max(...kos) + 6 * 3600e3); let a = null;
+      for (let r = 0; r < 6; r++) { a = await getJ(`https://archive-api.open-meteo.com/v1/archive?latitude=${la}&longitude=${lo}&start_date=${a0}&end_date=${a1}&hourly=temperature_2m,dew_point_2m,precipitation,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=mm&timezone=GMT`); req++;
+        if (a.st === 200 && a.j && a.j.hourly) break; if (a.st === 429) { w429++; await sleep(65000) } else await sleep(4000) }
+      if (!(a && a.j && a.j.hourly)) { fail++; continue }
+      const Hh = a.j.hourly, base = Date.parse(Hh.time[0] + ":00Z"); if (S[sk] && S[sk][5] == null) S[sk][5] = a.j.elevation;
+      for (const id of ids) { const i = Math.floor((G[id][6] - base) / 3600e3), mean = v => { const x = [0, 1, 2, 3].map(j => v[i + j]).filter(z => z != null); return x.length ? +(x.reduce((s, z) => s + z, 0) / x.length).toFixed(1) : null };
+        const pr = [1, 2, 3, 4].map(j => Hh.precipitation[i + j]).filter(z => z != null);
+        G[id][2] = mean(Hh.temperature_2m); G[id][3] = mean(Hh.dew_point_2m); G[id][4] = pr.length ? +pr.reduce((s, z) => s + z, 0).toFixed(1) : null; G[id][5] = mean(Hh.wind_speed_10m) }
+      await sleep(700) }
+    /* stadium elevation (Copernicus 90 m DEM through Open-Meteo) */
+    const sks = Object.keys(S).filter(k => S[k][2] == null);
+    for (let i = 0; i < sks.length; i += 100) { const B = sks.slice(i, i + 100); const a = await getJ(`https://api.open-meteo.com/v1/elevation?latitude=${B.map(k => k.split(",")[0]).join(",")}&longitude=${B.map(k => k.split(",")[1]).join(",")}`); if (a.j && a.j.elevation) B.forEach((k, j) => S[k][2] = a.j.elevation[j]) }
+    Object.assign(D, { gw: G, st: S, gwNote: "gw[game] = [o outdoors/open · c dome/closed · u roof unknown, stadium key, °F, dew point °F, precip mm in the 4 hours after kickoff, wind mph, kickoff UTC ms]; st[key] = [lat, lon, DEM elevation m, source, names, ERA5 cell elevation]" });
+    const up = await putStudy({ site, data: D, log });
+    const left = Object.values(G).filter(x => x[0] === "o" && x[2] == null).length;
+    log(`::notice title=clim games summary::${JSON.stringify({ games: GM.length, out: nOut, ctl: nCtl, unk: nUnk, groups: groups.size, req, w429, fail, outdoorNoWx: left, unplaced, stadiums: Object.keys(S).length, up, min: +((Date.now() - t0) / 60e3).toFixed(1) }).slice(0, 4000)}`);
+    const out = {}; for (const [id, x] of Object.entries(G)) if (x[0] === "o") out[id] = x.slice(1, 6);
+    emit("games", { G: out, S }, log, ["warning", "error", "notice"]);
+    return { ok: true, games: GM.length };
+  }
   return { ok: false, error: "unknown STAGE " + STAGE };
 }

@@ -9,7 +9,11 @@
    reads); they're added after the team totals and never count toward them. */
 import { gzipSync } from "node:zlib";
 const WUA = { "User-Agent": "mycfbbigboard.com data job (football stats site; contact via the site)" };
-const api = async q => { for (let a = 0; a < 4; a++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", ...q }), { headers: WUA }); if (r.ok) return r.json() } catch { } await new Promise(z => setTimeout(z, 2000 * (a + 1))) } return null };
+/* a long list of titles goes as a POST (the API takes queries either way); the last failure is kept for the error message */
+export let wikiFail = "";
+const api = async q => { const body = new URLSearchParams({ format: "json", formatversion: "2", ...q }), post = String(body).length > 1500;
+  for (let a = 0; a < 4; a++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php" + (post ? "" : "?" + body), post ? { method: "POST", headers: { ...WUA, "Content-Type": "application/x-www-form-urlencoded" }, body } : { headers: WUA });
+      if (r.ok) return r.json(); wikiFail = `HTTP ${r.status} ${(await r.text()).slice(0, 200)}` } catch (e) { wikiFail = String(e && e.message || e).slice(0, 200) } await new Promise(z => setTimeout(z, 2000 * (a + 1))) } return null };
 
 /* franchise by any name it has played under (the site's nflverse codes; moved teams count as one franchise, as on the History tab) */
 const FR = [[/Arizona Cardinals|St\.? Louis Cardinals \(football\)|Phoenix Cardinals|Chicago Cardinals|St\.? Louis Cardinals/, "ARI"], [/Atlanta Falcons/, "ATL"], [/Baltimore Ravens/, "BAL"], [/Buffalo Bills/, "BUF"],
@@ -166,17 +170,17 @@ const PLAYER_POS = /(back|end|tackle|guard|center|quarterback|linebacker|receive
 export async function findSnubs({ have, api, log = () => { }, nowY = new Date().getUTCFullYear(), pause = 400 }) {
   let reads = 0; const cand = new Set(), sq = {};
   for (const q of SNUB_SEARCH) { const j = await api({ action: "query", list: "search", srsearch: q, srlimit: "500", srnamespace: "0", srprop: "" }); reads++;
-    if (!j || !j.query) throw new Error(`nflhof snubs: the search "${q}" didn't answer — not writing`); sq[q] = j.query.searchinfo && j.query.searchinfo.totalhits; for (const x of j.query.search || []) cand.add(x.title) }
+    if (!j || !j.query) throw new Error(`nflhof snubs: the search "${q}" didn't answer (${wikiFail}) — not writing`); sq[q] = j.query.searchinfo && j.query.searchinfo.totalhits; for (const x of j.query.search || []) cand.add(x.title) }
   const C = [...cand].filter(t => !have.has(t) && !NOT_PERSON.test(t)), X = {}, notPlayer = [];
   for (let k = 0; k < C.length; k += 50) { const j = await api({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", rvsection: "0", redirects: "1", titles: C.slice(k, k + 50).join("|") }); reads++;
-    if (!j) throw new Error("nflhof snubs: candidate pages didn't answer — not writing");
+    if (!j) throw new Error(`nflhof snubs: candidate pages didn't answer (${wikiFail}) — not writing`);
     for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content; if (!w || have.has(pg.title)) continue;
       const x = parseHof(w); if (!x.t.length || !PLAYER_POS.test(x.pos)) { notPlayer.push(pg.title); continue } X[pg.title] = x }
     await new Promise(z => setTimeout(z, pause)) }
   /* the career-leader lists, all in one read */
   const lj = await api({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", redirects: "1", titles: LEADERS.map(x => x[2]).join("|") }); reads++;
   const LW = Object.fromEntries((((lj && lj.query && lj.query.pages) || [])).map(p => [p.title, p.revisions && p.revisions[0] && p.revisions[0].slots.main.content]));
-  const TOP = {}; for (const [key, , page, re] of LEADERS) { const w = LW[page]; if (!w) throw new Error(`nflhof snubs: ${page} didn't answer — not writing`);
+  const TOP = {}; for (const [key, , page, re] of LEADERS) { const w = LW[page]; if (!w) throw new Error(`nflhof snubs: ${page} didn't answer (${wikiFail}) — not writing`);
     const R = leaderRank(w, re); if (R.L.filter(x => x.r <= 25).length < 25) throw new Error(`nflhof snubs: ${page} gave only ${R.L.length} ranked players — its table changed; not writing`); TOP[key] = R }
   const norm = s => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").replace(/[^a-z0-9]+/g, " ").trim();
   const pre = {}; for (const [t, x] of Object.entries(X)) { const pb = x.aw.filter(a => a[0] === "pb").length, ap1 = x.aw.filter(a => a[0] === "ap1").length, why = [], top = [];
@@ -187,7 +191,7 @@ export async function findSnubs({ have, api, log = () => { }, nowY = new Date().
   /* only the kept ones: their whole page, for the years the committee named them */
   const K = Object.keys(pre), S = {}, noYears = [];
   for (let k = 0; k < K.length; k += 20) { const j = await api({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", redirects: "1", titles: K.slice(k, k + 20).join("|") }); reads++;
-    if (!j) throw new Error("nflhof snubs: the kept players' pages didn't answer — not writing");
+    if (!j) throw new Error(`nflhof snubs: the kept players' pages didn't answer (${wikiFail}) — not writing`);
     for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content, p = pre[pg.title]; if (!w || !p) continue;
       const last = p.x.t.length ? Math.max(...p.x.t.map(t => t[2])) : null, B = ballotYears(w, last, nowY);
       if (!B.semis.length && !B.finals.length) { noYears.push(pg.title); continue }

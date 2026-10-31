@@ -11,6 +11,8 @@
                            each game's score at the half, after three quarters, and its low and high point
                            and each offense's play-call tendencies (team.tend: pass calls by down × distance, run and throw direction,
                            depth, shotgun, no huddle, red zone — Oct 28)
+                           and QB short yardage (qsy: designed QB runs on 3rd/4th and 1 and at the goal line 1–2, sneaks = up the middle)
+                           and each offense's 4th-down tries (t4) — Oct 31
      p<Y>_nfl-picks        who owns each pick of the next three drafts (trades read from ESPN's transaction feed)
      p<Y>_nfl-teams        each season's defense: yards allowed a game (pass, run), points, and FBS-style ranks
      p<Y>_nfl-depth        this week's depth charts (offense, OL and defense), the injury report, who's on reserve, and rookies;
@@ -277,7 +279,47 @@ export function chAdd(CH, o) { const d = o.desc; if (!d || d.indexOf("challenged
   const re = /([A-Z][A-Za-z.]+(?: [A-Z][A-Za-z.]+)*) challenged the .+? ruling, and the play was (REVERSED|Upheld)/g; let m;
   while ((m = re.exec(d))) { const nm = m[1].split(". ").pop(), t = CH_NAME[nm] || ([o.posteam, o.defteam].find(x => x && CH_NAME[nm] === x)); if (!t) continue;
     const x = CH[t] = CH[t] || [0, 0]; x[0]++; if (m[2] === "REVERSED") x[1]++ } }
-export async function pbp(S, log) {
+/* QB short yardage and 4th-down tries (Oct 31, 2:30 am — Sam on "Allen 18 of 20 on 3rd/4th-and-1 sneaks": "can't we infer from the play by
+   play? at least for like the goal line and fourth down ones or 3rd and 1 or inches. same with other qbs. like jalen hurts."). From nflverse's
+   plays, regular season and playoffs, as the rest of the pack:
+   qsy — designed QB runs: the ball carrier is a QB in the players file; no scrambles (nflverse marks a scramble play_type "run" with
+     qb_scramble 1), kneels, spikes, two-pointers or aborted snaps. s1 = 3rd or 4th down with 1 to go (ydstogo ≤ 1, inches included),
+     g2 = goal to go at the 1 or 2, any down. Each as every such run (s1, g2); m = run_location "middle" (the gamebook's "up the middle" —
+     the only ones the page calls sneaks); u = under center (not shotgun) at the middle or a guard (the gamebook often writes a sneak as
+     "left guard": Allen's 2025–26 3rd/4th-and-1 runs are 13 "up the middle" of 33). → [runs, conversions (first down or touchdown),
+     rushing touchdowns], by player (p) and by offense (t).
+   t4 — each offense's 4th-down tries: a run or pass on 4th down (sacks, scrambles, fakes and fumbled snaps included; punts, field goals,
+     kneels, spikes and plays wiped out by a penalty aren't — nflverse calls those play types punt / field_goal / qb_kneel / qb_spike /
+     no_play), converted = nflverse's fourth_down_converted → [tries, converted] overall (all), by distance (d: 1, 2-3, 4-6, 7+), run / pass,
+     and who[gsis] = [carried, converted, threw (sacks included), converted]. */
+export const QSY_KEYS = ["s1", "s1m", "s1u", "g2", "g2m", "g2u"];
+export const SY_COLS = ["posteam", "two_point_attempt", "qb_kneel", "qb_spike", "aborted_play", "play_type", "down", "ydstogo", "yardline_100", "goal_to_go", "fourth_down_converted",
+  "rusher_player_id", "passer_player_id", "qb_scramble", "run_location", "run_gap", "shotgun", "rush_touchdown", "first_down"];
+export function syAdd(SX, o, POS) {
+  if (!o.posteam || o.two_point_attempt === "1" || o.qb_kneel === "1" || o.qb_spike === "1") return;
+  const pt = o.play_type; if (pt !== "run" && pt !== "pass") return;
+  const dn = num(o.down), tg = num(o.ydstogo), T = o.posteam, id = v => v && v !== "NA" ? v : null;
+  if (dn === 4 && tg != null && tg >= 1) { const F = SX.t4 = SX.t4 || {}, x = F[T] = F[T] || { all: [0, 0], d: {}, run: [0, 0], pass: [0, 0], who: {} }, c = o.fourth_down_converted === "1" ? 1 : 0;
+    const b = tg <= 1 ? "1" : tg <= 3 ? "2-3" : tg <= 6 ? "4-6" : "7+";
+    for (const a of [x.all, x.d[b] = x.d[b] || [0, 0], x[pt]]) { a[0]++; a[1] += c }
+    const w = id(pt === "run" ? o.rusher_player_id : o.passer_player_id); if (w) { const y = x.who[w] = x.who[w] || [0, 0, 0, 0], k = pt === "run" ? 0 : 2; y[k]++; y[k + 1] += c } }
+  if (pt !== "run" || o.qb_scramble === "1" || o.aborted_play === "1") return;
+  const r = id(o.rusher_player_id); if (!r || !POS || String(POS[r] || "").toUpperCase() !== "QB") return;
+  const yl = num(o.yardline_100), s1 = dn >= 3 && tg != null && tg <= 1, g2 = o.goal_to_go === "1" && yl != null && yl <= 2; if (!s1 && !g2) return;
+  const mid = o.run_location === "middle", uc = o.shotgun !== "1" && (mid || o.run_gap === "guard"), td = o.rush_touchdown === "1" ? 1 : 0, cv = o.first_down === "1" || td ? 1 : 0;
+  const Q = SX.qsy = SX.qsy || { p: {}, t: {} };
+  for (const M of [Q.p[r] = Q.p[r] || {}, Q.t[T] = Q.t[T] || {}]) for (const [on, k] of [[s1, "s1"], [g2, "g2"]]) { if (!on) continue;
+    for (const [on2, kk] of [[true, k], [mid, k + "m"], [uc, k + "u"]]) if (on2) { const a = M[kk] = M[kk] || [0, 0, 0]; a[0]++; a[1] += cv; a[2] += td } }
+}
+export function syOut(SX) {
+  return { qsy: { cols: ["runs", "conv", "td"], keys: "s1 3rd/4th and 1 · g2 goal to go at the 1–2, any down · m up the middle (sneaks) · u under center, middle or guard",
+      note: "designed QB runs (no scrambles, kneels, two-pointers, aborted snaps); conv = first down or TD; p[gsis], t[offense]", p: (SX.qsy && SX.qsy.p) || {}, t: (SX.qsy && SX.qsy.t) || {} },
+    t4: { cols: ["tries", "conv"], whoCols: ["carried", "conv", "threw", "conv"], note: "4th-down runs and passes (sacks, scrambles, fakes, fumbled snaps in; punts, FGs, kneels, spikes, no-plays out); conv = nflverse fourth_down_converted; d by yards to go",
+      t: SX.t4 || {} } };
+}
+/* the same two fields alone, for a finished season whose pack is kept (buildNfl adds them onto it — nothing else in it is rebuilt) */
+export async function syOnly(S, log, POS) { const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null; const SX = {}; rows(t, SY_COLS, o => syAdd(SX, o, POS)); return syOut(SX) }
+export async function pbp(S, log, POS = null) {
   const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null;
   const LGD = {}, LYH = {};
   const P = {}, R = {}, U = {}, T = {}, G = {}, WX = {}, DRV = {}, FS = {}, DF = {}, OPQ = {}, INJ = {}, BON = {};
@@ -297,7 +339,7 @@ export async function pbp(S, log) {
   const df = (id, t) => { const d = DF[id] = DF[id] || { t, P: {}, R: { L: [0, 0], M: [0, 0], R: [0, 0] }, Q: [0, 0, 0, 0, 0, 0], sk: 0, qbh: 0, ff: 0, tfl: 0, g: new Set() }; d.t = t; return d };
   const ids = (o, ks) => { const out = []; for (const k of ks) if (o[k] && o[k] !== "NA" && !out.includes(o[k])) out.push(o[k]); return out };
   const hsF = o => num(o.total_home_score) != null && num(o.total_away_score) != null;
-  const WPS = {}, YACS = [], TD = {}, CH = {};
+  const WPS = {}, YACS = [], TD = {}, CH = {}, SX = {};
   const pl = (M, id) => M[id] = M[id] || { Z: {}, all: line(), late: line(), third: [0, 0], rz: line(), two: line() };
   /* field position of a snap: backed up (own 1–10), own 11 to midfield, their 49–21, red zone 20–11, inside the 10; short yardage = 3rd or 4th and 1–2 */
   const fpos = o => { const y = num(o.yardline_100) || 50; return y >= 90 ? "bk" : y >= 50 ? "own" : y >= 21 ? "opp" : y >= 11 ? "rz2" : "i10" }, shortY = o => num(o.down) >= 3 && (num(o.ydstogo) || 99) <= 2, longY = o => num(o.down) >= 3 && (num(o.ydstogo) || 0) >= 7;   /* 3rd/4th and 7+ (Oct 29, Sam: "for receivers it should really be 3rd and long … who the QBs most reliable receivers are") */
@@ -309,7 +351,7 @@ export async function pbp(S, log) {
     "solo_tackle_1_player_id", "solo_tackle_2_player_id", "assist_tackle_1_player_id", "assist_tackle_2_player_id", "tackle_with_assist_1_player_id", "tackle_with_assist_2_player_id",
     "pass_defense_1_player_id", "pass_defense_2_player_id", "interception_player_id", "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id",
     "qb_hit_1_player_id", "qb_hit_2_player_id", "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id", "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id", "desc", "wp", "pass_touchdown", "rush_touchdown", "return_touchdown", "td_player_id", "receiving_yards", "rushing_yards",
-    "lateral_receiver_player_id", "lateral_receiving_yards", "lateral_rusher_player_id", "lateral_rushing_yards", "cpoe", "comp_air_epa", "comp_yac_epa", "qb_scramble", "pass_oe", "qb_dropback", "game_seconds_remaining", "spread_line", "yards_after_catch", "shotgun", "no_huddle", "pass_length"], o => {
+    "lateral_receiver_player_id", "lateral_receiving_yards", "lateral_rusher_player_id", "lateral_rushing_yards", "cpoe", "comp_air_epa", "comp_yac_epa", "qb_scramble", "pass_oe", "qb_dropback", "game_seconds_remaining", "spread_line", "yards_after_catch", "shotgun", "no_huddle", "pass_length", "goal_to_go", "fourth_down_converted"], o => {
     const g = o.game_id; if (!g) return;
     /* Oct 29 (Sam: in-game injuries from our own play-by-play): each game's plays in order, each offense's snaps so far, and the last play every
        player was named on (carry, catch, throw, tackle, sack, pass defended…) — to tell whether a man hurt on a play ever came back */
@@ -356,7 +398,7 @@ export async function pbp(S, log) {
     const hs = num(o.total_home_score), as = num(o.total_away_score), q = num(o.qtr);
     if (hs != null && as != null) { const m = hs - as, x = G[g] = G[g] || [null, null, 0, 0, o.home_team, o.away_team];
       if (q <= 2) x[0] = m; if (q <= 3) x[1] = m; if (m < x[2]) x[2] = m; if (m > x[3]) x[3] = m }
-    tendAdd(TD, o); chAdd(CH, o);
+    tendAdd(TD, o); chAdd(CH, o); if (POS) syAdd(SX, o, POS);
     if (o.two_point_attempt === "1" || o.qb_spike === "1" || o.qb_kneel === "1" || o.aborted_play === "1") return;
     /* pass protection (Sam, Oct 1: the best offensive lines): dropbacks, sacks and QB hits, for the offense (prO, and game by game prG)
        and the defense (prD) — so a line's sack rate can be read against the pass rushes it faced */
@@ -542,7 +584,7 @@ export async function pbp(S, log) {
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
     gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], tendCols: TEND_COLS, pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, gpl: GPL, bon: BON,
-    dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF };
+    dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF, ...(POS ? syOut(SX) : {}) };
 }
 /* rain or snow at kickoff, from the play-by-play's weather line ("Light Rain Temp: 45° F, …"): 0 clear or dry, 1 rain, 2 snow,
    null when there's no weather line. Indoors is always 0. "Chance of rain" is a forecast, not rain. (Sam, Sept 29: temp, wind and
@@ -1094,7 +1136,15 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   SNAP_PUT = (n, o) => put(n, o);
   const NFL_DONE_V = 8;   /* 8 (Oct 30, 3:10 pm, Sam: "same with the nfl all seasons rebuild … that will be needed for the scouting reports anyway"): team touches by situation (tch) for touch share */   /* 7 (Oct 29, 11:39 pm): 3rd/4th and long (tl) for QBs and receivers */   /* 6 (Oct 29, Sam: QB/WR/TE by situation): throws and targets by side in each situation, field position and short yardage lines, target share, catches behind the line */   /* 4 (Oct 28): the pbp pack carries each offense's play-call tendencies (team.tend); 5 (Oct 28, Sam: yes): coach's challenges (team.ch) */ let DONE = { s: {} }; try { DONE = (getPack && (await getPack(P("done")))) || DONE } catch { } DONE.s = DONE.s || {};
   if (!all) for (let i = seasons.length - 1; i >= 0; i--) if (seasons[i] < lastPlayed && DONE.s[seasons[i]] === NFL_DONE_V) { log(`nfl: ${seasons[i]} finished, kept`); seasons.splice(i, 1) }
-  const LOGS = {}, WXP = {}, STN = {}, PBPIG = {};
+  const LOGS = {}, WXP = {}, STN = {}, PBPIG = {}, SYB = [];
+  /* a short read of a pbp pack's QB short-yardage and 4th-down fields, for the run's before → after line */
+  const syN = id => String(PLN[id] || id).replace(/^(\S)\S*\s+/, "$1."), isQB = id => String(POS[id] || "").toUpperCase() === "QB";
+  const syBrief = B => { if (!B || !B.rush) return "no pack"; const ex = Object.entries(B.rush).filter(([id, x]) => isQB(id) && x.sy).sort((a, b) => b[1].sy[0] - a[1].sy[0]).slice(0, 4).map(([id, x]) => `${syN(id)} ${x.syc ? x.syc[0] : 0}/${x.sy[0]}`).join(", ");
+    if (!B.qsy || !B.t4) return `[existing rush.sy, QBs on 3rd/4th and 1–2: ${ex} · qsy/t4 not there]`;
+    const sum = (M, k) => Object.values(M).reduce((a, x) => x[k] ? [a[0] + x[k][0], a[1] + x[k][1], a[2] + x[k][2]] : a, [0, 0, 0]), f = a => `${a[1]}/${a[0]}`;
+    const top = Object.entries(B.qsy.p).filter(([, x]) => x.s1).sort((a, b) => b[1].s1[0] - a[1].s1[0]).slice(0, 5).map(([id, x]) => `${syN(id)} ${f(x.s1)} (mid ${f(x.s1m || [0, 0])}, uc ${f(x.s1u || [0, 0])})`).join(", ");
+    const T4 = Object.values(B.t4.t), lg4 = T4.reduce((a, x) => [a[0] + x.all[0], a[1] + x.all[1]], [0, 0]), t4 = Object.entries(B.t4.t).sort((a, b) => b[1].all[0] - a[1].all[0]).slice(0, 3).map(([t, x]) => `${t} ${f(x.all)}`).join(", ");
+    return `[existing rush.sy, QBs on 3rd/4th and 1–2: ${ex} · qsy: ${Object.keys(B.qsy.p).length} QBs, 3rd/4th and 1 ${f(sum(B.qsy.p, "s1"))} (up the middle ${f(sum(B.qsy.p, "s1m"))}), goal line 1–2 ${f(sum(B.qsy.p, "g2"))} · most: ${top} · t4: ${T4.length} teams, ${f(lg4)} · most: ${t4}]` };
   /* starts for every season (mode nfldraft: just the starts and the draft grades, every season — the first fill, or a rebuild) */
   const KICK = {};
   if (startsOnly) { for (let s = 2001; s <= lastPlayed; s++) { try { const x = await starts(s, G, log); if (x) STN[s] = x; log(`nfl: starts ${s} ${x ? Object.keys(x.n).length : 0}`) } catch (e) { log("nfl: starts " + s + ": " + e.message) } }
@@ -1102,7 +1152,7 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   for (const s of seasons) {
     const L = await logs(s, log); if (L) { const DL = L.def; delete L.def; LOGS[s] = L; await put(P("def-" + s), DL) }
     try { const k = await kicking(s, log); if (k) KICK[s] = k } catch (e) { log("nfl: kicking " + s + ": " + e.message) }
-    const B = await pbp(s, log);
+    const B = await pbp(s, log, POS);
     /* the play-by-play bonuses onto each game log, then the logs are written */
     if (L) { const BN = (B && B.bon) || {}, at = LOG_COLS.indexOf("ptd40"); let nb = 0; for (const id in L.p) { const m = BN[id]; if (!m) continue; for (const row of L.p[id]) { const x = m[row[2]]; if (x) { for (let i = 0; i < BON_N; i++) row[at + i] = x[i]; nb++ } } }
       if (B) delete B.bon; log(`nfl: logs ${s}: bonuses on ${nb} player-games`); await put(P("logs-" + s), L) }
@@ -1129,12 +1179,29 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
               const named = ((GP[g] && GP[g].seen) || {})[id] > pi, bySnaps = onOff && snp != null && snp >= Math.round(med * offP) + 3;
               const prevQ = PBPIG[id] && PBPIG[id][g]; if (prevQ && prevQ[0] != null && q != null && prevQ[0] <= q) continue;
               (PBPIG[id] = PBPIG[id] || {})[g] = [q || null, "", "", 0, 0, named || bySnaps ? 1 : 0, named ? "pbp:named" : bySnaps ? "pbp:snaps" : onOff && snp != null ? "pbp:snaps" : "pbp:named"] } } }
-        await put(P("opp-" + s), { s, cols: OPQ_COLS, p: O, inj, injNote: "inj[gsis][game] = quarter he was hurt (play-by-play 'was injured during the play')" }) } await put(P("pbp-" + s), B) }
+        await put(P("opp-" + s), { s, cols: OPQ_COLS, p: O, inj, injNote: "inj[gsis][game] = quarter he was hurt (play-by-play 'was injured during the play')" }) }
+      /* before → after for QB short yardage and 4th-down tries (Oct 31): this season's last published pack against this run's */
+      if (s === lastPlayed) { let pb = null; try { pb = getPack ? await getPack(P("pbp-" + s)) : null } catch { } SYB.push(`${s} (rebuilt, as every run): ${syBrief(pb)} → ${syBrief(B)} · size ${kb(P("pbp-" + s))}`) }
+      await put(P("pbp-" + s), B); if (s === lastPlayed && SYB.length) SYB[SYB.length - 1] += ` → ${((up[P("pbp-" + s)] || 0) / 1024).toFixed(0)} KB` }
   }
   /* in-game injuries this season (ESPN game pages; finished games kept) */
   if (!startsOnly) try { const eg = {}; for (const [e, g] of Object.entries(ESPN || {})) eg[e] = g; for (const [e, g] of Object.entries(SNAP_ESPN)) if (!eg[e]) eg[e] = g;
     let pv = null; try { pv = getPack ? await getPack(P("ingame-" + lastPlayed)) : null } catch { } const n2g = {}, nk2 = v => String(v || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, ""); for (const [g, nm] of Object.entries(PLN)) (n2g[nk2(nm)] = n2g[nk2(nm)] || []).push(g);
     const IG = await inGame(lastPlayed, pv, eg, log, n2g, PBPIG); if (IG) await put(P("ingame-" + lastPlayed), IG) } catch (e) { log("nfl: in-game injuries: " + e.message) }
+  /* QB short yardage and 4th-down tries (syAdd, Oct 31) for last season too, without rebuilding it or bumping NFL_DONE_V: a finished season this
+     run kept gets qsy and t4 added onto its published pbp pack — every other field exactly as read back, checked before writing, and a pack
+     that already has either field is left alone — once (DONE.sy[season] = SY_V). A season this run rebuilt already carries them. */
+  const SY_V = 1; DONE.sy = DONE.sy || {}; for (const s of seasons) if (up[P("pbp-" + s)]) DONE.sy[s] = SY_V;
+  if (!startsOnly && getPack) for (const s of [lastPlayed - 1]) { if (s < FIRST || seasons.includes(s) || DONE.sy[s] === SY_V) continue;
+    try { const n = P("pbp-" + s), B0 = await getPack(n); if (!B0 || !B0.rush || !B0.pass) { log(`nfl: ${n} not read — QB short yardage not added`); continue }
+      if (B0.qsy || B0.t4) { log(`nfl: ${n} already has qsy/t4 — left as it is`); DONE.sy[s] = SY_V; continue }
+      const keys0 = Object.keys(B0), sig0 = JSON.stringify(B0), bf = syBrief(B0), X = await syOnly(s, log, POS);
+      if (!X || !Object.keys(X.qsy.p).length || !Object.keys(X.t4.t).length) { log(`nfl: ${s} QB short yardage came out empty — not added`); continue }
+      B0.qsy = X.qsy; B0.t4 = X.t4;
+      if (JSON.stringify(Object.fromEntries(keys0.map(k => [k, B0[k]]))) !== sig0) { log(`nfl: ${n}: existing fields would change — not written`); continue }
+      await put(n, B0); if (up[n]) { DONE.sy[s] = SY_V; SYB.push(`${s} (kept season, ${keys0.length} existing fields carried as read, 2 added): ${bf} → ${syBrief(B0)} · size ${kb(n)} → ${(up[n] / 1024).toFixed(0)} KB`) } }
+    catch (e) { log(`nfl: ${s} QB short yardage: ${e.message}`) } }
+  if (SYB.length) log(`::notice title=NFL QB short yardage and 4th downs::${SYB.join(" | ").slice(0, 3800)}`);
   for (const s of seasons) if (s < lastPlayed && LOGS[s]) DONE.s[s] = NFL_DONE_V; await put(P("done"), DONE);
   /* dynasty inputs (Oct 20, job/dyn.mjs): each player's last 18 league weeks and the windows before, for the page's dynasty model */
   if (!startsOnly) try { const DY = await dynFeatures({ G, PLp: PLP, log, logsOf: async s => LOGS[s] || (getPack ? await getPack(P("logs-" + s)).catch(() => null) : null) });

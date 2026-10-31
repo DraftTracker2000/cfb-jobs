@@ -99,6 +99,7 @@ out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(",
   { name: "nflhof", mod: "nflhofprobe" },
   /* Oct 31: Hall of Fame snubs — which Wikipedia pages list the semifinalists / finalists and the career leaders (read only) */
   { name: "nflsnub", mod: "nflsnubprobe" },
+  { name: "snub3", mod: "nflsnubprobe", env: { STEP: "3" } },
   { name: "nbainj", mod: "nbainjprobe" },
   { name: "stylelab", mod: "stylelab" },
   { name: "combtest", mod: "combtest" },

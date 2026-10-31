@@ -12,8 +12,10 @@ const WUA = { "User-Agent": "mycfbbigboard.com data job (football stats site; co
 /* a long list of titles goes as a POST (the API takes queries either way); the last failure is kept for the error message */
 export let wikiFail = "";
 const api = async q => { const body = new URLSearchParams({ format: "json", formatversion: "2", ...q }), post = String(body).length > 1500;
-  for (let a = 0; a < 4; a++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php" + (post ? "" : "?" + body), post ? { method: "POST", headers: { ...WUA, "Content-Type": "application/x-www-form-urlencoded" }, body } : { headers: WUA });
-      if (r.ok) return r.json(); wikiFail = `HTTP ${r.status} ${(await r.text()).slice(0, 200)}` } catch (e) { wikiFail = String(e && e.message || e).slice(0, 200) } await new Promise(z => setTimeout(z, 2000 * (a + 1))) } return null };
+  /* Wikipedia's "too many requests" (429, Oct 31): wait what it asks (Retry-After) or 20 s more each try, up to 6 tries */
+  for (let a = 0; a < 6; a++) { let wait = 2000 * (a + 1); try { const r = await fetch("https://en.wikipedia.org/w/api.php" + (post ? "" : "?" + body), post ? { method: "POST", headers: { ...WUA, "Content-Type": "application/x-www-form-urlencoded" }, body } : { headers: WUA });
+      if (r.ok) return r.json(); wikiFail = `HTTP ${r.status} ${(await r.text()).slice(0, 200)}`; if (r.status === 429) wait = Math.max(20000 * (a + 1), 1000 * (+r.headers.get("retry-after") || 0)) } catch (e) { wikiFail = String(e && e.message || e).slice(0, 200) }
+    if (a < 5) await new Promise(z => setTimeout(z, Math.min(wait, 120000))) } return null };
 
 /* franchise by any name it has played under (the site's nflverse codes; moved teams count as one franchise, as on the History tab) */
 const FR = [[/Arizona Cardinals|St\.? Louis Cardinals \(football\)|Phoenix Cardinals|Chicago Cardinals|St\.? Louis Cardinals/, "ARI"], [/Atlanta Falcons/, "ATL"], [/Baltimore Ravens/, "BAL"], [/Buffalo Bills/, "BUF"],
@@ -168,8 +170,8 @@ const NOT_PERSON = /^(?:List of|Deaths in|History of|\d{4}\b)|\bseason$|football
 const PLAYER_POS = /(back|end|tackle|guard|center|quarterback|linebacker|receiver|safety|kicker|punter|lineman|tailback|fullback|halfback|wingback|returner|cornerback)/i;
 /* the snubs: searches → candidate pages (not in the Hall, not on the wait list) → their infoboxes → the filters → his page's ballot years */
 export async function findSnubs({ have, api, log = () => { }, nowY = new Date().getUTCFullYear(), pause = 400 }) {
-  let reads = 0; const cand = new Set(), sq = {};
-  for (const q of SNUB_SEARCH) { const j = await api({ action: "query", list: "search", srsearch: q, srlimit: "500", srnamespace: "0", srprop: "" }); reads++;
+  let reads = 0; const cand = new Set(), sq = {}, rest = () => new Promise(z => setTimeout(z, pause * 5));   /* searches cost Wikipedia more: ~2 s between them */
+  for (const q of SNUB_SEARCH) { await rest(); const j = await api({ action: "query", list: "search", srsearch: q, srlimit: "500", srnamespace: "0", srprop: "" }); reads++;
     if (!j || !j.query) throw new Error(`nflhof snubs: the search "${q}" didn't answer (${wikiFail}) — not writing`); sq[q] = j.query.searchinfo && j.query.searchinfo.totalhits; for (const x of j.query.search || []) cand.add(x.title) }
   const C = [...cand].filter(t => !have.has(t) && !NOT_PERSON.test(t)), X = {}, notPlayer = [];
   for (let k = 0; k < C.length; k += 50) { const j = await api({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", rvsection: "0", redirects: "1", titles: C.slice(k, k + 50).join("|") }); reads++;
@@ -178,7 +180,7 @@ export async function findSnubs({ have, api, log = () => { }, nowY = new Date().
       const x = parseHof(w); if (!x.t.length || !PLAYER_POS.test(x.pos)) { notPlayer.push(pg.title); continue } X[pg.title] = x }
     await new Promise(z => setTimeout(z, pause)) }
   /* the career-leader lists, all in one read */
-  const lj = await api({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", redirects: "1", titles: LEADERS.map(x => x[2]).join("|") }); reads++;
+  await rest(); const lj = await api({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", redirects: "1", titles: LEADERS.map(x => x[2]).join("|") }); reads++;
   const LW = Object.fromEntries((((lj && lj.query && lj.query.pages) || [])).map(p => [p.title, p.revisions && p.revisions[0] && p.revisions[0].slots.main.content]));
   const TOP = {}; for (const [key, , page, re] of LEADERS) { const w = LW[page]; if (!w) throw new Error(`nflhof snubs: ${page} didn't answer (${wikiFail}) — not writing`);
     const R = leaderRank(w, re); if (R.L.filter(x => x.r <= 25).length < 25) throw new Error(`nflhof snubs: ${page} gave only ${R.L.length} ranked players — its table changed; not writing`); TOP[key] = R }

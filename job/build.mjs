@@ -190,7 +190,9 @@ async function main() {
     const putPack = async (n, gz) => api("PUT", `/api/pack/${n}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
     const putIndex = async ix => api("PUT", "/api/pack-index", { body: ix });
     let extra = []; try { extra = JSON.parse((await import("node:fs")).readFileSync(new URL("./nflhof-extra.json", import.meta.url), "utf8")) } catch { }
-    let d; try { d = await buildNflHof({ putPack, putIndex, extra, dry: process.env.PREFETCH_DRY === "1", log: x => console.log(x) }) } catch (e) { console.log(`::warning title=nfl hof failed::${String(e && e.stack || e).replace(/[\r\n]+/g, " ").slice(0, 3000)}`); throw e }
+    /* job/nflhof-snub-years.json: each class's modern-era finalists from a news report (Oct 31, the owner 5:13 pm); required — without it the snubs would shrink */
+    const snubYears = JSON.parse((await import("node:fs")).readFileSync(new URL("./nflhof-snub-years.json", import.meta.url), "utf8"));
+    let d; try { d = await buildNflHof({ putPack, putIndex, extra, snubYears, dry: process.env.PREFETCH_DRY === "1", log: x => console.log(x) }) } catch (e) { console.log(`::warning title=nfl hof failed::${String(e && e.stack || e).replace(/[\r\n]+/g, " ").slice(0, 3000)}`); throw e }
     await report(true, `nfl hof · ${d.nh} Hall of Famers + ${d.n - d.nh} not yet eligible + ${d.ns} snubs · ${d.reads} Wikipedia reads${process.env.PREFETCH_DRY === "1" ? " · dry run" : ""}`); return }
   /* MODE=colgap: college missed-game check from box scores (job/colgap.mjs, Oct 24) */
   if (MODE === "colgap") { const { buildColGap, uploadColGap } = await import("./colgap.mjs");

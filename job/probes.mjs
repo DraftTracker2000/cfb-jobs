@@ -279,6 +279,8 @@ out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(",
   { name: "nfladjtest", mod: "nfladjtest" },
   { name: "cbblineups", mod: "cbblineups" },
   { name: "relprobe", mod: "relprobe" },
+  /* Oct 31 (Sam, 1:55 am): the NFL climate study (job/nflclimate.mjs) — a study, writes only its own new pack p2026_nfl-climate-study */
+  { name: "nflclimate-disc", mod: "nflclimate", env: { STAGE: "disc" } },
   { name: "cbbtest-srs", mod: "cbbtest", env: { PRIOR: "srs" } },
   { name: "cbbtest-hybrid", mod: "cbbtest", env: { PRIOR: "hybrid" } },
   { name: "cbbtest-base", mod: "cbbtest", env: { PRIOR: "cbbd" } },

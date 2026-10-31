@@ -331,11 +331,15 @@ export async function syOnly(S, log, POS) { const t = await get(`pbp/play_by_pla
      out; a drive with 0 is a kneel-out or a kickoff with no snap after it).
    duo — passer → receiver pairs: [targets, catches, yards, TDs, INTs] per pair, regular season (reg) and playoffs (post) apart. A target is a
      pass play to a named receiver (sacks, two-pointers and plays wiped out by a penalty out); yards = nflverse's receiving_yards on a catch
-     (yards_gained when that's empty); a TD is his (a lateral after the catch that scores isn't); an INT is a pick on a throw to him. */
+     (yards_gained when that's empty); a TD is his (a lateral after the catch that scores isn't); an INT is a pick on a throw to him.
+     Oct 31, 4:14 pm (Sam: "2. "With each QB" on profiles: share, depth and yards-after-catch splits. - yes"): two more, appended so the first
+     five stay where they were — ay = nflverse's air_yards summed over his targets (depth = ay ÷ targets), yac = yards_after_catch summed over
+     his catches (YAC = yac ÷ catches). A target or catch with neither on file adds 0 (2025–26: 0 targets without air yards, 1 catch without YAC). */
 export const DRV_RES = { "Touchdown": "TD", "Field goal": "FG", "Missed field goal": "MFG", "Punt": "P", "Turnover": "TO", "Turnover on downs": "DN", "End of half": "EH", "Opp touchdown": "OTD", "Safety": "SF" };
 export const GM_COLS = ["game_id", "season_type", "posteam", "defteam", "home_team", "away_team", "qtr", "time", "play_type", "two_point_attempt", "qb_kneel", "qb_spike", "aborted_play",
   "yardline_100", "fixed_drive", "fixed_drive_result", "drive_quarter_start", "total_home_score", "total_away_score", "pass_touchdown", "rush_touchdown", "passer_player_id", "receiver_player_id",
-  "sack", "complete_pass", "interception", "receiving_yards", "yards_gained", "td_player_id", "lateral_receiver_player_id"];
+  "sack", "complete_pass", "interception", "receiving_yards", "yards_gained", "td_player_id", "lateral_receiver_player_id", "air_yards", "yards_after_catch"];
+export const DUO_COLS = ["tgt", "rec", "yds", "td", "int", "ay", "yac"];
 export function gmAdd(GX, o) {
   const g = o.game_id; if (!g) return; const id = v => v && v !== "NA" ? v : null, pt = o.play_type, F = GX.fsc = GX.fsc || {};
   if (!F[g]) { const hs = num(o.total_home_score), as = num(o.total_away_score); if (hs != null && as != null && hs + as > 0) F[g] = [hs > 0 ? o.home_team : o.away_team, num(o.qtr), o.time || null, hs + as] }
@@ -348,18 +352,73 @@ export function gmAdd(GX, o) {
       if ((num(o.yardline_100) ?? 99) <= 20 && !d.rz) d.rz = 1; if (otd && d.rz) d.rz = 2 } }
   const ps = id(o.passer_player_id), rc = id(o.receiver_player_id);
   if (pt === "pass" && !two && o.sack !== "1" && ps && rc) { const side = o.season_type === "POST" ? "post" : "reg", U = (GX.duo = GX.duo || { reg: {}, post: {} })[side];
-    const x = (U[ps] = U[ps] || {})[rc] = U[ps][rc] || [0, 0, 0, 0, 0], c = o.complete_pass === "1", lr = id(o.lateral_receiver_player_id), td = id(o.td_player_id);
-    x[0]++; if (c) { x[1]++; x[2] += num(o.receiving_yards) ?? num(o.yards_gained) ?? 0; if (o.pass_touchdown === "1" && (td ? td === rc : !lr)) x[3]++ } if (o.interception === "1") x[4]++ }
+    const x = (U[ps] = U[ps] || {})[rc] = U[ps][rc] || [0, 0, 0, 0, 0, 0, 0], c = o.complete_pass === "1", lr = id(o.lateral_receiver_player_id), td = id(o.td_player_id);
+    x[0]++; x[5] += num(o.air_yards) ?? 0;
+    if (c) { x[1]++; x[2] += num(o.receiving_yards) ?? num(o.yards_gained) ?? 0; if (o.pass_touchdown === "1" && (td ? td === rc : !lr)) x[3]++; x[6] += num(o.yards_after_catch) ?? 0 } if (o.interception === "1") x[4]++ }
 }
 export function gmOut(GX) {
   const drv = {}; for (const g in GX.drv || {}) drv[g] = Object.entries(GX.drv[g]).sort((a, b) => +a[0] - +b[0]).map(([, d]) => [d.t, d.q, d.r, d.rz, d.n]);
   return { fsc: { cols: ["team", "qtr", "clock", "pts"], note: "the first score of each game (pts 6 a touchdown of any kind, 3 a field goal, 2 a safety); g[game]", g: GX.fsc || {} },
     drv: { cols: ["team", "qtr", "result", "rz", "snaps"], res: Object.fromEntries(Object.entries(DRV_RES).map(([a, b]) => [b, a])),
       note: "each game's drives in order (nflverse fixed_drive); qtr the drive started in; rz 0 never inside the 20, 1 a red-zone trip, 2 a trip ending in an offensive TD (the team.sit.rz rule); snaps = runs and passes; g[game]", g: drv },
-    duo: { cols: ["tgt", "rec", "yds", "td", "int"], note: "passer → receiver: reg|post[passer gsis][receiver gsis]; sacks, two-pointers and no-plays out; yds = receiving_yards on catches; td = scored by him", reg: (GX.duo && GX.duo.reg) || {}, post: (GX.duo && GX.duo.post) || {} } };
+    duo: { cols: DUO_COLS, note: "passer → receiver: reg|post[passer gsis][receiver gsis]; sacks, two-pointers and no-plays out; yds = receiving_yards on catches; td = scored by him; ay = air yards summed over his targets, yac = yards after the catch summed over his catches", reg: (GX.duo && GX.duo.reg) || {}, post: (GX.duo && GX.duo.post) || {} } };
 }
 /* the same three fields alone, for a finished season whose pack is kept (as syOnly) */
 export async function gmOnly(S, log) { const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null; const GX = {}; rows(t, GM_COLS, o => gmAdd(GX, o)); return gmOut(GX) }
+/* a pack's duo built before the two added columns (5 a pair) against a new one: every pair the same and its first five numbers equal — the
+   check before the new duo replaces the old one on a kept season (nothing in it changes but the two columns added on) */
+export function duoSame5(A, B) { if (!A || !B) return false; for (const side of ["reg", "post"]) { const a = A[side] || {}, b = B[side] || {};
+  if (Object.keys(a).length !== Object.keys(b).length) return false;
+  for (const q in a) { const x = a[q], y = b[q]; if (!y || Object.keys(x).length !== Object.keys(y).length) return false; for (const r in x) { const u = x[r], v = y[r]; if (!v) return false; for (let i = 0; i < 5; i++) if (u[i] !== v[i]) return false } } }
+  return true }
+/* Who gets the ball in each situation (Oct 31, 4:11–4:14 pm — Sam: "it's more so goedert gets targeted most in 3rd and this long or 1st and 10
+   goes to this player most often, this player second" · "1. Situation tags worded as share … - yes"): each offense's targets by receiver in
+   each situation, regular season → tsit.t[team][situation][receiver gsis] = [targets, catches, yards]. A target is the duo rule (a pass play
+   to a named receiver with a named passer; sacks, two-pointers and plays wiped out by a penalty out); yards = receiving_yards on a catch
+   (yards_gained when that's empty). The team's targets in a situation = the sum over its receivers; "otherwise" = all minus the situation.
+   Situations (TS_SITS): all; 1st & 10 (not goal to go); 2nd & 1–3 / 4–7 / 8+; 3rd or 4th & 1–3 / 4–7 / 8+; red zone (snapped from the 20 or
+   closer); goal to go; two-minute (the last 2:00 of either half, overtime out); trailing late (4th quarter or overtime, his team behind). */
+export const TS_SITS = ["all", "d1", "d2s", "d2m", "d2l", "d3s", "d3m", "d3l", "rz", "g2g", "two", "trl"];
+export const TS_COLS = ["season_type", "posteam", "play_type", "two_point_attempt", "sack", "passer_player_id", "receiver_player_id", "complete_pass", "receiving_yards", "yards_gained",
+  "down", "ydstogo", "yardline_100", "goal_to_go", "half_seconds_remaining", "qtr", "score_differential"];
+export function tsKeys(o) { const dn = num(o.down), tg = num(o.ydstogo), g2g = o.goal_to_go === "1", q = num(o.qtr), hs = num(o.half_seconds_remaining), sd = num(o.score_differential), yl = num(o.yardline_100), K = ["all"];
+  const b = tg == null ? null : tg <= 3 ? "s" : tg <= 7 ? "m" : "l";
+  if (dn === 1 && tg === 10 && !g2g) K.push("d1"); if (dn === 2 && b) K.push("d2" + b); if ((dn === 3 || dn === 4) && b) K.push("d3" + b);
+  if (yl != null && yl <= 20) K.push("rz"); if (g2g) K.push("g2g"); if ((q === 2 || q === 4) && hs != null && hs <= 120) K.push("two"); if (q >= 4 && sd != null && sd < 0) K.push("trl");
+  return K }
+export function tsAdd(TS, o) {
+  const id = v => v && v !== "NA" ? v : null, rc = id(o.receiver_player_id);
+  if (o.season_type !== "REG" || o.play_type !== "pass" || o.two_point_attempt === "1" || o.sack === "1" || !id(o.passer_player_id) || !rc || !o.posteam) return;
+  const T = TS[o.posteam] = TS[o.posteam] || {}, c = o.complete_pass === "1", y = c ? num(o.receiving_yards) ?? num(o.yards_gained) ?? 0 : 0;
+  for (const k of tsKeys(o)) { const x = (T[k] = T[k] || {})[rc] = T[k][rc] || [0, 0, 0]; x[0]++; if (c) { x[1]++; x[2] += y } } }
+export function tsOut(TS) { return { tsit: { cols: ["tgt", "rec", "yds"], sits: TS_SITS, note: "t[team][situation][receiver gsis] = [targets, catches, yards], regular season; d1 1st & 10 (not goal to go); d2s/m/l 2nd & 1–3 / 4–7 / 8+; d3s/m/l 3rd or 4th & 1–3 / 4–7 / 8+; rz from the 20 or closer; g2g goal to go; two the last 2:00 of either half (not OT); trl 4th quarter or OT, behind. Team targets = sum over receivers; otherwise = all − the situation", t: TS } } }
+export async function tsOnly(S, log) { const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null; const TS = {}; rows(t, TS_COLS, o => tsAdd(TS, o)); return tsOut(TS) }
+/* "When he's out" (Oct 31, 4:12 pm — Sam: "3. "When he's out" on team pages … - yes or even vice versa WR out more TE usage, could proabably
+   start to tip 12 personnel"): each team's regular-season games in order, its targets in each, and for every player it targeted, his targets
+   in each of those games and his weekly-roster status that week — so the page can tell who took a missing regular's targets and how each
+   position group's share moved. Statuses are nflverse's weekly rosters (game-day inactives are listed from 2019 on): A active, I inactive
+   (INA), R reserve (RES: injured reserve, PUP, suspended and the like), O on the team's list as something else (practice squad, cut,
+   retired, exempt, traded), "-" not on the team's list that week. Targets are the duo rule. This season and last only (buildNfl).
+   → { s, t: { team: { w: [week of each game], n: [team targets each game], p: { gsis: [pos, statuses, [targets each game]] } } } } */
+const WO_ST = { ACT: "A", INA: "I", RES: "R" };
+export async function woBuild(S, log) {
+  const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null; const RW = await get(`weekly_rosters/roster_weekly_${S}.csv`, log); if (!RW) return null;
+  const id = v => v && v !== "NA" ? v : null, G = {}, P = {};
+  rows(t, ["season_type", "week", "posteam", "play_type", "two_point_attempt", "sack", "passer_player_id", "receiver_player_id"], o => {
+    if (o.season_type !== "REG" || !o.posteam) return; const w = num(o.week); if (w == null) return; const T = G[o.posteam] = G[o.posteam] || {}; T[w] = T[w] || 0;
+    const rc = id(o.receiver_player_id); if (o.play_type !== "pass" || o.two_point_attempt === "1" || o.sack === "1" || !id(o.passer_player_id) || !rc) return;
+    T[w]++; const m = (P[o.posteam] = P[o.posteam] || {})[rc] = P[o.posteam][rc] || {}; m[w] = (m[w] || 0) + 1 });
+  const ST = {}, POSN = {};
+  rows(RW, ["gsis_id", "week", "game_type", "team", "status", "position"], o => { if (!o.gsis_id || (o.game_type || "REG") !== "REG" || !o.team) return; const k = o.team + "|" + o.gsis_id, w = +o.week;
+    const S0 = ST[k] = ST[k] || {}, c = WO_ST[o.status] || "O"; if (!S0[w] || c === "A") S0[w] = c;   /* two rows the same week: active wins */
+    const pc = (POSN[k] = POSN[k] || {}), ps = String(o.position || "").toUpperCase(); if (ps) pc[ps] = (pc[ps] || 0) + 1 });
+  const out = {};
+  for (const tm in G) { const W = Object.keys(G[tm]).map(Number).sort((a, b) => a - b), p = {};
+    for (const rc in P[tm] || {}) { const k = tm + "|" + rc, pc = POSN[k] || {}, pos0 = Object.entries(pc).sort((a, b) => b[1] - a[1])[0], pos = pos0 ? (pos0[0] === "FB" || pos0[0] === "HB" ? "RB" : pos0[0]) : null;
+      p[rc] = [pos, W.map(w => (ST[k] && ST[k][w]) || "-").join(""), W.map(w => P[tm][rc][w] || 0)] }
+    out[tm] = { w: W, n: W.map(w => G[tm][w]), p } }
+  return { s: S, note: "t[team] = { w: week of each regular-season game, n: the team's targets in each, p[gsis] = [position (weekly roster, most-listed), status each game (A active, I inactive, R reserve, O on the list as something else, - not on the list), targets each game] }; targets = passes to a named receiver with a named passer, sacks and two-pointers out", t: out };
+}
 export async function pbp(S, log, POS = null) {
   const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null;
   const LGD = {}, LYH = {};
@@ -380,7 +439,7 @@ export async function pbp(S, log, POS = null) {
   const df = (id, t) => { const d = DF[id] = DF[id] || { t, P: {}, R: { L: [0, 0], M: [0, 0], R: [0, 0] }, Q: [0, 0, 0, 0, 0, 0], sk: 0, qbh: 0, ff: 0, tfl: 0, g: new Set() }; d.t = t; return d };
   const ids = (o, ks) => { const out = []; for (const k of ks) if (o[k] && o[k] !== "NA" && !out.includes(o[k])) out.push(o[k]); return out };
   const hsF = o => num(o.total_home_score) != null && num(o.total_away_score) != null;
-  const WPS = {}, YACS = [], TD = {}, CH = {}, SX = {}, GX = {};
+  const WPS = {}, YACS = [], TD = {}, CH = {}, SX = {}, GX = {}, TS = {};
   const pl = (M, id) => M[id] = M[id] || { Z: {}, all: line(), late: line(), third: [0, 0], rz: line(), two: line() };
   /* field position of a snap: backed up (own 1–10), own 11 to midfield, their 49–21, red zone 20–11, inside the 10; short yardage = 3rd or 4th and 1–2 */
   const fpos = o => { const y = num(o.yardline_100) || 50; return y >= 90 ? "bk" : y >= 50 ? "own" : y >= 21 ? "opp" : y >= 11 ? "rz2" : "i10" }, shortY = o => num(o.down) >= 3 && (num(o.ydstogo) || 99) <= 2, longY = o => num(o.down) >= 3 && (num(o.ydstogo) || 0) >= 7;   /* 3rd/4th and 7+ (Oct 29, Sam: "for receivers it should really be 3rd and long … who the QBs most reliable receivers are") */
@@ -439,7 +498,7 @@ export async function pbp(S, log, POS = null) {
     const hs = num(o.total_home_score), as = num(o.total_away_score), q = num(o.qtr);
     if (hs != null && as != null) { const m = hs - as, x = G[g] = G[g] || [null, null, 0, 0, o.home_team, o.away_team];
       if (q <= 2) x[0] = m; if (q <= 3) x[1] = m; if (m < x[2]) x[2] = m; if (m > x[3]) x[3] = m }
-    tendAdd(TD, o); chAdd(CH, o); if (POS) syAdd(SX, o, POS); gmAdd(GX, o);
+    tendAdd(TD, o); chAdd(CH, o); if (POS) syAdd(SX, o, POS); gmAdd(GX, o); tsAdd(TS, o);
     if (o.two_point_attempt === "1" || o.qb_spike === "1" || o.qb_kneel === "1" || o.aborted_play === "1") return;
     /* pass protection (Sam, Oct 1: the best offensive lines): dropbacks, sacks and QB hits, for the offense (prO, and game by game prG)
        and the defense (prD) — so a line's sack rate can be read against the pass rushes it faced */
@@ -625,7 +684,7 @@ export async function pbp(S, log, POS = null) {
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
     gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], tendCols: TEND_COLS, pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, gpl: GPL, bon: BON,
-    dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF, ...(POS ? syOut(SX) : {}), ...gmOut(GX) };
+    dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF, ...(POS ? syOut(SX) : {}), ...gmOut(GX), ...tsOut(TS) };
 }
 /* rain or snow at kickoff, from the play-by-play's weather line ("Light Rain Temp: 45° F, …"): 0 clear or dry, 1 rain, 2 snow,
    null when there's no weather line. Indoors is always 0. "Chance of rain" is a forecast, not rain. (Sam, Sept 29: temp, wind and
@@ -1210,7 +1269,17 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
     if (!B.fsc || !B.drv || !B.duo) return `[team.sit red-zone trips ${sit[1]}/${sit[0]} · fsc/drv/duo not there]`;
     const D = Object.values(B.drv.g).flat(), rz = [D.filter(d => d[3]).length, D.filter(d => d[3] === 2).length], ri = B.drv.cols.indexOf("result"), res = {}; for (const d of D) res[d[ri]] = (res[d[ri]] || 0) + 1;
     const pr = M => Object.entries(M).flatMap(([q, R]) => Object.entries(R).map(([r, x]) => [q, r, x])), reg = pr(B.duo.reg), top = reg.sort((a, b) => b[2][0] - a[2][0]).slice(0, 3).map(([q, r, x]) => `${syN(q)}→${syN(r)} ${x.join("/")}`).join(", ");
-    return `[fsc ${Object.keys(B.fsc.g).length} games · drv ${Object.keys(B.drv.g).length} games, ${D.length} drives (${Object.entries(res).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => k + " " + v).join(", ")}), red-zone trips ${rz[1]}/${rz[0]} (team.sit ${sit[1]}/${sit[0]}) · duo ${reg.length} pairs, ${pr(B.duo.post).length} in the playoffs · most targets: ${top}]` };
+    const ay = (B.duo.cols || []).indexOf("ay"), yc = (B.duo.cols || []).indexOf("yac"), dep = ay < 0 ? "no air yards / YAC" : (() => { const T = reg.reduce((a, [, , x]) => [a[0] + x[0], a[1] + x[1], a[2] + x[ay], a[3] + x[yc]], [0, 0, 0, 0]); return `depth ${(T[2] / T[0]).toFixed(2)} air yds a target, YAC ${(T[3] / T[1]).toFixed(2)} a catch` })();
+    return `[fsc ${Object.keys(B.fsc.g).length} games · drv ${Object.keys(B.drv.g).length} games, ${D.length} drives (${Object.entries(res).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => k + " " + v).join(", ")}), red-zone trips ${rz[1]}/${rz[0]} (team.sit ${sit[1]}/${sit[0]}) · duo ${reg.length} pairs, ${pr(B.duo.post).length} in the playoffs, ${dep} · most targets: ${top}]` };
+  /* the same for targets by situation (tsit) and the when-he's-out pack (Oct 31, 4:14 pm): the targets in "all" against the pairs' regular-season
+     targets (the same rule — they should be equal), each situation's league count, and who leads the league's 3rd/4th & 4–7 targets */
+  const TSB = [], tsBrief = B => { if (!B || !B.rush) return "no pack"; if (!B.tsit) return "[tsit not there]"; const T = B.tsit.t, tot = k => Object.values(T).reduce((a, x) => a + Object.values(x[k] || {}).reduce((b, r) => b + r[0], 0), 0);
+      const duo = B.duo ? Object.values(B.duo.reg).reduce((a, R) => a + Object.values(R).reduce((b, x) => b + x[0], 0), 0) : null;
+      const lead = Object.entries(T).flatMap(([t, x]) => Object.entries(x.d3m || {}).map(([id, r]) => [t, id, r[0]])).sort((a, b) => b[2] - a[2]).slice(0, 3).map(([t, id, n]) => `${syN(id)} (${t}) ${n}`).join(", ");
+      return `[tsit ${Object.keys(T).length} teams · targets ${tot("all")} (pairs, regular season: ${duo ?? "—"}) · ${TS_SITS.slice(1).map(k => k + " " + tot(k)).join(", ")} · 3rd/4th & 4–7 most: ${lead}]` },
+    woBrief = X => { if (!X || !X.t) return "[none]"; const T = Object.values(X.t), g = T.reduce((a, x) => a + x.w.length, 0), n = T.reduce((a, x) => a + x.n.reduce((b, v) => b + v, 0), 0), p = T.reduce((a, x) => a + Object.keys(x.p).length, 0);
+      let out = 0; for (const x of T) for (const id in x.p) if (/^(WR|TE|RB)$/.test(x.p[id][0] || "")) for (const c of x.p[id][1]) if (c === "I" || c === "R") out++;
+      return `[${T.length} teams, ${g} team-games, ${n} targets, ${p} targeted players, ${out} WR/TE/RB games inactive or on reserve]` };
   /* starts for every season (mode nfldraft: just the starts and the draft grades, every season — the first fill, or a rebuild) */
   const KICK = {};
   if (startsOnly) { for (let s = 2001; s <= lastPlayed; s++) { try { const x = await starts(s, G, log); if (x) STN[s] = x; log(`nfl: starts ${s} ${x ? Object.keys(x.n).length : 0}`) } catch (e) { log("nfl: starts " + s + ": " + e.message) } }
@@ -1247,8 +1316,8 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
               (PBPIG[id] = PBPIG[id] || {})[g] = [q || null, "", "", 0, 0, named || bySnaps ? 1 : 0, named ? "pbp:named" : bySnaps ? "pbp:snaps" : onOff && snp != null ? "pbp:snaps" : "pbp:named"] } } }
         await put(P("opp-" + s), { s, cols: OPQ_COLS, p: O, inj, injNote: "inj[gsis][game] = quarter he was hurt (play-by-play 'was injured during the play')" }) }
       /* before → after for QB short yardage and 4th-down tries (Oct 31): this season's last published pack against this run's */
-      if (s === lastPlayed) { let pb = null; try { pb = getPack ? await getPack(P("pbp-" + s)) : null } catch { } SYB.push(`${s} (rebuilt, as every run): ${syBrief(pb)} → ${syBrief(B)} · size ${kb(P("pbp-" + s))}`); GMB.push(`${s} (rebuilt, as every run): ${gmBrief(pb)} → ${gmBrief(B)} · size ${kb(P("pbp-" + s))}`) }
-      await put(P("pbp-" + s), B); if (s === lastPlayed && SYB.length) { const af = ` → ${((up[P("pbp-" + s)] || 0) / 1024).toFixed(0)} KB`; SYB[SYB.length - 1] += af; if (GMB.length) GMB[GMB.length - 1] += af } }
+      if (s === lastPlayed) { let pb = null; try { pb = getPack ? await getPack(P("pbp-" + s)) : null } catch { } SYB.push(`${s} (rebuilt, as every run): ${syBrief(pb)} → ${syBrief(B)} · size ${kb(P("pbp-" + s))}`); GMB.push(`${s} (rebuilt, as every run): ${gmBrief(pb)} → ${gmBrief(B)} · size ${kb(P("pbp-" + s))}`); TSB.push(`${s} (rebuilt, as every run): ${tsBrief(pb)} → ${tsBrief(B)}`) }
+      await put(P("pbp-" + s), B); if (s === lastPlayed && SYB.length) { const af = ` → ${((up[P("pbp-" + s)] || 0) / 1024).toFixed(0)} KB`; SYB[SYB.length - 1] += af; if (GMB.length) GMB[GMB.length - 1] += af; if (TSB.length) TSB[TSB.length - 1] += " · pbp pack" + af } }
   }
   /* in-game injuries this season (ESPN game pages; finished games kept) */
   if (!startsOnly) try { const eg = {}; for (const [e, g] of Object.entries(ESPN || {})) eg[e] = g; for (const [e, g] of Object.entries(SNAP_ESPN)) if (!eg[e]) eg[e] = g;
@@ -1258,25 +1327,48 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
      run kept gets qsy and t4 added onto its published pbp pack — every other field exactly as read back, checked before writing, and a pack
      that already has either field is left alone — once (DONE.sy[season] = SY_V). A season this run rebuilt already carries them.
      Oct 31, 2:08 pm (Sam: "yes"): first scores, drives and QB → receiver pairs (gmAdd: fsc, drv, duo) the same way, once (DONE.gm[season] =
-     GM_V), in the same read and write as qsy/t4 when both are due — one pack read, every field already in it checked, one write. */
-  const SY_V = 1, GM_V = 1; DONE.sy = DONE.sy || {}; DONE.gm = DONE.gm || {}; for (const s of seasons) if (up[P("pbp-" + s)]) { DONE.sy[s] = SY_V; DONE.gm[s] = GM_V }
-  if (!startsOnly && getPack) for (const s of [lastPlayed - 1]) { const wantSy = DONE.sy[s] !== SY_V, wantGm = DONE.gm[s] !== GM_V; if (s < FIRST || seasons.includes(s) || (!wantSy && !wantGm)) continue;
-    try { const n = P("pbp-" + s), B0 = await getPack(n); if (!B0 || !B0.rush || !B0.pass) { log(`nfl: ${n} not read — ${wantSy ? "QB short yardage" : ""}${wantSy && wantGm ? " and " : ""}${wantGm ? "drives / first scores / pairs" : ""} not added`); continue }
-      const keys0 = Object.keys(B0), sig0 = JSON.stringify(B0), bf = syBrief(B0), gf = gmBrief(B0), add = [];
+     GM_V), in the same read and write as qsy/t4 when both are due — one pack read, every field already in it checked, one write.
+     Oct 31, 4:14 pm (Sam: "yes" to situation tags worded as share, and to depth and yards after the catch on "With each QB"): GM_V 2 = the pairs
+     carry air yards and YAC (ay, yac). A kept season whose pack has the 5-column pairs gets the 7-column ones in their place only when every
+     pair and its first five numbers come out the same (duoSame5) — the two columns are the only change; and targets by situation (tsAdd:
+     tsit) are added the same way, once (DONE.ts[season] = TS_V). */
+  const SY_V = 1, GM_V = 2, TS_V = 1; DONE.sy = DONE.sy || {}; DONE.gm = DONE.gm || {}; DONE.ts = DONE.ts || {}; for (const s of seasons) if (up[P("pbp-" + s)]) { DONE.sy[s] = SY_V; DONE.gm[s] = GM_V; DONE.ts[s] = TS_V }
+  if (!startsOnly && getPack) for (const s of [lastPlayed - 1]) { const wantSy = DONE.sy[s] !== SY_V, wantGm = DONE.gm[s] !== GM_V, wantTs = DONE.ts[s] !== TS_V; if (s < FIRST || seasons.includes(s) || (!wantSy && !wantGm && !wantTs)) continue;
+    try { const n = P("pbp-" + s), B0 = await getPack(n); if (!B0 || !B0.rush || !B0.pass) { log(`nfl: ${n} not read — ${[wantSy && "QB short yardage", wantGm && "drives / first scores / pairs", wantTs && "targets by situation"].filter(Boolean).join(", ")} not added`); continue }
+      const keys0 = Object.keys(B0), sig0 = Object.fromEntries(keys0.map(k => [k, JSON.stringify(B0[k])])), bf = syBrief(B0), gf = gmBrief(B0), tf = tsBrief(B0), add = [], swap = [];
       if (wantSy) { if (B0.qsy || B0.t4) { log(`nfl: ${n} already has qsy/t4 — left as it is`); DONE.sy[s] = SY_V }
         else { const X = await syOnly(s, log, POS);
           if (!X || !Object.keys(X.qsy.p).length || !Object.keys(X.t4.t).length) log(`nfl: ${s} QB short yardage came out empty — not added`); else { B0.qsy = X.qsy; B0.t4 = X.t4; add.push("sy") } } }
-      if (wantGm) { if (B0.fsc || B0.drv || B0.duo) { log(`nfl: ${n} already has fsc/drv/duo — left as it is`); DONE.gm[s] = GM_V }
+      if (wantGm) { const has7 = B0.duo && (B0.duo.cols || []).includes("ay");
+        if (has7) { log(`nfl: ${n} already has the pairs with air yards and YAC — left as it is`); DONE.gm[s] = GM_V }
+        else if (B0.fsc && B0.drv && B0.duo) { const X = await gmOnly(s, log);
+          if (!X || !duoSame5(B0.duo, X.duo)) log(`nfl: ${s} pairs came out different from the pack's (targets, catches, yards, TD, INT) — air yards and YAC not added`);
+          else { B0.duo = X.duo; swap.push("duo"); add.push("gm2") } }
+        else if (B0.fsc || B0.drv || B0.duo) { log(`nfl: ${n} has only part of fsc/drv/duo — left as it is`); DONE.gm[s] = GM_V }
         else { const X = await gmOnly(s, log);
           if (!X || Object.keys(X.fsc.g).length < 200 || Object.keys(X.drv.g).length < 200 || !Object.keys(X.duo.reg).length) log(`nfl: ${s} drives / first scores / pairs came out short — not added`); else { B0.fsc = X.fsc; B0.drv = X.drv; B0.duo = X.duo; add.push("gm") } } }
+      if (wantTs) { if (B0.tsit) { log(`nfl: ${n} already has tsit — left as it is`); DONE.ts[s] = TS_V }
+        else { const X = await tsOnly(s, log);
+          if (!X || Object.keys(X.tsit.t).length < 32) log(`nfl: ${s} targets by situation came out short — not added`); else { B0.tsit = X.tsit; add.push("ts") } } }
       if (!add.length) continue;
-      if (JSON.stringify(Object.fromEntries(keys0.map(k => [k, B0[k]]))) !== sig0) { log(`nfl: ${n}: existing fields would change — not written`); continue }
+      const changed = keys0.filter(k => !swap.includes(k) && JSON.stringify(B0[k]) !== sig0[k]); if (changed.length) { log(`nfl: ${n}: existing fields would change (${changed.join(", ")}) — not written`); continue }
       await put(n, B0); if (up[n]) { const sz = `size ${kb(n)} → ${(up[n] / 1024).toFixed(0)} KB`;
         if (add.includes("sy")) { DONE.sy[s] = SY_V; SYB.push(`${s} (kept season, ${keys0.length} existing fields carried as read, 2 added): ${bf} → ${syBrief(B0)} · ${sz}`) }
-        if (add.includes("gm")) { DONE.gm[s] = GM_V; GMB.push(`${s} (kept season, ${keys0.length} existing fields carried as read, 3 added): ${gf} → ${gmBrief(B0)} · ${sz}`) } } }
+        if (add.includes("gm")) { DONE.gm[s] = GM_V; GMB.push(`${s} (kept season, ${keys0.length} existing fields carried as read, 3 added): ${gf} → ${gmBrief(B0)} · ${sz}`) }
+        if (add.includes("gm2")) { DONE.gm[s] = GM_V; GMB.push(`${s} (kept season, pairs given air yards and YAC — every pair's first five numbers the same as before): ${gf} → ${gmBrief(B0)} · ${sz}`) }
+        if (add.includes("ts")) { DONE.ts[s] = TS_V; TSB.push(`${s} (kept season, added once): ${tf} → ${tsBrief(B0)} · ${sz}`) } } }
     catch (e) { log(`nfl: ${s} play-by-play additions: ${e.message}`) } }
+  /* "When he's out" (woBuild, Oct 31, 4:12 pm): this season every run, last season once (DONE.wo[season] = WO_V) — a pack of its own, so
+     nothing already built is touched. Seasons before 2019 have no game-day inactives in the weekly rosters, so they're never built here. */
+  const WO_V = 1; DONE.wo = DONE.wo || {};
+  if (!startsOnly) for (const s of [lastPlayed - 1, lastPlayed]) { if (s < 2019 || (s !== lastPlayed && DONE.wo[s] === WO_V)) continue;
+    try { const n = P("wo-" + s); let w0 = null; try { w0 = getPack && s === lastPlayed ? await getPack(n) : null } catch { } const X = await woBuild(s, log);
+      if (!X || Object.keys(X.t).length < 32) { log(`nfl: ${s} when-he's-out came out short (${X ? Object.keys(X.t).length : 0} teams) — not written`); continue }
+      await put(n, X); if (up[n]) { DONE.wo[s] = WO_V; TSB.push(`${n}: ${woBrief(w0)} → ${woBrief(X)} · ${kb(n)} → ${(up[n] / 1024).toFixed(0)} KB`) } }
+    catch (e) { log(`nfl: ${s} when-he's-out: ${e.message}`) } }
   if (GMB.length) log(`::notice title=NFL drives, first scores, QB-receiver pairs::${GMB.join(" | ").slice(0, 3800)}`);
   if (SYB.length) log(`::notice title=NFL QB short yardage and 4th downs::${SYB.join(" | ").slice(0, 3800)}`);
+  if (TSB.length) log(`::notice title=NFL targets by situation and when he's out::${TSB.join(" | ").slice(0, 3800)}`);
   for (const s of seasons) if (s < lastPlayed && LOGS[s]) DONE.s[s] = NFL_DONE_V; await put(P("done"), DONE);
   /* dynasty inputs (Oct 20, job/dyn.mjs): each player's last 18 league weeks and the windows before, for the page's dynasty model */
   if (!startsOnly) try { const DY = await dynFeatures({ G, PLp: PLP, log, logsOf: async s => LOGS[s] || (getPack ? await getPack(P("logs-" + s)).catch(() => null) : null) });

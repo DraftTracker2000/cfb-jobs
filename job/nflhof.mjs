@@ -146,10 +146,16 @@ const OTHER_HALL = /College Football Hall of Fame|Canadian Football Hall|CFL Hal
 const NEG = /\bnot (?:been |yet |again )?(?:named|selected|chosen|make|made|among)\b|\bfail(?:s|ed)? to\b|\bleft off\b|\bsnub|\bmiss(?:es|ed)? (?:the )?cut|\bpassed over\b/i;
 export function ballotYears(w, last, nowY = new Date().getUTCFullYear()) {
   const semis = new Set(), finals = new Set(), said = [];
-  const lo = (last || 1960) + 5, hi = nowY + 1;
+  /* modern era: from his first eligible class (5 full seasons retired: last + 6). The modern-era window is about 25 seasons (Ellard, last
+     season 1998: "the class of 2023 … his last year with the Modern Era class") but not exactly (Tasker, 1997, was a Modern-Era finalist for
+     2024), so a year more than 30 after his last season is taken as the senior ballot and left out (Jim Tyrer, 1974: finalist for 2025) */
+  const lo = (last || 1960) + 6, hi = Math.min(nowY + 1, (last || nowY) + 30);
   const take = (s, mustClass) => { if (!/finalist/i.test(s) || !/Hall of Fame/i.test(s)) return; if (/senior|\bcoach(?:es|ing)? (?:finalist|semifinalist)|as an? (?:coach|contributor)|contributor/i.test(s)) return;
     if (OTHER_HALL.test(s) && !/Pro Football Hall of Fame/i.test(s)) return; if (NEG.test(s)) return;
+    /* a keyword with a "not / never / nor / n't" shortly before it doesn't count ("has never advanced to a semi-finalist", "has not even been
+       selected as a semifinalist", "has never been one of the 15 finalists" — Holmes, Alexander, Rice, Oct 31 dry run) */
     const toks = [...s.matchAll(/(semi-?\s?finalists?)|(finalists?)|\b((?:19|20)\d{2})\b(?:\s*(?:–|-|&ndash;|to|through)\s*((?:19|20)\d{2})\b)?/gi)], kw = toks.filter(m => m[1] || m[2]);
+    for (const k of kw) k.neg = /\b(?:not|never|nor|no longer)\b|n't\b/i.test(s.slice(Math.max(0, k.index - 60), k.index));
     if (!kw.length) return; let got = 0;
     for (const m of toks) { if (!m[3]) continue; if (mustClass && !new RegExp(`(?:Class of|for(?: the)?(?: class of)?|in)\\s*${m[3]}`, "i").test(s.slice(Math.max(0, m.index - 20), m.index + 4))) continue;
       const before = kw.filter(k => k.index < m.index).pop(), after = kw.find(k => k.index > m.index); let k = before;
@@ -157,6 +163,7 @@ export function ballotYears(w, last, nowY = new Date().getUTCFullYear()) {
       /* semifinalists are announced in November for the next year's class: "On November 22, 2011, Tasker was named …" = the Class of 2012 */
       const fall = !mustClass && /(?:November|December)(?:\s+\d{1,2},?)?\s*$/i.test(s.slice(Math.max(0, m.index - 16), m.index)) ? 1 : 0;
       const ys = []; for (let y = +m[3] + fall; y <= +(m[4] || m[3]) + fall && ys.length < 20; y++) ys.push(y);
+      if (k.neg) continue;
       for (const y of ys) if (y >= lo && y <= hi) { (/semi/i.test(k[0]) ? semis : finals).add(y); got++ } }
     if (got && said.length < 3) said.push(unlink(s).replace(/\s+/g, " ").trim().slice(0, 220)) };
   /* the titles of what his page cites (the Hall's announcements: "… Semifinalists for Pro Football Hall of Fame's Class of 2023") */
@@ -244,7 +251,7 @@ export async function buildNflHof({ putPack, putIndex, extra = [], dry = false, 
   const yrs = s => [s.finals.length ? `finalist ${s.finals.join(", ")}` : "", s.semis.length ? `semifinalist ${s.semis.join(", ")}` : ""].filter(Boolean).join("; ");
   const SL = Object.entries(SN.S).filter(([nm]) => !clash.includes(nm)).sort((a, b) => a[0].localeCompare(b[0]));
   log(`::notice title=nfl hof snubs::${ns} — ${SL.map(([nm, p]) => `${nm} (${(p.pos.split(/[\/,]/)[0] || "").trim()}): ${p.snub.why.join(" + ")} · ${yrs(p.snub)}`).join(" | ").slice(0, 3900)}`);
-  log(`::notice title=nfl hof snub evidence::${SL.map(([nm, p]) => `${nm}: "${p.snub.said[0] || ""}"`).join(" | ").replace(/[\r\n]+/g, " ").slice(0, 3900)}`);
+  log(`::notice title=nfl hof snub evidence::${SL.map(([nm, p]) => `${nm}: ${p.snub.said.map(x => `"${x.slice(0, 150)}"`).join(" + ")}`).join(" | ").replace(/[\r\n]+/g, " ").slice(0, 3900)}`);
   const M = SN.meta; log(`::notice title=nfl hof snub search::searches ${JSON.stringify(M.searched)} · ${M.pages} candidate pages · ${M.players} players read · ${M.passed} passed a filter · ${M.noYears.length} of those with no ballot years on their page (left out: ${M.noYears.join(", ")})${clash.length ? ` · name clash, left out: ${clash.join(", ")}` : ""} · lists: ${Object.entries(M.lists).map(([k, v]) => `${k} [${v.through}] ${v.top.join(" … ")}`).join(" · ")}`.slice(0, 3900));
   const chk = ["Barry Sanders", "Jerry Rice", "Lawrence Taylor", "Calvin Johnson", "Peyton Manning", "Jim Brown"].map(x => P[x] ? `${x}: ${P[x].t.map(t => t.join(" ")).join(", ")} · ${Object.entries(P[x].aw.reduce((o, [k]) => (o[k] = (o[k] || 0) + 1, o), {})).map(e => e.join(" ")).join(" ")}` : `${x}: missing`);
   log(`::notice title=nfl hof check::${chk.join(" | ").slice(0, 5000)}`);

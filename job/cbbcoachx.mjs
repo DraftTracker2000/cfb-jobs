@@ -1,7 +1,7 @@
 /* Basketball coach extras (Oct 13 — Sam: "yes do all 6 of the basketball coaches stuff and expand their style tabs").
 
    Built in the everyday basketball run from data the job already holds, plus the transfer portal by year (one CBBD call a season, finished
-   seasons cached in p2000_cbb-portal). Every season is credited to the coach of that team that season (p{S}_cbb-coaches bySeason):
+   seasons cached in p2000_cbb-portalyrs). Every season is credited to the coach of that team that season (p{S}_cbb-coaches bySeason):
 
    - rc   recruiting classes he brought in: a class of year Y plays from season Y+1, so it is credited to the coach of season Y+1. Per class:
           [season, team, commits, top-100, five-stars, four-stars, average rating, national class rank (by total rating that year),
@@ -48,11 +48,13 @@ export async function buildCoachX({ cb, getPack, putPack, log, S, ALL, H, DRAFTE
   const pg = r => r && r.g ? r1(r.pts / r.g) : null;
 
   /* ---- transfer portal ---- */
-  let P = await getPack("p2000_cbb-portal").catch(() => null); if (!P || !P.y) P = { y: {} }; let calls = 0;
+  /* Oct 31: own pack. job/cbb.mjs writes p2000_cbb-portal as { y: 2026, at, rows } (Oct 26), so P.y was a number here and
+     P.y[2021] = … threw in strict mode — every run since Oct 26 15:03 UTC failed at "coach extras" and p2026_cbb-coachx stopped updating */
+  let P = await getPack("p2000_cbb-portalyrs").catch(() => null); if (!P || !P.y || typeof P.y !== "object") P = { y: {} }; let calls = 0;
   for (let y = 2021; y <= S; y++) { if (P.y[y] && y < S) continue;
     const R = await cb("/recruiting/portal", { year: y }).catch(() => null); calls++; if (!R || !R.length) continue;
     P.y[y] = R.map(p => [`${p.firstName || ""} ${p.lastName || ""}`.trim(), (p.origin || {}).id ?? null, (p.destination || {}).id ?? null, p.stars ?? null, p.rating ?? null]) }
-  if (calls) await putPack("p2000_cbb-portal", P);
+  if (calls) await putPack("p2000_cbb-portalyrs", P);
   const inn = {}, outn = {};
   for (const [Y, rows] of Object.entries(P.y)) { const y = +Y;
     for (const [nm, from, to] of rows) {

@@ -3,6 +3,7 @@
    career-leader lists, and how they're laid out, counting the reads. Results as several short notices (each under 4 KB) and in the step
    summary. Nothing written. STEP picks what to look at. */
 import { appendFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 const WUA = { "User-Agent": "mycfbbigboard.com data job (football stats site; contact via the site)" };
 let reads = 0;
 const api = async q => { reads++; for (let a = 0; a < 3; a++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", ...q }), { headers: WUA }); if (r.ok) return r.json() } catch { } await new Promise(z => setTimeout(z, 1500 * (a + 1))) } return null };
@@ -48,4 +49,12 @@ export async function run() {
       T[t] = { len: w.length, tables: tabs.map(x => ({ rows: (x.match(/\n\|-/g) || []).length, head: x.slice(0, 260).replace(/\n/g, "⏎"), row2: (x.split(/\n\|-/)[3] || "").slice(0, 220).replace(/\n/g, "⏎") })).slice(0, 4) } }
     for (const [t, v] of Object.entries(T)) say("table " + t.replace("List of NFL career ", ""), v);
   }
+  if (step === "5") {   /* saved copies for the local tests: each page's tables only, references cut, gzip + base64, in short notices */
+    const W = await wt((process.env.TITLES || "").split("|").filter(Boolean)); let n = 0; const left = [];
+    for (const [t, w] of Object.entries(W)) { if (!w) { left.push(t + " missing"); continue }
+      const x = w.replace(/<ref[^>]*\/>/g, "").replace(/<ref[^>]*>[\s\S]*?<\/ref>/g, ""), a = x.indexOf("\n{|"), b = x.lastIndexOf("\n|}"), body = a >= 0 && b > a ? x.slice(a, b + 3) : x;
+      const s = gzipSync(Buffer.from(body)).toString("base64"), parts = Math.ceil(s.length / 3800);
+      if (n + parts > 6) { left.push(t + " (no room)"); continue }
+      for (let i = 0; i < parts; i++, n++) console.log(`::notice title=fx ${i + 1}/${parts} ${t}::${s.slice(i * 3800, (i + 1) * 3800)}`) }
+    if (left.length) say("left", left) }
   say("reads", String(reads)); return { ok: true, step, reads } }

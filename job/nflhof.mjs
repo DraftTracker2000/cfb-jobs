@@ -179,6 +179,10 @@ const PLAYER_POS = /(back|end|tackle|guard|center|quarterback|linebacker|receive
    players' whole pages (ballot years) → the rule. Sam, Oct 31 5:13 pm ("snubs", on Holt, Taylor, Matthews Jr., Harrison): a snub was never
    elected and either was a modern-era finalist 2+ times, or was a semifinalist / finalist and has 10+ Pro Bowls + first-team All-Pros or a
    top-25 career stat. `years` = job/nflhof-snub-years.json (each class's finalists from a news report of that year). */
+/* a coach's or executive's infobox can give his playing position as a code (Frank Gore, Reggie Wayne: career_position = rb / wr) */
+const POS_AB = { qb: "Quarterback", rb: "Running back", hb: "Halfback", fb: "Fullback", wr: "Wide receiver", te: "Tight end", ot: "Offensive tackle", t: "Tackle", og: "Guard", g: "Guard", c: "Center", ol: "Offensive lineman",
+  de: "Defensive end", dt: "Defensive tackle", nt: "Nose tackle", dl: "Defensive lineman", lb: "Linebacker", olb: "Linebacker", ilb: "Linebacker", mlb: "Linebacker", cb: "Cornerback", s: "Safety", fs: "Safety", ss: "Safety", db: "Defensive back", k: "Placekicker", pk: "Placekicker", p: "Punter", kr: "Kick returner", pr: "Punt returner" };
+const honTxt = (pb, ap1) => [pb ? `${pb} Pro Bowl${pb === 1 ? "" : "s"}` : "", ap1 ? `${ap1} first-team All-Pro` : ""].filter(Boolean).join(" + ");
 const span = Y => { const y = [...Y].sort((a, b) => a - b); return y.length > 1 && y[y.length - 1] - y[0] === y.length - 1 ? `${y[0]}–${String(y[y.length - 1]).slice(2)}` : y.join(", ") };
 export async function findSnubs({ have, api, log = () => { }, nowY = new Date().getUTCFullYear(), pause = 400, years = null }) {
   const LY = {}, lab = s => [s.outlet, s.date].filter(Boolean).join(", ");
@@ -193,7 +197,7 @@ export async function findSnubs({ have, api, log = () => { }, nowY = new Date().
     const red = {}; for (const r of (j.query && j.query.redirects) || []) red[r.to] = r.from;
     for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content, from = red[pg.title] || pg.title;
       if (!w) { if (LY[from]) notPlayer.push(from + " (no page)"); continue } if (have.has(pg.title)) continue;
-      const x = parseHof(w); if (!x.t.length || !PLAYER_POS.test(x.pos)) { if (LY[from]) notPlayer.push(from); continue } X[pg.title] = x; src[pg.title] = LY[from] || LY[pg.title] || {} }
+      const x = parseHof(w); x.pos = POS_AB[x.pos.trim().toLowerCase()] || x.pos; if (!x.t.length || !PLAYER_POS.test(x.pos)) { if (LY[from]) notPlayer.push(from); continue } X[pg.title] = x; src[pg.title] = LY[from] || LY[pg.title] || {} }
     await new Promise(z => setTimeout(z, pause)) }
   /* the career-leader lists, all in one read */
   await rest(); const lj = await api({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", redirects: "1", titles: LEADERS.map(x => x[2]).join("|") }); reads++;
@@ -202,7 +206,7 @@ export async function findSnubs({ have, api, log = () => { }, nowY = new Date().
     const R = leaderRank(w, re); if (R.L.filter(x => x.r <= 25).length < 25) throw new Error(`nflhof snubs: ${page} gave only ${R.L.length} ranked players — its table changed; not writing`); TOP[key] = R }
   const norm = s => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").replace(/[^a-z0-9]+/g, " ").trim();
   const F = {}; for (const [t, x] of Object.entries(X)) { const pb = x.aw.filter(a => a[0] === "pb").length, ap1 = x.aw.filter(a => a[0] === "ap1").length, fw = [], top = [];
-    if (pb + ap1 >= 10) fw.push(`${pb} Pro Bowl${pb === 1 ? "" : "s"} + ${ap1} first-team All-Pro`);
+    if (pb + ap1 >= 10) fw.push(honTxt(pb, ap1));
     for (const [key, words, , , posRe] of LEADERS) { if (!posRe.test(x.pos)) continue; const hit = TOP[key].L.find(e => e.r <= 25 && (e.w === t || norm(e.nm) === norm(t)));
       if (hit) { top.push([key, hit.r, hit.v]); fw.push(`top 25 all-time in ${words} (No. ${hit.r}, ${hit.v.toLocaleString("en-US")})`) } }
     F[t] = { x, pb, ap1, fw, top } }
@@ -216,7 +220,7 @@ export async function findSnubs({ have, api, log = () => { }, nowY = new Date().
       const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim();
       if (!(finals.length >= 2 || p.fw.length && (finals.length || semis.length))) { if (p.fw.length) noYears.push(pg.title); else if (finals.length === 1) once.push(`${nm} ${finals[0]}`); continue }
       const why = []; if (finals.length >= 2) why.push(`finalist ${finals.length} times (${span(finals)})`);
-      why.push(...p.fw); if (finals.length >= 2 && !p.fw.some(s => /Pro Bowl/.test(s)) && p.pb + p.ap1) why.push(`${p.pb} Pro Bowl${p.pb === 1 ? "" : "s"} + ${p.ap1} first-team All-Pro`);
+      why.push(...p.fw); if (finals.length >= 2 && !p.fw.some(s => /Pro Bowl/.test(s)) && p.pb + p.ap1) why.push(honTxt(p.pb, p.ap1));
       const fsrc = Object.fromEntries(finals.map(y => [y, L[y] || "his Wikipedia page"]));
       S[nm] = { w: pg.title, hof: -1, pos: p.x.pos.replace(/\s+/g, " ").slice(0, 60), t: p.x.t, aw: p.x.aw.map(([k2, y]) => [k2, y, y ? teamIn(p.x.t, y) : null]),
         snub: { semis, finals, why, top: p.top, fsrc, said: B.said } } }

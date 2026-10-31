@@ -39,4 +39,13 @@ export async function run() {
     const W = await wt(["13th NFL Honors", "14th NFL Honors", "15th NFL Honors", "2024 NFL season", "2025 NFL season", "2011 NFL season"]);
     say("honors/season finalist mentions", Object.fromEntries(Object.entries(W).map(([t, w]) => [t, w ? { len: w.length, fin: (w.match(/finalist/gi) || []).length, at: (w.match(/[^\n]{0,160}finalist[^\n]{0,160}/i) || [""])[0] } : null])));
   }
+  if (step === "4") {   /* how ballot years read on players' pages, and how the career-leader tables are laid out (compact) */
+    const P = await wt(["Torry Holt", "Fred Taylor (running back)", "Hines Ward", "Ricky Watters", "Steve Tasker", "Henry Ellard", "Ken Anderson (quarterback)", "Jim Marshall (defensive end)", "Clay Matthews Jr.", "Tony Boselli", "Leslie O'Neal", "Rodney Harrison"]);
+    const S = {}; for (const [t, w] of Object.entries(P)) S[t] = w ? (w.match(/[^.\n]*(?:semi-?finalist|finalist)[^.\n]*/gi) || []).filter(s => /Hall of Fame/i.test(s)).map(s => s.replace(/<ref[^>]*\/>|<ref[^>]*>[\s\S]*?<\/ref>/g, "").slice(0, 260)) : null;
+    say("ballot sentences", S);
+    const L = await wt(["List of NFL career sacks leaders", "List of NFL career passing yards leaders", "List of NFL career receptions leaders", "List of NFL career interceptions leaders", "List of NFL career scoring leaders", "List of NFL career rushing yards leaders"]);
+    const T = {}; for (const [t, w] of Object.entries(L)) { if (!w) { T[t] = null; continue } const tabs = w.split(/\n\{\|/).slice(1).map(x => x.split(/\n\|\}/)[0]);
+      T[t] = { len: w.length, tables: tabs.map(x => ({ rows: (x.match(/\n\|-/g) || []).length, head: x.slice(0, 260).replace(/\n/g, "⏎"), row2: (x.split(/\n\|-/)[3] || "").slice(0, 220).replace(/\n/g, "⏎") })).slice(0, 4) } }
+    for (const [t, v] of Object.entries(T)) say("table " + t.replace("List of NFL career ", ""), v);
+  }
   say("reads", String(reads)); return { ok: true, step, reads } }

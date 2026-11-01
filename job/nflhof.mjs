@@ -176,9 +176,8 @@ export function ballotYears(w, last, nowY = new Date().getUTCFullYear()) {
 const NOT_PERSON = /^(?:List of|Deaths in|History of|\d{4}\b)|\bseason$|football team$|\bfootball$|\bNFL Honors$|Super Bowl|All-Decade|All-Time Team|Ring of Honor|High School|University|College\b|\balumni\b|\bpeople\b|\bmembers\b|\(TV series\)|episodes|Hall of Fame$|Legends team|\bAward$|\bin sports$|\bin the United States$|\bin American television$/i;
 const PLAYER_POS = /(back|end|tackle|guard|center|quarterback|linebacker|receiver|safety|kicker|punter|lineman|tailback|fullback|halfback|wingback|returner|cornerback)/i;
 /* the snubs: searches + the hand-kept finalist years → candidate pages (not in the Hall, not on the wait list) → their infoboxes → the
-   players' whole pages (ballot years) → the rule. Oct 31 5:13 pm ("snubs", on Holt, Taylor, Matthews Jr., Harrison): a snub was never
-   elected and either was named a modern-era finalist at least once, or was a semifinalist with 10+ Pro Bowls + first-team All-Pros or a
-   top-25 career stat. `years` = job/nflhof-snub-years.json (each class's finalists from a news report of that year). */
+   players' whole pages (ballot years) → the rule (Oct 31 8:15 pm): a snub was never elected and either was named a modern-era
+   finalist 2+ times, or was a finalist / semifinalist with 10+ Pro Bowls + first-team All-Pros or a top-25 career stat. `years` = job/nflhof-snub-years.json (each class's finalists from a news report of that year). */
 /* a coach's or executive's infobox can give his playing position as a code (Frank Gore, Reggie Wayne: career_position = rb / wr) */
 const POS_AB = { qb: "Quarterback", rb: "Running back", hb: "Halfback", fb: "Fullback", wr: "Wide receiver", te: "Tight end", ot: "Offensive tackle", t: "Tackle", og: "Guard", g: "Guard", c: "Center", ol: "Offensive lineman",
   de: "Defensive end", dt: "Defensive tackle", nt: "Nose tackle", dl: "Defensive lineman", lb: "Linebacker", olb: "Linebacker", ilb: "Linebacker", mlb: "Linebacker", cb: "Cornerback", s: "Safety", fs: "Safety", ss: "Safety", db: "Defensive back", k: "Placekicker", pk: "Placekicker", p: "Punter", kr: "Kick returner", pr: "Punt returner" };
@@ -222,9 +221,10 @@ export async function findSnubs({ have, api, log = () => { }, nowY = new Date().
       const inEra = y => !last || y <= last + 30, off = Object.keys(L).map(Number).filter(y => !inEra(y)); if (off.length) offEra.push(`${String(pg.title).replace(/\s*\([^)]*\)\s*$/, "")} ${off.join(", ")}`);
       const finals = [...new Set([...B.finals, ...Object.keys(L).map(Number).filter(inEra)])].sort((a, b) => a - b), semis = B.semis.filter(y => !finals.includes(y));
       const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim();
-      /* Oct 31 5:13 pm (naming Holt, Taylor, Matthews Jr. and Harrison — Matthews and Harrison finalists once): one modern-era finalist
-         year is enough; a semifinalist still needs the filter */
-      if (!(finals.length || p.fw.length && semis.length)) { if (p.fw.length) noYears.push(pg.title); continue }
+      /* a modern-era finalist 2+ times, or a finalist / semifinalist who meets the filter. (5:13 pm one finalist year counted; the owner, 8:15 pm,
+         after learning the Clay Matthews on the list isn't the Packer: "then i don't care. cut the 5" — Matthews Jr., Harrison, Albert Lewis,
+         Jim Marshall, Rosey Grier) */
+      if (!(finals.length >= 2 || p.fw.length && (finals.length || semis.length))) { if (p.fw.length) noYears.push(pg.title); continue }
       const why = []; if (finals.length) why.push(finals.length === 1 ? `finalist once (${finals[0]})` : `finalist ${finals.length} times (${span(finals)})`);
       why.push(...p.fw); if (finals.length && !p.fw.some(s => /Pro Bowl/.test(s)) && p.pb + p.ap1) why.push(honTxt(p.pb, p.ap1));
       const fsrc = Object.fromEntries(finals.map(y => [y, L[y] || "his Wikipedia page"]));

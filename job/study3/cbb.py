@@ -110,6 +110,6 @@ def run(reg, log, data_dir):
         R['coach'] = [CO.get((t, int(y) + 1)) for t, y in zip(R.tid, R.year)]; R['season'] = R.year.astype(int)
         cc = R.dropna(subset=['coach']).groupby('coach').season.nunique(); log(f'B07 coaches with 6+ recruit classes: {(cc >= 6).sum()} of {len(cc)}; recruits per coach median {R.dropna(subset=["coach"]).groupby("coach").size().median()}')
         log(f'B07 coach found for {R.coach.notna().mean():.2f} of recruits; sample team ids {list(R.tid.head(3))}; coach keys {list(CO)[:3]}')
-        Tn, fam = named(reg, 'B07', 'Basketball staff whose recruits beat their rating in their first two seasons', R.dropna(subset=['coach']), 'coach', 'res', min_seasons=6, min_rows=20, g='pid', unit=met)
+        Tn, fam = named(reg, 'B07', 'Basketball staff whose recruits beat their rating in their first two seasons', R.dropna(subset=['coach']), 'coach', 'res', min_seasons=6, min_rows=8, g='pid', unit=met)
         log(f'B07: {len(R)} recruits; split-half r {fam[0]:.2f} ({fam[2]})')
         if len(Tn): log(Tn.sort_values('p').head(6)[['name', 'ns', 'n', 'est', 'p', 'oos', 'loo']].round(4).to_string())

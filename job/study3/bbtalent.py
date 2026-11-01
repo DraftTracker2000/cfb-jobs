@@ -142,3 +142,18 @@ def run(reg, log, D):
     log('BD15 Calipari vs others: ' + r_['d'])
     x = st0[st0.coach == 'John Calipari'].sort_values('f')
     log('Calipari 5-stars: ' + '; '.join(f'{n_} {int(f_) - 1}-{str(int(f_))[2:]} best {b_:.1f}{" hit" if h_ else ""}' for n_, f_, b_, h_ in zip(x.name, x.f, x.best.fillna(0), x.hit)))
+    # ---------- Calipari split (the owner via coordinator, Nov 1): did the 2022-26 reversal come from the move to Arkansas? ----------
+    # By team and first season (the coaches pack has no coach for Kentucky 2010-13 or 2024, so the split goes by team and years).
+    s1 = A[A.season == A.f].sort_values('min', ascending=False).drop_duplicates('pid'); s1 = s1[(s1.stars == 5) & s1.f.between(2010, 2026)].copy()
+    Q1 = P.merge(s1[['pid', 'tid']], on=['pid', 'tid']); s1['hit'] = s1.pid.isin(set(Q1[Q1.bx40 >= Q1.bar].pid)).astype(float)
+    kid = [k_ for k_, v in tnm.items() if v == 'Kentucky']; aid = [k_ for k_, v in tnm.items() if v == 'Arkansas']
+    groups = [('Kentucky 2010-21', kid, 2010, 2021), ('Kentucky 2022-24', kid, 2022, 2024), ('Arkansas 2025-26', aid, 2025, 2026)]
+    mine = pd.Series(False, index=s1.index); rows = []
+    for lab, ids, lo, hi in groups + [('career 2010-26', None, 2010, 2026)]:
+        if ids is None: g_ = mine
+        else: g_ = s1.tid.isin(ids) & s1.f.between(lo, hi); mine = mine | g_
+        lg = s1[s1.f.between(lo, hi) & ~(s1.tid.isin(kid) & s1.f.between(2010, 2024)) & ~(s1.tid.isin(aid) & s1.f.between(2025, 2026))]
+        e_ = E[(E.tid.isin(ids) if ids is not None else ((E.tid.isin(kid) & E.season.between(2011, 2024)) | (E.tid.isin(aid) & E.season.between(2025, 2026)))) & E.season.between(lo, hi)]
+        rows.append([lab, int(g_.sum()), s1[g_].hit.mean(), len(lg), lg.hit.mean(), e_.season.nunique(), len(e_), e_.oe.mean()])
+    log('Calipari split (5-stars by first season at the school; points/game vs the elite-roster fit, talent from 2011):\n' + pd.DataFrame(rows, columns=['group', '5-stars', 'hit', 'league 5-stars', 'league hit',
+        'elite seasons', 'games', 'pts/game beyond']).round(3).to_string(index=False))

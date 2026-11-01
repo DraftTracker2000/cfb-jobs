@@ -177,26 +177,44 @@ const NOT_PERSON = /^(?:List of|Deaths in|History of|\d{4}\b)|\bseason$|football
 const PLAYER_POS = /(back|end|tackle|guard|center|quarterback|linebacker|receiver|safety|kicker|punter|lineman|tailback|fullback|halfback|wingback|returner|cornerback)/i;
 /* the snubs: searches + the hand-kept finalist years → candidate pages (not in the Hall, not on the wait list) → their infoboxes → the
    players' whole pages (ballot years) → the rule (Sam, Oct 31 8:15 pm): a snub was never elected and either was named a modern-era
-   finalist 2+ times, or was a finalist / semifinalist with 10+ Pro Bowls + first-team All-Pros or a top-25 career stat. `years` = job/nflhof-snub-years.json (each class's finalists from a news report of that year). */
+   finalist 2+ times, or was a finalist / semifinalist with 10+ Pro Bowls + first-team All-Pros or a top-25 career stat. `years` = job/nflhof-snub-years.json (each class's finalists from a news report of that year).
+   A second way on, the Pro Bowl path (Sam, Oct 31 8:25 pm: "clay clearly should be in. 6 pro-bowls in 10 yard and had years shortened by
+   injury. that's a stud that got snubbed all day. gotta be like injury shortened career with more than +50% of probowls appearances through
+   his seasons."; 8:31 pm, OK'ing "Pro Bowls in more than half his seasons (at least 5), never elected, eligible": "if that's how you have to
+   see it then ok" · "all of those are fine to add with my clay rule"): 5+ Pro Bowls, Pro Bowls in more than half his seasons (the seasons
+   his infobox's team years cover), not in the Hall, and eligible (5 full seasons retired: last season + 6 ≤ this year). No ballot years
+   needed; any he has are kept. Every candidate read is tested, and `pbList` = job/nflhof-pb-candidates.json adds the pages the searches
+   can't find (they never mention a finalist or semifinalist). */
 /* a coach's or executive's infobox can give his playing position as a code (Frank Gore, Reggie Wayne: career_position = rb / wr) */
 const POS_AB = { qb: "Quarterback", rb: "Running back", hb: "Halfback", fb: "Fullback", wr: "Wide receiver", te: "Tight end", ot: "Offensive tackle", t: "Tackle", og: "Guard", g: "Guard", c: "Center", ol: "Offensive lineman",
   de: "Defensive end", dt: "Defensive tackle", nt: "Nose tackle", dl: "Defensive lineman", lb: "Linebacker", olb: "Linebacker", ilb: "Linebacker", mlb: "Linebacker", cb: "Cornerback", s: "Safety", fs: "Safety", ss: "Safety", db: "Defensive back", k: "Placekicker", pk: "Placekicker", p: "Punter", kr: "Kick returner", pr: "Punt returner" };
 const honTxt = (pb, ap1) => [pb ? `${pb} Pro Bowl${pb === 1 ? "" : "s"}` : "", ap1 ? `${ap1} first-team All-Pro` : ""].filter(Boolean).join(" + ");
 const span = Y => { const y = [...Y].sort((a, b) => a - b); return y.length > 1 && y[y.length - 1] - y[0] === y.length - 1 ? `${y[0]}–${String(y[y.length - 1]).slice(2)}` : y.join(", ") };
-export async function findSnubs({ have, api, log = () => { }, nowY = new Date().getUTCFullYear(), pause = 400, years = null }) {
+/* the Pro Bowl path's test, from his infobox (parseHof): { pb, n: seasons his team years cover, last, ok } */
+export function pbPath(x, nowY = new Date().getUTCFullYear()) {
+  const yrs = new Set(); for (const [, a, b] of x.t) for (let y = a; y <= b; y++) yrs.add(y);
+  const pb = x.aw.filter(a => a[0] === "pb").length, ap1 = x.aw.filter(a => a[0] === "ap1").length, n = yrs.size, last = n ? Math.max(...yrs) : null;
+  return { pb, ap1, n, last, ok: pb >= 5 && pb * 2 > n && !!last && last + 6 <= nowY } }
+const pbTxt = q => `Pro Bowl in ${q.pb} of ${q.n} seasons (${Math.round(100 * q.pb / q.n)}%)${q.ap1 ? ` + ${q.ap1} first-team All-Pro` : ""}`;
+export async function findSnubs({ have, api, log = () => { }, nowY = new Date().getUTCFullYear(), pause = 400, years = null, pbList = null }) {
   const LY = {}, lab = s => [s.outlet, s.date].filter(Boolean).join(", ");
   for (const [y, c] of Object.entries((years && years.classes) || {})) for (const t of c.finalists || []) (LY[t] = LY[t] || {})[+y] = lab(c.src || {});
   let reads = 0; const cand = new Set(), sq = {}, rest = () => new Promise(z => setTimeout(z, pause * 5));   /* searches cost Wikipedia more: ~2 s between them */
   for (const q of SNUB_SEARCH) { await rest(); const j = await api({ action: "query", list: "search", srsearch: q, srlimit: "500", srnamespace: "0", srprop: "" }); reads++;
     if (!j || !j.query) throw new Error(`nflhof snubs: the search "${q}" didn't answer (${wikiFail}) — not writing`); sq[q] = j.query.searchinfo && j.query.searchinfo.totalhits; for (const x of j.query.search || []) cand.add(x.title) }
   const fromList = Object.keys(LY).filter(t => !have.has(t));
-  const C = [...new Set([...cand].filter(t => !have.has(t) && !NOT_PERSON.test(t)).concat(fromList))], X = {}, notPlayer = [], src = {};
+  /* the Pro Bowl path's own list: each title's page is named on the run (resolved, redirected, missing, not a player, in the Hall) */
+  const PBL = ((pbList && pbList.titles) || []).map(String), PBR = {}; for (const t of PBL) if (have.has(t)) PBR[t] = "in the Hall / wait list";
+  const C = [...new Set([...cand].filter(t => !have.has(t) && !NOT_PERSON.test(t)).concat(fromList, PBL.filter(t => !have.has(t))))], X = {}, notPlayer = [], src = {};
   for (let k = 0; k < C.length; k += 50) { const j = await api({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", rvsection: "0", redirects: "1", titles: C.slice(k, k + 50).join("|") }); reads++;
     if (!j) throw new Error(`nflhof snubs: candidate pages didn't answer (${wikiFail}) — not writing`);
     const red = {}; for (const r of (j.query && j.query.redirects) || []) red[r.to] = r.from;
-    for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content, from = red[pg.title] || pg.title;
-      if (!w) { if (LY[from]) notPlayer.push(from + " (no page)"); continue } if (have.has(pg.title)) continue;
-      const x = parseHof(w); x.pos = POS_AB[x.pos.trim().toLowerCase()] || x.pos; if (!x.t.length || !PLAYER_POS.test(x.pos)) { if (LY[from]) notPlayer.push(from); continue } X[pg.title] = x; src[pg.title] = LY[from] || LY[pg.title] || {} }
+    const nrm = {}; for (const r of (j.query && j.query.normalized) || []) nrm[r.to] = r.from;
+    for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content, from = red[pg.title] || pg.title, asked = nrm[from] || from;
+      const pbAsk = PBL.includes(asked) ? asked : null; if (pbAsk) PBR[pbAsk] = pg.title === asked ? "page" : `→ ${pg.title}`;
+      if (!w) { if (LY[from]) notPlayer.push(from + " (no page)"); if (pbAsk) PBR[pbAsk] = "no page"; continue } if (have.has(pg.title)) { if (pbAsk) PBR[pbAsk] += " (in the Hall / wait list)"; continue }
+      const x = parseHof(w); x.pos = POS_AB[x.pos.trim().toLowerCase()] || x.pos; if (!x.t.length || !PLAYER_POS.test(x.pos)) { if (LY[from]) notPlayer.push(from); if (pbAsk) PBR[pbAsk] += " (not a player page)"; continue } X[pg.title] = x; src[pg.title] = LY[from] || LY[pg.title] || {};
+      if (pbAsk) { const q = pbPath(x, nowY); PBR[pbAsk] += ` · ${q.pb} Pro Bowls in ${q.n} seasons, last ${q.last}${q.ok ? "" : " · fails the path"}` } }
     await new Promise(z => setTimeout(z, pause)) }
   /* the career-leader lists, all in one read */
   await rest(); const lj = await api({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", redirects: "1", titles: LEADERS.map(x => x[2]).join("|") }); reads++;
@@ -208,9 +226,9 @@ export async function findSnubs({ have, api, log = () => { }, nowY = new Date().
     if (pb + ap1 >= 10) fw.push(honTxt(pb, ap1));
     for (const [key, words, , , posRe] of LEADERS) { if (!posRe.test(x.pos)) continue; const hit = TOP[key].L.find(e => e.r <= 25 && (e.w === t || norm(e.nm) === norm(t)));
       if (hit) { top.push([key, hit.r, hit.v]); fw.push(`top 25 all-time in ${words} (No. ${hit.r}, ${hit.v.toLocaleString("en-US")})`) } }
-    F[t] = { x, pb, ap1, fw, top } }
+    F[t] = { x, pb, ap1, fw, top, pbq: pbPath(x, nowY) } }
   /* the players' whole pages, 20 a read: the years his own page gives (the list's years count without them) */
-  const K = Object.keys(X), S = {}, noYears = [], offEra = [];
+  const K = Object.keys(X), S = {}, noYears = [], offEra = [], pbOnly = [];
   for (let k = 0; k < K.length; k += 20) { const j = await api({ action: "query", prop: "revisions", rvprop: "content", rvslots: "main", redirects: "1", titles: K.slice(k, k + 20).join("|") }); reads++;
     if (!j) throw new Error(`nflhof snubs: the players' pages didn't answer (${wikiFail}) — not writing`);
     for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content, p = F[pg.title]; if (!w || !p) continue;
@@ -224,18 +242,21 @@ export async function findSnubs({ have, api, log = () => { }, nowY = new Date().
       /* a modern-era finalist 2+ times, or a finalist / semifinalist who meets the filter. (5:13 pm one finalist year counted; Sam, 8:15 pm,
          after learning the Clay Matthews on the list isn't the Packer: "then i don't care. cut the 5" — Matthews Jr., Harrison, Albert Lewis,
          Jim Marshall, Rosey Grier) */
-      if (!(finals.length >= 2 || p.fw.length && (finals.length || semis.length))) { if (p.fw.length) noYears.push(pg.title); continue }
+      const ballot = finals.length >= 2 || p.fw.length && (finals.length || semis.length);
+      /* or the Pro Bowl path (Sam 8:31 pm). A player the ballot rule already keeps reads as before. */
+      if (!ballot && !p.pbq.ok) { if (p.fw.length) noYears.push(pg.title); continue } if (!ballot) pbOnly.push(nm);
       const why = []; if (finals.length) why.push(finals.length === 1 ? `finalist once (${finals[0]})` : `finalist ${finals.length} times (${span(finals)})`);
-      why.push(...p.fw); if (finals.length && !p.fw.some(s => /Pro Bowl/.test(s)) && p.pb + p.ap1) why.push(honTxt(p.pb, p.ap1));
+      if (!ballot) why.push(pbTxt(p.pbq), ...p.fw.filter(s => !/Pro Bowl/.test(s)));
+      else { why.push(...p.fw); if (finals.length && !p.fw.some(s => /Pro Bowl/.test(s)) && p.pb + p.ap1) why.push(honTxt(p.pb, p.ap1)) }
       const fsrc = Object.fromEntries(finals.map(y => [y, L[y] || "his Wikipedia page"]));
       S[nm] = { w: pg.title, hof: -1, pos: p.x.pos.replace(/\s+/g, " ").slice(0, 60), t: p.x.t, aw: p.x.aw.map(([k2, y]) => [k2, y, y ? teamIn(p.x.t, y) : null]),
         snub: { semis, finals, why, top: p.top, fsrc, said: B.said } } }
     await new Promise(z => setTimeout(z, pause)) }
-  const meta = { searched: sq, pages: C.length, fromList: fromList.length, players: K.length, noYears, offEra, notPlayer,
+  const meta = { searched: sq, pages: C.length, fromList: fromList.length, players: K.length, noYears, offEra, notPlayer, pbList: PBR, pbOnly: pbOnly.sort(),
     lists: Object.fromEntries(Object.entries(TOP).map(([k, R]) => [k, { through: R.through, n: R.deep, top: R.L.slice(0, 1).concat(R.L.filter(x => x.r <= 25).slice(-1)).map(x => `${x.r}. ${x.nm} ${x.v}`) }])) };
   return { S, reads, meta } }
 
-export async function buildNflHof({ putPack, putIndex, extra = [], dry = false, log = console.log, wiki = api, pause = 400, snubYears = null }) {
+export async function buildNflHof({ putPack, putIndex, extra = [], dry = false, log = console.log, wiki = api, pause = 400, snubYears = null, pbCands = null }) {
   let reads = 0; const titles = new Set(); let cont = {};
   for (let g = 0; g < 5; g++) { const j = await wiki({ action: "query", list: "categorymembers", cmtitle: "Category:Pro Football Hall of Fame inductees", cmlimit: "500", cmnamespace: "0", ...cont }); reads++; if (!j) break;
     for (const m of (j.query && j.query.categorymembers) || []) titles.add(m.title); if (!j.continue) break; cont = j.continue }
@@ -263,7 +284,7 @@ export async function buildNflHof({ putPack, putIndex, extra = [], dry = false, 
   /* the snubs go in after the team totals, so they never count toward them (hof: -1; the Lab counts hof > 0 as a Hall of Famer) */
   const gz0 = gzipSync(Buffer.from(JSON.stringify({ v: 1, t: Date.now(), p: P, tt: TT })));
   const have = new Set([...titles, ...Object.values(P).map(p => p.w), ...Object.keys(XL)]);
-  const SN = await findSnubs({ have, api: wiki, log, pause, years: snubYears }); reads += SN.reads; const clash = [];
+  const SN = await findSnubs({ have, api: wiki, log, pause, years: snubYears, pbList: pbCands }); reads += SN.reads; const clash = [];
   for (const [nm, s] of Object.entries(SN.S)) { if (P[nm]) { clash.push(nm); continue } P[nm] = s }
   const pack = { v: 1, t: Date.now(), p: P, tt: TT };
   const gz = gzipSync(Buffer.from(JSON.stringify(pack)));
@@ -276,7 +297,9 @@ export async function buildNflHof({ putPack, putIndex, extra = [], dry = false, 
   /* the whole list, over as many notices as it takes (GitHub keeps ~4 KB of each and 10 a step, so the evidence sentences stay in the pack: snub.said) */
   { const txt = `${ns} — ${SL.map(([nm, p]) => `${nm} (${(p.pos.split(/[\/,]/)[0] || "").trim()}): ${p.snub.why.join(" + ")} · ${yrs(p.snub)}`).join(" | ")}`;
     for (let i = 0, n = 1; i < txt.length && n <= 3; i += 3900, n++) log(`::notice title=nfl hof snubs${n > 1 ? " " + n : ""}::${txt.slice(i, i + 3900)}`) }
-  const M = SN.meta; log(`::notice title=nfl hof snub search::searches ${JSON.stringify(M.searched)} · ${M.pages} candidate pages (${M.fromList} from the finalists list not in the Hall) · ${M.players} players read · passed a filter but no ballot years (left out): ${M.noYears.join(", ") || "none"} · finalists-list years outside his modern-era window (left out): ${M.offEra.join("; ") || "none"} · finalists-list names that aren't a player page: ${M.notPlayer.join(", ") || "none"}${clash.length ? ` · name clash, left out: ${clash.join(", ")}` : ""} · lists: ${Object.entries(M.lists).map(([k, v]) => `${k} ${v.top.join(" … ")}`).join(" · ")}`.slice(0, 3900));
+  const M = SN.meta;
+  /* the Pro Bowl path (Sam 8:31 pm): each title on its list and what its page gave, and who's on by that path alone */
+  log(`::notice title=nfl hof pro bowl path::on by this path alone (${M.pbOnly.length}): ${M.pbOnly.join(", ") || "none"} · the list (${Object.keys(M.pbList).length}): ${((pbCands && pbCands.titles) || []).map(t => `${t}: ${M.pbList[t] || "not read"}`).join(" | ")}`.slice(0, 3900)); log(`::notice title=nfl hof snub search::searches ${JSON.stringify(M.searched)} · ${M.pages} candidate pages (${M.fromList} from the finalists list not in the Hall) · ${M.players} players read · passed a filter but no ballot years (left out): ${M.noYears.join(", ") || "none"} · finalists-list years outside his modern-era window (left out): ${M.offEra.join("; ") || "none"} · finalists-list names that aren't a player page: ${M.notPlayer.join(", ") || "none"}${clash.length ? ` · name clash, left out: ${clash.join(", ")}` : ""} · lists: ${Object.entries(M.lists).map(([k, v]) => `${k} ${v.top.join(" … ")}`).join(" · ")}`.slice(0, 3900));
   const chk = ["Barry Sanders", "Jerry Rice", "Lawrence Taylor", "Calvin Johnson", "Peyton Manning", "Jim Brown"].map(x => P[x] ? `${x}: ${P[x].t.map(t => t.join(" ")).join(", ")} · ${Object.entries(P[x].aw.reduce((o, [k]) => (o[k] = (o[k] || 0) + 1, o), {})).map(e => e.join(" ")).join(" ")}` : `${x}: missing`);
   log(`::notice title=nfl hof check::${chk.join(" | ").slice(0, 5000)}`);
   log(`::notice title=nfl hof teams::${Object.entries(TT).sort().map(([t, o]) => `${t} hof ${o.hof || 0} mvp ${o.mvp || 0} sb ${o.sb || 0} ap1 ${o.ap1 || 0} pb ${o.pb || 0}`).join(" · ").slice(0, 5800)}`);

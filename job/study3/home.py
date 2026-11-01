@@ -82,7 +82,9 @@ def tests(reg, log, sp, G, bins, sigma_hint):
         if len(S) < 30: log(f'{hyp}: only {len(S)} program-seasons'); continue
         o = yoy(S, 'team', 'v'); log(f'{hyp} {lab}: SD {S.v.std():.2f}; ' + reg_yoy(reg, hyp, f'{sp}: {lab} — repeats year to year (r)', o))
 
-def run(reg, log):
+FRAMES = {}   # the game tables, kept for findings.py (the site packs) — football and basketball
+
+def run(reg, log, do_tests=True):
     # ---------------- football ----------------
     try:
         import cfb_base
@@ -116,7 +118,8 @@ def run(reg, log):
         g['hr'] = [rk_before(t, int(s), int(w)) for t, s, w in zip(g.home, g.season, g.week)]
         g['ar'] = [rk_before(t, int(s), int(w)) for t, s, w in zip(g.away, g.season, g.week)]
         g['hr'] = pd.to_numeric(g.hr); g['ar'] = pd.to_numeric(g.ar); g['conf'] = g.conf_game
-        tests(reg, log, 'football', g[['gid', 'season', 'home', 'away', 'margin', 'exp_srs', 'exp_line', 'conf', 'hr', 'ar']], [0, 3, 7, 14, 21, 1e9], 15.0)
+        FRAMES['football'] = g[['gid', 'season', 'home', 'away', 'margin', 'exp_srs', 'exp_line', 'conf', 'hr', 'ar']].copy()
+        if do_tests: tests(reg, log, 'football', FRAMES['football'], [0, 3, 7, 14, 21, 1e9], 15.0)
     except Exception as e:
         import traceback; log('home football FAILED: ' + repr(e)[:300] + ' | ' + traceback.format_exc()[-1500:])
     # ---------------- basketball ----------------
@@ -153,6 +156,7 @@ def run(reg, log):
             i = np.searchsorted(np.array(ds, dtype='datetime64[ns]'), np.datetime64(d_.tz_convert(None)), side='left') - 1
             return RK[(s_, ds[i])].get(t, np.nan) if i >= 0 else np.nan
         G['hr'] = [before(t, s_, d_) for t, s_, d_ in zip(G.home, G.season, G.date)]; G['ar'] = [before(t, s_, d_) for t, s_, d_ in zip(G.away, G.season, G.date)]
-        tests(reg, log, 'basketball', G[['gid', 'season', 'home', 'away', 'margin', 'exp_srs', 'exp_line', 'conf', 'hr', 'ar']], [0, 3, 6, 10, 15, 1e9], 11.0)
+        FRAMES['basketball'] = G[['gid', 'season', 'home', 'away', 'margin', 'exp_srs', 'exp_line', 'conf', 'hr', 'ar', 'date']].copy()
+        if do_tests: tests(reg, log, 'basketball', FRAMES['basketball'].drop(columns='date'), [0, 3, 6, 10, 15, 1e9], 11.0)
     except Exception as e:
         import traceback; log('home basketball FAILED: ' + repr(e)[:300] + ' | ' + traceback.format_exc()[-1500:])

@@ -13,7 +13,7 @@ D, part = sys.argv[1], int(sys.argv[2])
 OUT = os.path.join(D, 'results.b64'); PIECE = 3900
 
 def emit(start):
-    if not os.path.exists(OUT): print('::warning title=study results::no results file'); return
+    if not os.path.exists(OUT): print('study results: no results file (a findings-only run has none)'); return
     s = open(OUT).read(); n = (len(s) + PIECE - 1) // PIECE
     for i in range(start, min(start + 10, n)): print(f'::notice title=study results {i + 1:02d}/{n:02d}::{s[i * PIECE:(i + 1) * PIECE]}')
     if part == 3 and n > 30: print(f'::warning title=study results::{n} pieces, only 30 printed — trim the log')
@@ -34,6 +34,7 @@ import cfb_base, cfb_teams, cfb_players, cfb_box, cfb_plays, cbb, home
 try: FOCUS = json.load(open(os.path.join(D, 'manifest.json'))).get('focus')
 except Exception: FOCUS = None
 log(f'focus: {FOCUS or "everything"}')
+if FOCUS == 'findings': print('focus:findings — no hunt analysis this run; findings.py builds the packs'); sys.exit(0)
 # "focus:home" (Nov 1 follow-up): only the home-edge tests, so this follow-up's BH pass covers its own tests
 base = step('home', home.run, reg, log) if FOCUS == 'home' else step('base', cfb_base.build)
 if base and FOCUS != 'home':

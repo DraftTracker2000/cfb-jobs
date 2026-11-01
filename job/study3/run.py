@@ -60,7 +60,7 @@ if len(R):
 # hypothesis's best 3 names; details cut to 200 characters
 if len(R):
     nm = R[R.kind == 'named'].sort_values('p')
-    keep = pd.concat([R[R.kind != 'named'], nm[(nm.p < .01) | nm.survives].groupby('hyp').head(25), nm.groupby('hyp').head(3)]).drop_duplicates(['hyp', 'label'])
+    keep = pd.concat([R[R.kind != 'named'], nm[(nm.p < .01) | nm.survives].groupby('hyp').head(25), nm.groupby('hyp').head(3), nm[nm.label.str.contains('Tom Izzo|Dan Hurley|Kyle Smith|Jamie Dixon')] if FOCUS == 'bbdev' else nm.head(0)]).drop_duplicates(['hyp', 'label'])
     keep = keep.assign(detail=keep.detail.astype(str).str.slice(0, 200))
 else: keep = R
 try: man = json.load(open(os.path.join(D, 'manifest.json')))

@@ -31,12 +31,9 @@ def run(reg, log, data_dir):
     S = S[S['min'] >= 200].drop_duplicates(['pid', 'season'])
     met = 'bx40' if S.bx40.notna().mean() > .5 else 'p40'
     log(f'cbb: {len(S)} player-seasons with 200+ minutes, {int(S.season.min())}-{int(S.season.max())}; metric {met}')
-    ro = frame('bb_roster', flat=False); start = {}
-    if len(ro) and 'players' in ro:
-        for L in ro.players:
-            for p in L if isinstance(L, list) else []:
-                if p.get('startSeason'): start[str(p.get('id'))] = p['startSeason']
-    S['yr'] = S.season - S.pid.map(start) + 1
+    # year in school fixed Nov 1 (bbyears.py): roster startSeason restarts at a transfer and is cut off where CBBD's rosters begin
+    import bbyears; _a = num(pick(s, 'minutes')) > 0
+    S['yr'] = S.season - S.pid.map(bbyears.first_season(pick(s, 'athleteId').astype(str)[_a], num(pick(s, 'season', '_year'))[_a])) + 1
     srs = frame('bb_srs'); sr = pd.DataFrame({'tid': pick(srs, 'teamId').astype(str), 'season': num(pick(srs, 'season', '_year')), 'srs': num(pick(srs, 'rating'))}).dropna().drop_duplicates(['tid', 'season']).set_index(['tid', 'season']).srs
     CO = coaches(data_dir); log(f'cbb coaches pack: {len(CO)} team-seasons; matched to stat teams {np.mean([(t, int(y)) in CO for t, y in zip(S.tid, S.season)]):.2f}')
     a = S[['pid', 'season', 'tid', 'pos', 'yr', met]]; b = a.copy(); b['season'] -= 1

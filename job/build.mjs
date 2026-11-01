@@ -29,8 +29,9 @@
               next to the live one → pYYYY_grtest, packs only
      oltest   the OL draft chance: every FBS lineman, refit and graded → pYYYY_oltest + pYYYY_olgrade, packs only (weekly, Wednesday)
      avail    NFL availability only (weekly roster status 2016 on → weeks active / injured / away), a few minutes; also runs with weekly and history
-     study    pattern hunt 3 (job/study.mjs, Nov 1 — the owner 10:25 pm: study calls OK): CFBD/CBBD pulls for a study, encrypted to study-out/ (a run
-              artifact), nothing written to packs; STUDY picks batches; stops at STUDY_FLOOR calls left (default 46,000)
+     study    pattern hunt 3 (job/study.mjs, Nov 1 — the owner 10:25 pm: study calls OK; 10:45 pm: keep everything): CFBD/CBBD pulls, every answer
+              archived as study-only packs p<Y>_study-… (admin and job only); the analysis runs on the runner and prints only results;
+              STUDY picks batches; stops at STUDY_FLOOR calls left (default 46,000)
      prefetch finished-season CFBD answers pulled once and kept for good as builder-cache packs (job/prefetch.mjs, Oct 30): plays 2014–25,
               games/players 2021–25, the defender-grade pulls 2011–25; always the Lab page; stops at 4,000 CFBD calls left;
               PREFETCH_DRY=1 lists what it would ask for (no browser, no CFBD call) → packs only
@@ -194,8 +195,8 @@ async function main() {
     if (!todo.length) { await report(true, "pbpfill · nothing to fill"); return }
     PBF = { M, plan, idx, getPack } }
 
-  /* MODE=study: pattern hunt 3's college pulls (job/study.mjs) — read through the proxy with the probe sign-in, sealed into study-out/ for
-     the run artifact, no packs written; the run's CFBD total goes on the report like every run's */
+  /* MODE=study: pattern hunt 3's college pulls (job/study.mjs) — read through the proxy with the probe sign-in, archived as study-only packs,
+     analysed on the runner (job/study3); the run's CFBD total goes on the report like every run's */
   if (MODE === "study") { const { runStudy } = await import("./study.mjs");
     const d = await runStudy({ site: SITE, token: sess.token, job: JOB, log: x => console.log(x) });
     await report(true, `study · ${d.batches} batches · ${d.calls} calls (CFBD + CBBD) · ${d.keptMB} MB of finished-season answers newly kept by the proxy`); return }

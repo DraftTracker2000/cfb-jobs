@@ -91,10 +91,12 @@ def run(reg, log, data_dir):
         HH = TG[~TG.neutral]; hs = HH.groupby(['season', 'team', 'home']).margin.mean().unstack(); Sh = (hs[1.0] - hs[0.0]).rename('v').reset_index()
         o = yoy(Sh, 'team', 'v'); log(f'B05 basketball home edge SD {Sh.v.std():.2f}; ' + reg_yoy(reg, 'B05', 'Basketball program home edge (home margin minus road margin)', o))
         HH = HH.assign(sc=np.where(HH.home == 1, HH.over, -HH.over)); HH['sc'] = HH.sc - HH.groupby('season').sc.transform('mean')
-        Tn, fam = named(reg, 'B05', 'Basketball program home edge beyond SRS (half of home-minus-road)', HH, 'team', 'sc', min_seasons=10, unit='points')
+        tnm = dict(zip(S.tid, S.team)); HH['tname'] = HH.team.map(lambda t: tnm.get(t, t))
+        Tn, fam = named(reg, 'B05', 'Basketball program home edge beyond SRS (half of home-minus-road)', HH, 'tname', 'sc', min_seasons=10, unit='points')
         if len(Tn): log(Tn.sort_values('p').head(8)[['name', 'ns', 'n', 'est', 'p', 'same_sign', 'oos', 'loo']].round(3).to_string())
         TG['mo'] = TG.date.dt.month; TG['late'] = np.where(TG.mo.isin([2, 3]), 1, np.where(TG.mo.isin([11, 12]), -1, 0))
-        L = TG[TG.late != 0]; ls = L.groupby(['season', 'team', 'late']).over.mean().unstack(); Sl = (ls[1] - ls[-1]).rename('v').reset_index()
+        L = TG[(TG.late != 0) & ((TG.hs - TG.as_).abs() <= 10)];   # competitive games only: blowouts of weak teams fall short of the SRS gap
+        ls = L.groupby(['season', 'team', 'late']).over.mean().unstack(); Sl = (ls[1] - ls[-1]).rename('v').reset_index()
         o = yoy(Sl, 'team', 'v'); log('B06 ' + reg_yoy(reg, 'B06', 'Basketball late riser (Feb-Mar margin beyond SRS minus Nov-Dec)', o))
     # B07 recruits' first two seasons beyond their rating, by head coach at signing
     rc = frame('bb_recruits')
@@ -106,6 +108,7 @@ def run(reg, log, data_dir):
         R['got'] = R.pid.map(first2).fillna(S[met].quantile(.05))
         R['rb'] = pd.qcut(R.rating.rank(method='first'), 10, labels=False); R['res'] = R.got - R.groupby('rb').got.transform('mean')
         R['coach'] = [CO.get((t, int(y) + 1)) for t, y in zip(R.tid, R.year)]; R['season'] = R.year.astype(int)
+        log(f'B07 coach found for {R.coach.notna().mean():.2f} of recruits; sample team ids {list(R.tid.head(3))}; coach keys {list(CO)[:3]}')
         Tn, fam = named(reg, 'B07', 'Basketball staff whose recruits beat their rating in their first two seasons', R.dropna(subset=['coach']), 'coach', 'res', min_seasons=6, min_rows=20, g='pid', unit=met)
         log(f'B07: {len(R)} recruits; split-half r {fam[0]:.2f} ({fam[2]})')
         if len(Tn): log(Tn.sort_values('p').head(6)[['name', 'ns', 'n', 'est', 'p', 'oos', 'loo']].round(4).to_string())

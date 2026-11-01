@@ -110,8 +110,8 @@ def run(reg, log, G, T, CO, TS, P=None):
                 r_ = mech(reg, 'P06', f'Portal stars predict post-transfer {c} beyond prior production (per star)', x.res, x.stars, x.pid, x.season + 1, unit='share per star',
                           detail=f'{len(x)} portal movers matched by name and school')
                 log(f'P06 {c}: ' + r_['d'])
-    except Exception:
-        log('cfb_players section 1 FAILED: ' + traceback.format_exc()[-1200:])
+    except Exception as e:
+        log('cfb_players section 1 FAILED: ' + repr(e)[:300] + ' | ' + traceback.format_exc()[-1500:])
     # ---------------- freshman -> sophomore ----------------
     try:
         rc = frame('cf_recruits')
@@ -154,8 +154,8 @@ def run(reg, log, G, T, CO, TS, P=None):
                 Tn, fam = named(reg, 'P08', 'Head coach whose sophomores jump (z-score of the jump beyond the level)', F.dropna(subset=['coach']), 'coach', 'res', min_seasons=6, g='pid', unit='z')
                 log(f'P08 split-half r {fam[0]:.2f} ({fam[2]})')
                 if len(Tn): log(Tn.sort_values('p').head(6)[['name', 'ns', 'n', 'est', 'p', 'oos', 'loo']].round(3).to_string())
-    except Exception:
-        log('cfb_players section 2 FAILED: ' + traceback.format_exc()[-1200:])
+    except Exception as e:
+        log('cfb_players section 2 FAILED: ' + repr(e)[:300] + ' | ' + traceback.format_exc()[-1500:])
     # ---------------- returning production ----------------
     try:
         rp = P[['pid', 'season', 'team', 'yds', 'team_yds']].copy(); nx_ = rp[['pid', 'season', 'team']].copy(); nx_['season'] -= 1; nx_['back'] = 1
@@ -168,8 +168,8 @@ def run(reg, log, G, T, CO, TS, P=None):
             r_ = coef(reg, 'P09', 'Returning offensive production predicts next season (SRS change per 100% returning)', J.chg, [J.ret, J.srs], ['ret', 'srs'], J.team, J.season + 1, 'ret',
                       unit='SRS points', detail=f'{len(J)} team-seasons; controls this season\'s SRS (regression to the mean)')
             log('P09 ' + r_['d'])
-    except Exception:
-        log('cfb_players section 3 FAILED: ' + traceback.format_exc()[-1200:])
+    except Exception as e:
+        log('cfb_players section 3 FAILED: ' + repr(e)[:300] + ' | ' + traceback.format_exc()[-1500:])
     # ---------------- recruiting hit rates by staff (drafted beyond rating) ----------------
     try:
         dr = pd.read_csv(os.path.join(HERE, 'nfl_draft.csv'), comment='#')
@@ -194,8 +194,8 @@ def run(reg, log, G, T, CO, TS, P=None):
             x = X.dropna(subset=['instate'])
             r_ = mech(reg, 'P11', 'In-state recruits are drafted beyond their rating', x.res, x.instate, x.rid, x.season + 4, unit='draft rate', detail=f'{len(x)} recruits; in-state {x.instate.mean():.2f}')
             log('P11 ' + r_['d'])
-    except Exception:
-        log('cfb_players section 4 FAILED: ' + traceback.format_exc()[-1200:])
+    except Exception as e:
+        log('cfb_players section 4 FAILED: ' + repr(e)[:300] + ' | ' + traceback.format_exc()[-1500:])
     # ---------------- college -> NFL (nflverse draft + round-1 starter rate) ----------------
     try:
         nf = pd.read_csv(os.path.join(HERE, 'nfl_start4.csv'), comment='#'); nf['nm'] = nf.name.map(norm_name); nf['sch'] = nf.college.map(school)
@@ -203,6 +203,12 @@ def run(reg, log, G, T, CO, TS, P=None):
         last = P.sort_values('season').drop_duplicates(['pid', 'team'], keep='last')
         M = nf.merge(last, left_on=['nm', 'sch'], right_on=['nm', 'team'], how='left', suffixes=('', '_c'))
         M = M[(M.season.isna()) | (M.season.between(M.draft_year - 2, M.draft_year - 1))].sort_values('season').drop_duplicates('gsis_id', keep='last')
+        # fallback: the same name, unique among college players whose last season was the year before the draft (school names differ)
+        un = last.assign(ly=last.season + 1).groupby(['nm', 'ly']).filter(lambda d: len(d) == 1)
+        miss = M[M.season.isna()][nf.columns.tolist()].merge(un, left_on=['nm', 'draft_year'], right_on=['nm', 'ly'], suffixes=('', '_c'))
+        M = pd.concat([M[M.season.notna()], miss, M[M.season.isna() & ~M.gsis_id.isin(miss.gsis_id)]]).drop_duplicates('gsis_id')
+        um = M[M.season.isna()].college.value_counts().head(12)
+        log('N unmatched colleges (top): ' + ', '.join(f'{k} {v}' for k, v in um.items()))
         log(f'N: {len(nf)} picks 2002-20; matched to a college line {M.season.notna().mean():.2f}')
         cs = TS.set_index(['team', 'season']).conf
         M['conf'] = [cs.get((t, s)) if isinstance(t, str) else None for t, s in zip(M.sch, M.draft_year - 1)]
@@ -251,5 +257,5 @@ def run(reg, log, G, T, CO, TS, P=None):
         # N10 3 or fewer college seasons with stats
         nseas = P.groupby('pid').season.nunique(); M['early'] = (M.pid.map(nseas) <= 3).astype(float).where(M.pid.notna())
         nt('N10', 'Drafted after 3 or fewer college seasons with stats beats the slot', M, 'early', 'starter rate')
-    except Exception:
-        log('cfb_players section 5 FAILED: ' + traceback.format_exc()[-1200:])
+    except Exception as e:
+        log('cfb_players section 5 FAILED: ' + repr(e)[:300] + ' | ' + traceback.format_exc()[-1500:])

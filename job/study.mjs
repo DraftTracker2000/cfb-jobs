@@ -5,38 +5,19 @@
    - Reads CFBD through the site's proxy (/api/cfbd, with the run's probe sign-in, so answers the proxy already keeps cost no call) and
      CBBD through the basketball door (/api/job/cbbd, job token). Path strings for plays, box scores, rosters, recruits and player
      stats are written exactly as the page's builders and job/prefetch.mjs write them, so already-kept answers are reused.
-   - Writes NOTHING to packs. Each batch is gzipped and encrypted to the study's public key below (RSA-OAEP-SHA256 wrapping a random
-     AES-256-GCM key) into study-out/, which the workflow uploads as a short-lived run artifact. This repo is public: the files are
-     unreadable without the private key, which stays on the analysis machine. study-out/manifest.json (plain) holds only counts.
+   - Writes NOTHING to packs and uploads no raw data: each batch goes to study-data/ on the runner's own disk (gone when the run ends), and
+     the workflow's next steps run the analysis (job/study3/*.py, published from cfb-board docs/research/patternhunt3/) and print only
+     results, as notices. This repo is public, so only aggregate results leave the runner.
    - What the site stores anyway: the proxy keeps every finished-season answer under 20 MB in its KV for good (src/cfbd.js, "past:cfbd"),
      for every caller. The notices give, per batch, how many answers were new to KV and their size.
    - Budget: before each batch the pool's calls-left is read (/info, free). A batch is skipped when calls-left minus the batch's size would
      go under STUDY_FLOOR (default 46,000: 40,000 kept for the site's own runs + 6,000 for another job tonight), or when this run's calls
      would pass STUDY_CAP (default 20,000). Calls used per batch = the counter before minus after (CFBD and CBBD share one pool).
+   - GitHub keeps 10 notices a step, 4,096 characters each (measured Nov 1, t_echo), so the batch lines and the field list are packed
+     into a few notices.
    STUDY = comma list of batch names (empty = all). */
 import { gzipSync } from "node:zlib";
-import { publicEncrypt, randomBytes, createCipheriv, constants } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-
-const PUB = `-----BEGIN PUBLIC KEY-----
-MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEArh3C8VbuQo906Fg1aUJQ
-Y3GkTJ640gYFgMqTdO2BbDv1dI4WVIcZzLlzneYNiao4bLcMtvNHZixoCQrZFZFf
-zX8nTvH7EsuzGQkPvIvcHW3MJMSFvYNY9su6FPPHpIDruZIuUf9S4/c3ecw+9XsM
-N4SxSX5q6zBgxjup0XdZRBKbl6dODYmMTQ1cIcloQxv/kY+TldKQZ3u6jsSUzi6H
-fCUs0mJv+J+KpnNRSe+/qdbDpxoY1+d6wg9KJVQzM7yoNFXuN3NWuIzoZwvpTmR5
-L8NnIIr9HmZiKkmg+k88y2qxBD/8siRHMeDioR/AP+ntG0Rd/0jds4fd181gGOFi
-ioBFfiNqy6FGrOHo0jXWU8Cbmn9Ze6SEZq/AxUDXoPZmlj5LRLVK0q+qDGsurv53
-qG+/8JM9zOckuz9Yna5eJZVaL1Lm96ykeJVI15JP3AKZRj0zfH+mOiarD19nJ6H+
-243rZKRdbvLj36jxQiaIBBNZWoi5O3NnsS6ALQNQqAvF1SSBT+2GJIR8PGf1w0Fo
-lvjmj1Mg2Y6U5BJuSqazGSmYJzLEDJVCEO2l3ZddOLib742VrcAuhS/KXIhqaCfy
-nq2Bsp5+6nkdZ/3SxvCX/s7qaeFKxKYVn/kTbfKXPY5UdCexcbrpSlCAfhy5Xfq4
-nfbYxRX3TBhMiBySlcGzud0CAwEAAQ==
------END PUBLIC KEY-----`;
-export function seal(buf) {
-  const k = randomBytes(32), iv = randomBytes(12), c = createCipheriv("aes-256-gcm", k, iv);
-  const body = Buffer.concat([c.update(buf), c.final()]), tag = c.getAuthTag();
-  const wk = publicEncrypt({ key: PUB, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" }, k);
-  const h = Buffer.alloc(2); h.writeUInt16BE(wk.length); return Buffer.concat([h, wk, iv, tag, body]) }
 
 const R = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 const W16 = R(1, 16);
@@ -91,7 +72,12 @@ export function batches(cur) {
   ];
 }
 
-export async function runStudy({ site, token, job, log = console.log, out = "study-out" }) {
+/* the field list of one answer row (names, with nested names one level down and a short value), for writing the analysis */
+const shape = x => { if (x == null || typeof x !== "object") return JSON.stringify(x)?.slice(0, 24);
+  if (Array.isArray(x)) return "[" + (x.length ? shape(x[0]) : "") + "]";
+  return "{" + Object.entries(x).map(([k, v]) => k + ":" + (v && typeof v === "object" ? (Array.isArray(v) ? "[" + (v.length && typeof v[0] === "object" ? Object.keys(v[0]).join("|") : "") + "]" : "{" + Object.keys(v).join("|") + "}") : JSON.stringify(v)?.slice(0, 18))).join(",") + "}" };
+const pack = (L, max) => { const out = []; let s = ""; for (const x of L) { if ((s + x).length > 3900) { out.push(s); s = "" } s += x + " ‖ " } if (s) out.push(s); return out.slice(0, max) };
+export async function runStudy({ site, token, job, log = console.log, out = "study-data" }) {
   const want = String(process.env.STUDY || "").split(",").map(s => s.trim()).filter(Boolean);
   const FLOOR = +process.env.STUDY_FLOOR || 46000, CAP = +process.env.STUDY_CAP || 20000;
   const now = new Date(), cur = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;   // the proxy's season (src/cfbd.js)
@@ -110,14 +96,9 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
         if (r.status === 429) await sleep(20000) } catch (e) { } await sleep(2500 * (k + 1)) } return { j: null, status: 0, err: "failed 4 times" } };
   const left = async () => { const r = await cfGet("/info"); return r.j && r.j.remainingCalls != null ? +r.j.remainingCalls : null };
   mkdirSync(out, { recursive: true });
-  /* t_echo: how much the run's notices and step summary carry (no calls) */
-  if (want.includes("t_echo")) { for (let i = 0; i < 30; i++) log(`::notice title=echo ${i}::${String(i).padStart(3, "0")} ` + "x".repeat(i < 3 ? 60000 : 6000));
-    for (let i = 0; i < 12; i++) log(`::warning title=echo w${i}::` + "w".repeat(3000));
-    if (process.env.GITHUB_STEP_SUMMARY) { const fs = await import("node:fs"); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, "# echo\n" + Array.from({ length: 2000 }, (_, i) => `line ${i} ` + "s".repeat(90)).join("\n")) }
-    return { batches: 0, calls: 0, keptMB: 0 } }
-  const L0 = await left(); log(`::notice title=study start::${L0 != null ? L0.toLocaleString() : "?"} calls left in the pool · floor ${FLOOR.toLocaleString()} · cap ${CAP.toLocaleString()} this run`);
+  const L0 = await left(); log(`study start: ${L0 != null ? L0.toLocaleString() : "?"} calls left in the pool · floor ${FLOOR.toLocaleString()} · cap ${CAP.toLocaleString()} this run`);
   const man = { started: Date.now(), left0: L0, floor: FLOOR, cap: CAP, batches: [] };
-  let used = 0;
+  let used = 0; const LINES = [], SCHEMA = {};
   for (const b of batches(cur).filter(b => !want.length || want.includes(b.name))) {
     const n = (b.paths || b.items).length, before = await left();
     if (before != null && before - n < FLOOR) { log(`::warning title=study ${b.name} skipped::${before} left − ${n} would pass the floor ${FLOOR}`); man.batches.push({ name: b.name, skipped: "floor" }); continue }
@@ -127,7 +108,7 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
     const year = key => +((key.match(/[?&](?:year|season)=(\d{4})/) || [])[1] || 0);
     const flush = y => { const part = Object.fromEntries(Object.entries(res).filter(([k]) => !y || year(k) === y)); if (!Object.keys(part).length) return;
       const gz = gzipSync(Buffer.from(JSON.stringify({ v: 1, batch: b.name, cols: b.name === "cf_plays" ? PLAY_COLS : undefined, data: part })));
-      writeFileSync(`${out}/${b.name}${y ? "_" + y : ""}.json.gz.enc`, seal(gz)); for (const k of Object.keys(part)) delete res[k] };
+      writeFileSync(`${out}/${b.name}${y ? "_" + y : ""}.json.gz`, gz); for (const k of Object.keys(part)) delete res[k] };
     const doneYear = new Set(); let emptyRun = {};
     for (let i = 0; i < list.length; i += 3) {
       const chunk = list.slice(i, i + 3);
@@ -135,7 +116,8 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
       for (const [key, r] of R3) {
         if (r.j == null) { errs.push(`${key} → ${r.status} ${r.err || ""}`.slice(0, 200)); continue }
         got++; bytes += r.bytes; if (r.kept) kept++; else { fresh++; const y = year(key); if (b.api === "cfbd" && y && y < cur && r.bytes > 2 && r.bytes < 20e6) newKV += r.bytes }
-        const v = b.compact ? b.compact(r.j) : r.j; if (Array.isArray(v)) rows += v.length; res[key] = v }
+        const v = b.compact ? b.compact(r.j) : r.j; if (Array.isArray(v)) rows += v.length; res[key] = v
+        if (!SCHEMA[b.name] && Array.isArray(r.j) && r.j.length) SCHEMA[b.name] = shape(r.j[Math.min(5, r.j.length - 1)]) }
       /* the season being played: stop asking for weeks that haven't happened */
       if (b.stopEmpty) { const y = year(chunk[0][0]); if (y === cur) { const empties = R3.filter(([k, r]) => /seasonType=regular/.test(k) && Array.isArray(r.j) && !r.j.length).length; emptyRun[y] = (emptyRun[y] || 0) + empties;
         if (emptyRun[y] >= 3) { const skip = list.slice(i + 3).filter(([k]) => year(k) === y && /seasonType=regular/.test(k)).map(([k]) => k); for (const k of skip) list.splice(list.findIndex(x => x[0] === k), 1) } } }
@@ -146,11 +128,13 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
     const after = await left(), calls = before != null && after != null ? before - after : fresh;
     used += calls;
     const line = `${n} asked · ${got} answered · ${kept} already kept (no call) · ${fresh} fresh · pool ${before ?? "?"} → ${after ?? "?"} = ${calls} calls · ${rows ? rows + " rows · " : ""}${(bytes / 1e6).toFixed(1)} MB read · ${(newKV / 1e6).toFixed(1)} MB newly kept in the site's KV by the proxy · ${((Date.now() - t0) / 60e3).toFixed(1)} min${errs.length ? ` · ${errs.length} errors: ${errs.slice(0, 4).join(" | ")}` : ""}`;
-    log(`::notice title=study ${b.name}::${line}`);
+    log(`study ${b.name}: ${line}`); LINES.push(`${b.name}: ${line}`);
     man.batches.push({ name: b.name, asked: n, got, kept, fresh, before, after, calls, rows, mb: +(bytes / 1e6).toFixed(2), newKVmb: +(newKV / 1e6).toFixed(2), errors: errs.slice(0, 20) });
   }
   const L1 = await left(); man.left1 = L1; man.used = used; man.cbbdLeft = lastLeft;
+  pack(LINES, 5).forEach((x, i) => log(`::notice title=study batches ${i + 1}::${x}`));
+  pack(Object.entries(SCHEMA).map(([k, v]) => `${k} ${v}`.slice(0, 1200)), 3).forEach((x, i) => log(`::notice title=study fields ${i + 1}::${x}`));
   writeFileSync(`${out}/manifest.json`, JSON.stringify(man, null, 1));
-  log(`::notice title=study done::${used.toLocaleString()} calls this run · ${L1 != null ? L1.toLocaleString() : "?"} left · ${(man.batches.reduce((a, x) => a + (x.newKVmb || 0), 0)).toFixed(1)} MB newly kept in KV`);
+  log(`study done: ${used.toLocaleString()} calls this run · ${L1 != null ? L1.toLocaleString() : "?"} left · ${(man.batches.reduce((a, x) => a + (x.newKVmb || 0), 0)).toFixed(1)} MB newly kept in KV`);
   return { batches: man.batches.length, calls: used, keptMB: +man.batches.reduce((a, x) => a + (x.newKVmb || 0), 0).toFixed(1) };
 }

@@ -95,12 +95,21 @@ jobs:
           PBPFILL_SEASONS: ${{ github.event.inputs.seasons || '' }}
         run: node job/build.mjs
 
-      # MODE=study (job/study.mjs): the study's pulls, already encrypted to the study key — kept 3 days, then GitHub deletes them
-      - name: Study output (encrypted)
-        if: always() && steps.mode.outputs.mode == 'study'
-        uses: actions/upload-artifact@v4
+      # MODE=study (job/study.mjs): the pulls sit in study-data/ on this runner only; the analysis (job/study3/, published from cfb-board
+      # docs/research/patternhunt3/) prints results as notices, 10 a step — nothing raw is uploaded, and the runner is wiped after
+      - uses: actions/setup-python@v5
+        if: steps.mode.outputs.mode == 'study'
         with:
-          name: study-out
-          path: study-out/
-          retention-days: 3
-          if-no-files-found: ignore
+          python-version: "3.12"
+      - name: Study analysis tools
+        if: steps.mode.outputs.mode == 'study'
+        run: pip install --quiet --no-input numpy==2.2.6 pandas==2.2.3 scipy==1.15.3
+      - name: Study analysis (results 1)
+        if: steps.mode.outputs.mode == 'study' && hashFiles('study-data/manifest.json') != '' && hashFiles('job/study3/run.py') != ''
+        run: python3 -I job/study3/run.py study-data 1
+      - name: Study analysis (results 2)
+        if: steps.mode.outputs.mode == 'study' && hashFiles('study-data/manifest.json') != '' && hashFiles('job/study3/run.py') != ''
+        run: python3 -I job/study3/run.py study-data 2
+      - name: Study analysis (results 3)
+        if: steps.mode.outputs.mode == 'study' && hashFiles('study-data/manifest.json') != '' && hashFiles('job/study3/run.py') != ''
+        run: python3 -I job/study3/run.py study-data 3

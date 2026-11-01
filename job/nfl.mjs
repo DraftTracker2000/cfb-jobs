@@ -13,6 +13,8 @@
                            depth, shotgun, no huddle, red zone — Oct 28)
                            and QB short yardage (qsy: designed QB runs on 3rd/4th and 1 and at the goal line 1–2, sneaks = up the middle)
                            and each offense's 4th-down tries (t4) — Oct 31
+     p<Y>_nfl-hunt         pattern hunt 1 (Oct 31): each defense against the QBs' own level, each team's TE share of targets, the targets
+                           each team lost to departures and every WR/TE/RB who changed teams — every season (huntSeason, huntMerge)
      p<Y>_nfl-picks        who owns each pick of the next three drafts (trades read from ESPN's transaction feed)
      p<Y>_nfl-teams        each season's defense: yards allowed a game (pass, run), points, and FBS-style ranks
      p<Y>_nfl-depth        this week's depth charts (offense, OL and defense), the injury report, who's on reserve, and rookies;
@@ -418,6 +420,151 @@ export async function woBuild(S, log) {
       p[rc] = [pos, W.map(w => (ST[k] && ST[k][w]) || "-").join(""), W.map(w => P[tm][rc][w] || 0)] }
     out[tm] = { w: W, n: W.map(w => G[tm][w]), p } }
   return { s: S, note: "t[team] = { w: week of each regular-season game, n: the team's targets in each, p[gsis] = [position (weekly roster, most-listed), status each game (A active, I inactive, R reserve, O on the list as something else, - not on the list), targets each game] }; targets = passes to a named receiver with a named passer, sacks and two-pointers out", t: out };
+}
+/* ── Pattern hunt 1 on the site (Oct 31, 10:10 pm — Sam, on the QB killer note, each staff's tight-end lean and the landing-spot meter: "i
+   like it if it holds up"; all three held up in docs/research/pattern-hunt-1.md). The same rules as the hunt's scripts
+   (docs/research/patternhunt/b0_base.py, b0b_targets.py, s3_usage_line.py H47, s4_moves.py H22, s6_kick_def.py H31), regular season only:
+   - qbk[defense] = [EPA a dropback vs the QB's own level × 1000, QB-games, dropbacks, spread of the games × 1000]. Each game's QB = the
+     passer with the most dropbacks (passes, sacks, scrambles; passer_id, so scrambles count), 15+ of them; a QB needs 4+ such games that
+     season. His game's EPA a dropback minus his EPA a dropback in his other such games that season; a defense's season is the dropback-
+     weighted average over the QBs it faced.
+   - te[team] = [targets to TEs, all targets]: a target = a pass with a listed receiver (receiver_id — the 2003–08 files carry no
+     receiver_player_id on incompletions), no sacks, spikes or two-point tries; TE = the players file's position.
+   - tg[team][gsis] = [targets, games he had a throw, carry or target for them]: who was on the team (the hunt: had a stat line for them).
+   Team codes are today's (OAK → LV, SD → LAC, STL → LA). One read of the season's play-by-play (the same file pbp() just read).
+   Pattern hunt 2 (Oct 31, 10:30 pm — Sam: "the ones you truly think work and then tell me what you chose after"; docs/research/
+   pattern-hunt-2.md, scripts in patternhunt2/ t1_def.py H53 H54 H56 H59, t4_coach.py H93 H97, t5_qb.py H102 H103):
+   - qp[passer] = [pressured dropbacks, their EPA × 100, clean dropbacks, their EPA × 100, sacks on pressured dropbacks]: pressure = a
+     dropback with a sack or a QB hit (hurries are NGS/PFF data and aren't used).
+   - dt[defense] = four styles, each [season value × 100, games, game-to-game spread × 100] (HUNT_DT): opposing backs' and TEs' receiving
+     PPR vs each one's own other games (5+ games), opposing offenses' air yards a throw vs their other games (12+ throws), opposing backs'
+     yards a carry vs their own (5+ games, 40+ other carries).
+   - ct[team] = [4th downs, went for it, expected go × 100 (the league's rate that season in the same distance × field zone × score band;
+     not the last 5:00 of a game or 2:00 of the first half, win chance 5–95%), games with early-down pass rate over expected, sum of those
+     games' rates × 10 (nflverse's pass_oe on 1st/2nd down, win chance 20–80%, quarters 1–3; 2006 on)]. */
+const HUNT_TM = { OAK: "LV", SD: "LAC", STL: "LA", LAR: "LA", JAC: "JAX" };
+export const HUNT_COLS = ["game_id", "season_type", "posteam", "defteam", "play_type", "pass_attempt", "sack", "qb_spike", "two_point_attempt", "qb_dropback", "epa", "passer_id", "rusher_id", "receiver_id",
+  "qb_hit", "qb_kneel", "qb_scramble", "complete_pass", "yards_gained", "pass_touchdown", "air_yards", "down", "ydstogo", "yardline_100", "score_differential", "wp", "qtr", "game_seconds_remaining", "pass_oe", "rush_touchdown"];
+export const HUNT_DT = ["rb", "te", "ay", "ru"];
+const hb = (o, k) => { const m = o[k] = o[k] || {}; return m };
+export function huntAdd(HX, o) {
+  if (o.season_type !== "REG" || !o.posteam || !o.game_id) return;
+  const tm = HUNT_TM[o.posteam] || o.posteam, df = HUNT_TM[o.defteam] || o.defteam, g = o.game_id, id = v => v && v !== "NA" ? v : null, ps = id(o.passer_id), ru = id(o.rusher_id), rc = id(o.receiver_id);
+  /* 4th downs (go, punt or kick), neutral enough to be a choice */
+  if (num(o.down) === 4 && /^(pass|run|punt|field_goal)$/.test(o.play_type || "") && o.qb_kneel !== "1") { const wp = num(o.wp), q = num(o.qtr), gs = num(o.game_seconds_remaining), tg = num(o.ydstogo), yl = num(o.yardline_100), sd = num(o.score_differential);
+    if (wp != null && wp >= .05 && wp <= .95 && !(q === 4 && gs < 300) && !(q === 2 && gs < 1920) && tg != null && yl != null && sd != null) {
+      const yb = tg <= 1 ? 0 : tg <= 2 ? 1 : tg <= 3 ? 2 : tg <= 5 ? 3 : tg <= 10 ? 4 : 5, fb = Math.max(0, Math.min(9, Math.floor(yl / 10))), sb = Math.sign(sd) * (Math.abs(sd) > 8 ? 2 : 1) * (sd === 0 ? 0 : 1);
+      const k = yb + "|" + fb + "|" + sb, go = /^(pass|run)$/.test(o.play_type) ? 1 : 0, L = HX.f4L[k] = HX.f4L[k] || [0, 0]; L[0]++; L[1] += go; const T4 = hb(HX.f4, tm), c = T4[k] = T4[k] || [0, 0]; c[0]++; c[1] += go } }
+  if (o.play_type !== "pass" && o.play_type !== "run") return; if (o.two_point_attempt === "1" || o.qb_spike === "1") return;
+  const T = HX.tg[tm] = HX.tg[tm] || {}, seen = x => { const m = T[x] = T[x] || [0, new Set()]; m[1].add(g); return m };
+  for (const x of [ps, ru, rc]) if (x) seen(x);
+  if (df) HX.gd[g + "|" + tm] = df;
+  if (o.qb_dropback === "1" && ps && df) { const k = g + "|" + tm + "|" + ps, q = HX.qg[k] = HX.qg[k] || [g, tm, df, ps, 0, 0]; q[4]++; q[5] += num(o.epa) || 0;
+    const e = num(o.epa); if (e != null) { const p = HX.qp[ps] = HX.qp[ps] || [0, 0, 0, 0, 0], pr = o.sack === "1" || o.qb_hit === "1"; if (pr) { p[0]++; p[1] += e; if (o.sack === "1") p[4]++ } else { p[2]++; p[3] += e } } }
+  if (o.play_type === "pass" && o.pass_attempt === "1" && o.sack !== "1" && rc) { seen(rc)[0]++;
+    if (o.complete_pass === "1") { const r = hb(HX.rec, tm + "|" + rc); r[g] = (r[g] || 0) + 1 + .1 * (num(o.yards_gained) || 0) + (o.pass_touchdown === "1" ? 6 : 0) } }
+  if (o.play_type === "pass" && o.pass_attempt === "1" && o.sack !== "1" && num(o.air_yards) != null && df) { const a = HX.ay[g + "|" + tm] = HX.ay[g + "|" + tm] || [0, 0]; a[0] += num(o.air_yards); a[1]++ }
+  if (o.play_type === "run" && o.qb_scramble !== "1" && ru) { const r = hb(HX.car, tm + "|" + ru), x = r[g] = r[g] || [0, 0, 0]; x[0]++; x[1] += num(o.yards_gained) || 0; if (o.rush_touchdown === "1") x[2]++ }
+  const dn = num(o.down), wp = num(o.wp), po = num(o.pass_oe); if ((dn === 1 || dn === 2) && po != null && wp != null && wp >= .2 && wp <= .8 && num(o.qtr) <= 3) { const x = HX.pe[g + "|" + tm] = HX.pe[g + "|" + tm] || [0, 0]; x[0] += po; x[1]++ }
+}
+const huntSd = (s1, s2, n) => n > 1 ? Math.sqrt(Math.max(0, (s2 - s1 * s1 / n) / (n - 1))) : null;
+export function huntOut(HX, POS = {}) {
+  const pos = id => { const p = String(POS[id] || "").toUpperCase(); return p === "FB" || p === "HB" ? "RB" : p };
+  /* defense styles: one value per defense-game, then each defense's season */
+  const DG = {}, dg = (k, def, g, v, w = 1) => { const D = hb(hb(DG, k), def), x = D[g] = D[g] || [0, 0]; x[0] += v; x[1] += w };
+  for (const key in HX.rec) { const [t, id] = key.split("|"), P = pos(id); if (P !== "RB" && P !== "TE") continue; const G0 = HX.tg[t] && HX.tg[t][id]; if (!G0) continue; const gs = [...G0[1]], n = gs.length; if (n < 5) continue;
+    const fp = HX.rec[key], tot = gs.reduce((a, g) => a + (fp[g] || 0), 0); for (const g of gs) { const def = HX.gd[g + "|" + t]; if (def) dg(P === "RB" ? "rb" : "te", def, g, (fp[g] || 0) - (tot - (fp[g] || 0)) / (n - 1)) } }
+  /* backs who appear in a game without a catch count too (0 points that game) */
+  for (const t in HX.tg) for (const id in HX.tg[t]) { const P = pos(id); if ((P !== "RB" && P !== "TE") || HX.rec[t + "|" + id]) continue; const gs = [...HX.tg[t][id][1]]; if (gs.length < 5) continue; for (const g of gs) { const def = HX.gd[g + "|" + t]; if (def) dg(P === "RB" ? "rb" : "te", def, g, 0) } }
+  for (const key in HX.car) { const [t, id] = key.split("|"); if (pos(id) !== "RB") continue; const C = HX.car[key], gs = Object.keys(C); if (gs.length < 5) continue; const sc = gs.reduce((a, g) => a + C[g][0], 0), sy = gs.reduce((a, g) => a + C[g][1], 0);
+    for (const g of gs) { const oc = sc - C[g][0]; if (oc < 40) continue; const def = HX.gd[g + "|" + t]; if (def) dg("ru", def, g, C[g][1] - C[g][0] * (sy - C[g][1]) / oc, C[g][0]) } }
+  { const O = {}; for (const k in HX.ay) { const [g, t] = k.split("|"), a = HX.ay[k]; if (a[1] < 12) continue; const o = O[t] = O[t] || [0, 0]; o[0] += a[0]; o[1] += a[1] }
+    for (const k in HX.ay) { const [g, t] = k.split("|"), a = HX.ay[k]; if (a[1] < 12) continue; const o = O[t], def = HX.gd[k]; if (!def || o[1] - a[1] <= 0) continue; dg("ay", def, g, (a[0] / a[1] - (o[0] - a[0]) / (o[1] - a[1])) * a[1], a[1]) } }
+  const dt = {}; for (const k of HUNT_DT) for (const def in DG[k] || {}) { const L = Object.values(DG[k][def]), n = L.length, sw = L.reduce((a, x) => a + x[1], 0), v = k === "rb" || k === "te" ? L.reduce((a, x) => a + x[0], 0) / n : L.reduce((a, x) => a + x[0], 0) / sw;
+    const per = L.map(x => k === "rb" || k === "te" ? x[0] : x[0] / x[1]), sd = huntSd(per.reduce((a, b) => a + b, 0), per.reduce((a, b) => a + b * b, 0), n), r = dt[def] = dt[def] || new Array(HUNT_DT.length * 3).fill(null), i = 3 * HUNT_DT.indexOf(k);
+    r[i] = Math.round(100 * v); r[i + 1] = n; r[i + 2] = sd == null ? null : Math.round(100 * sd) }
+  /* his team = the one he had the most games for */
+  const main = id => { let b = null, n = -1; for (const t in HX.tg) { const x = HX.tg[t][id]; if (x && x[1].size > n) { n = x[1].size; b = t } } return b };
+  const qp = {}; for (const id in HX.qp) { const p = HX.qp[id]; if (p[0] + p[2] >= 50) qp[id] = [p[0], Math.round(100 * p[1]), p[2], Math.round(100 * p[3]), p[4], main(id)] }
+  /* the year-2 test's table: each WR, TE and RB on one team, 4+ games → [gsis, team, games, PPR a game × 10] (catches, receiving and rushing
+     yards and touchdowns from the play-by-play; fumbles and two-pointers aren't in it) */
+  const ys = []; { const on = {}; for (const t in HX.tg) for (const id in HX.tg[t]) (on[id] = on[id] || []).push(t);
+    for (const id in on) { const P = pos(id); if (!/^(WR|TE|RB)$/.test(P) || on[id].length !== 1) continue; const t = on[id][0], gs = HX.tg[t][id][1]; if (gs.size < 4) continue;
+      const R = HX.rec[t + "|" + id] || {}, C = HX.car[t + "|" + id] || {}; let fp = 0; for (const g of gs) { fp += R[g] || 0; const c = C[g]; if (c) fp += .1 * c[1] + 6 * c[2] } ys.push([id, t, gs.size, Math.round(10 * fp / gs.size), P]) } }
+  const ct = {}; for (const t in HX.tg) { const F = HX.f4[t] || {}; let n = 0, go = 0, ex = 0; for (const k in F) { const L = HX.f4L[k]; n += F[k][0]; go += F[k][1]; ex += F[k][0] * L[1] / L[0] }
+    const E = Object.entries(HX.pe).filter(([k]) => k.split("|")[1] === t); ct[t] = [n, go, Math.round(100 * ex), E.length, Math.round(10 * E.reduce((a, [, x]) => a + x[0] / x[1], 0))] }
+  /* the game's QB: most dropbacks for that offense (ties: the passer id that sorts first), 15+ */
+  const gq = {}; for (const q of Object.values(HX.qg)) { const k = q[0] + "|" + q[1], b = gq[k]; if (!b || q[4] > b[4] || (q[4] === b[4] && q[3] < b[3])) gq[k] = q }
+  const R = Object.values(gq).filter(q => q[4] >= 15), S = {}; for (const q of R) { const s = S[q[3]] = S[q[3]] || [0, 0, 0]; s[0] += q[5]; s[1] += q[4]; s[2]++ }
+  const D = {}; for (const q of R) { const s = S[q[3]]; if (s[2] < 4) continue; const eff = q[5] / q[4] - (s[0] - q[5]) / (s[1] - q[4]), d = D[q[2]] = D[q[2]] || [0, 0, 0, 0, 0]; d[0] += eff * q[4]; d[1] += q[4]; d[2]++; d[3] += eff; d[4] += eff * eff }
+  const qbk = {}; for (const t in D) { const [ws, w, n, s1, s2] = D[t], m = s1 / n, sd = n > 1 ? Math.sqrt(Math.max(0, (s2 - n * m * m) / (n - 1))) : null; qbk[t] = [Math.round(1000 * ws / w), n, w, sd == null ? null : Math.round(1000 * sd)] }
+  const tg = {}, te = {}; for (const t in HX.tg) { const o = tg[t] = {}; let a = 0, e = 0; for (const id in HX.tg[t]) { const [n, gs] = HX.tg[t][id]; o[id] = [n, gs.size]; a += n; if (String(POS[id] || "").toUpperCase() === "TE") e += n } te[t] = [e, a] }
+  return { qbk, te, tg, qp, dt, ct, ys };
+}
+/* the hunt's year-2 test (patternhunt/s10_checks.py yr2), re-run from the table on every write: next season's PPR a game minus this
+   season's, for the same player (one team each season, 4+ games both), on age (21–34, one-year bins), season and two indicators — his
+   year 1 → 2 and year 2 → 3 (veterans are the baseline); standard errors clustered by player. Also the later half of the rookie classes
+   alone, and the last four seasons' changes alone. YS[season] = rows; BORN[gsis] = "YYYY-MM-DD"; ROOK[gsis] = rookie season. */
+function huntOls(X, y, cl) {
+  const n = y.length, k = X[0].length, A = Array.from({ length: k }, () => new Float64Array(k)), b0 = new Float64Array(k);
+  for (let i = 0; i < n; i++) { const x = X[i]; for (let a = 0; a < k; a++) { if (!x[a]) continue; b0[a] += x[a] * y[i]; for (let c = 0; c < k; c++) if (x[c]) A[a][c] += x[a] * x[c] } }
+  /* invert (Gauss–Jordan with a tiny ridge for empty dummies) */
+  const M = A.map((r, i) => { const z = Array.from(r); z[i] += 1e-9; return z.concat(Array.from({ length: k }, (_, j) => j === i ? 1 : 0)) });
+  for (let c = 0; c < k; c++) { let p = c; for (let r = c + 1; r < k; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r; [M[c], M[p]] = [M[p], M[c]]; const d = M[c][c]; if (Math.abs(d) < 1e-12) continue;
+    for (let j = 0; j < 2 * k; j++) M[c][j] /= d; for (let r = 0; r < k; r++) if (r !== c && M[r][c]) { const f = M[r][c]; for (let j = 0; j < 2 * k; j++) M[r][j] -= f * M[c][j] } }
+  const I = M.map(r => r.slice(k)), b = I.map(r => r.reduce((a, v, j) => a + v * b0[j], 0));
+  const S = {}; for (let i = 0; i < n; i++) { const u = y[i] - X[i].reduce((a, v, j) => a + v * b[j], 0), s = S[cl[i]] = S[cl[i]] || new Float64Array(k); for (let a = 0; a < k; a++) s[a] += X[i][a] * u }
+  const G = Object.keys(S).length, mid = Array.from({ length: k }, () => new Float64Array(k)); for (const s of Object.values(S)) for (let a = 0; a < k; a++) if (s[a]) for (let c = 0; c < k; c++) mid[a][c] += s[a] * s[c];
+  const V = I.map(r => Array.from({ length: k }, (_, c) => { let v = 0; for (let a = 0; a < k; a++) if (r[a]) for (let d = 0; d < k; d++) v += r[a] * mid[a][d] * I[d][c]; return v * G / Math.max(G - 1, 1) }));
+  return { b, se: b.map((_, i) => Math.sqrt(Math.max(0, V[i][i]))), G };
+}
+export function huntY2(YS, BORN = {}, ROOK = {}) {
+  const by = {}; for (const s in YS) for (const r of YS[s] || []) (by[r[0]] = by[r[0]] || {})[s] = r;
+  const out = {}, posOf = {}; for (const s in YS) for (const r of YS[s]) posOf[r[0]] = r[4];
+  for (const P of ["WR", "TE", "RB"]) {
+    const rows = []; for (const id in by) { if (posOf[id] !== P) continue; const rk = ROOK[id], bd = BORN[id] ? Date.parse(BORN[id]) : NaN; if (!(rk >= 1999) || !isFinite(bd)) continue;
+      for (const s in by[id]) { const a = by[id][s], c = by[id][+s + 1]; if (!c) continue; const exp = +s - rk + 1; if (exp < 1) continue;
+        rows.push({ id, s: +s, rk, exp, age: (Date.parse(s + "-09-01") - bd) / 31557600000, dy: (c[3] - a[3]) / 10 }) } }
+    const fit = R => { if (R.length < 80) return null; const ages = [...new Set(R.map(r => Math.round(Math.min(34, Math.max(21, r.age)))))].sort((a, b) => a - b).slice(1), ss = [...new Set(R.map(r => r.s))].sort((a, b) => a - b).slice(1);
+      const X = R.map(r => { const a = Math.round(Math.min(34, Math.max(21, r.age))); return [1, r.exp === 1 ? 1 : 0, r.exp === 2 ? 1 : 0, ...ages.map(v => a === v ? 1 : 0), ...ss.map(v => r.s === v ? 1 : 0)] });
+      const f = huntOls(X, R.map(r => r.dy), R.map(r => r.id)); return { b: Math.round(1000 * f.b[1]) / 1000, se: Math.round(1000 * f.se[1]) / 1000, n: R.filter(r => r.exp === 1).length, G: f.G } };
+    const rks = [...new Set(rows.map(r => r.rk))].sort((a, b) => a - b), mid = rks[rks.length >> 1], last = Math.max(...rows.map(r => r.s));
+    out[P] = { all: fit(rows), late: fit(rows.filter(r => r.rk >= mid)), lateFrom: mid, hold: fit(rows.filter(r => r.s >= last - 3)), holdFrom: last - 3 + 1 } }
+  return out;
+}
+export const huntNew = () => ({ qg: {}, tg: {}, gd: {}, qp: {}, rec: {}, car: {}, ay: {}, pe: {}, f4: {}, f4L: {} });
+export async function huntSeason(S, log, POS) { const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null; const HX = huntNew(); rows(t, HUNT_COLS, o => huntAdd(HX, o)); return huntOut(HX, POS) }
+/* Seasons built this run (B[season] = huntOut) onto the last pack (H0). For each arrival season s with s − 1 and s both at hand:
+   vac[s][team] = [targets the team had in s − 1 from players not on it in s, its targets in s − 1, the five biggest of them [gsis, targets]];
+   mv[s] = every WR, TE or RB on one team in s − 1 and another in s (one team each season):
+   [gsis, from, to, his share of the old team's targets × 1000, his share of the new team's × 1000, games then, games now, the new team's
+   vacated share × 1000]. tg is kept for the last two seasons only (src), so the next run can redo this season's arrivals. */
+export const HUNT_V = 1;
+/* SRC0 = the job-only pack (p<Y>_nfl-huntsrc: ys[season] = the year-2 table); X = { born, rook } from the players pack. Returns the page's
+   pack with y2 = huntY2 re-run on every season on file, and SRC (to write back) — use huntMerge(...).H / .SRC */
+export function huntMerge(H0, B, lastPlayed, POS = {}, SRC0 = null, X = {}) {
+  const SRC = SRC0 && SRC0.v === HUNT_V ? { v: HUNT_V, ys: { ...(SRC0.ys || {}) } } : { v: HUNT_V, ys: {} };
+  for (const s in B) if (B[s] && B[s].ys) SRC.ys[s] = B[s].ys;
+  const H = H0 && H0.v === HUNT_V ? JSON.parse(JSON.stringify(H0)) : { v: HUNT_V, s: {}, vac: {}, mv: {}, src: {}, fin: {} };
+  try { H.y2 = huntY2(SRC.ys, X.born || {}, X.rook || {}); H.y2.at = Object.keys(SRC.ys).length } catch (e) { H.y2 = null }
+  Object.defineProperty(H, "SRC", { value: SRC, enumerable: false });
+  for (const k of ["s", "vac", "mv", "src", "fin"]) H[k] = H[k] || {};
+  for (const s in B) { if (!B[s]) continue; H.s[s] = { qbk: B[s].qbk, te: B[s].te, qp: B[s].qp, dt: B[s].dt, ct: B[s].ct }; if (+s < lastPlayed) H.fin[s] = 1 }
+  const tgOf = s => (B[s] && B[s].tg) || H.src[s] || null, one = T => { const at = {}; for (const t in T) for (const id in T[t]) (at[id] = at[id] || []).push(t); return at };
+  for (const s0 of Object.keys(B)) for (const s of [+s0, +s0 + 1]) { const A = tgOf(s - 1), N = tgOf(s); if (!A || !N) continue;
+    const V = H.vac[s] = {}, tot = T => Object.values(T).reduce((a, x) => a + x[0], 0);
+    for (const t in A) { const on = N[t] || {}, L = Object.entries(A[t]).filter(([id, x]) => !(id in on) && x[0] > 0).sort((a, b) => b[1][0] - a[1][0] || (a[0] < b[0] ? -1 : 1));
+      V[t] = [L.reduce((a, x) => a + x[1][0], 0), tot(A[t]), L.slice(0, 5).map(([id, x]) => [id, x[0]])] }
+    const a0 = one(A), a1 = one(N), M = [];
+    for (const id in a1) { const p = String(POS[id] || "").toUpperCase(), pos = p === "FB" || p === "HB" ? "RB" : p; if (!/^(WR|TE|RB)$/.test(pos)) continue;
+      if (!a0[id] || a0[id].length !== 1 || a1[id].length !== 1 || a0[id][0] === a1[id][0]) continue; const f = a0[id][0], to = a1[id][0], v = V[to];
+      const T0 = tot(A[f]), T1 = tot(N[to]); M.push([id, f, to, T0 ? Math.round(1000 * A[f][id][0] / T0) : null, T1 ? Math.round(1000 * N[to][id][0] / T1) : null, A[f][id][1], N[to][id][1], v && v[1] ? Math.round(1000 * v[0] / v[1]) : null]) }
+    H.mv[s] = M.sort((a, b) => (a[0] < b[0] ? -1 : 1)) }
+  for (const s in B) if (B[s] && B[s].tg) H.src[s] = B[s].tg;
+  for (const s of Object.keys(H.src)) if (+s < lastPlayed - 1) delete H.src[s];
+  H.dtCols = HUNT_DT; H.qpCols = ["pressured dropbacks", "their EPA × 100", "clean dropbacks", "their EPA × 100", "sacks on pressured dropbacks", "his team (most games)"]; H.ctCols = ["4th downs", "went for it", "expected go × 100", "games (early-down pass rate)", "sum of game pass rate over expected × 10"];
+  H.note = "s[season] = { qbk[defense] = [EPA a dropback vs the QB's own level × 1000 (negative = QBs played below their own level), QB-games, dropbacks, game-to-game spread × 1000], te[team] = [targets to TEs, all targets], qp[passer] (qpCols), dt[defense] = for each of dtCols (rb, te: opposing backs' / TEs' receiving PPR a game vs their own; ay: opposing air yards a throw vs their own; ru: opposing backs' yards a carry vs their own) [season value × 100, games, game spread × 100], ct[team] (ctCols) } · vac[s][team] = [targets in s − 1 by players not on the team in s, team targets in s − 1, top five [gsis, targets]] · mv[s] = [gsis, from, to, share before × 1000, share after × 1000, games before, games after, new team's vacated share × 1000] (WR/TE/RB on one team each season) · src = the last two seasons' targets and games by team and player · fin[s] = built after the season ended · regular season, nflverse play-by-play";
+  return H;
 }
 export async function pbp(S, log, POS = null) {
   const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null;
@@ -1284,10 +1431,15 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   const KICK = {};
   if (startsOnly) { for (let s = 2001; s <= lastPlayed; s++) { try { const x = await starts(s, G, log); if (x) STN[s] = x; log(`nfl: starts ${s} ${x ? Object.keys(x.n).length : 0}`) } catch (e) { log("nfl: starts " + s + ": " + e.message) } }
     for (let s = FIRST; s <= lastPlayed; s++) { try { const k = await kicking(s, log); if (k) KICK[s] = k } catch (e) { log("nfl: kicking " + s + ": " + e.message) } } seasons.length = 0 }
+  /* pattern hunt 1 (huntSeason): its own pack, p<Y>_nfl-hunt. The first fill is an nflhistory run (every season, from the play-by-play files
+     it reads anyway); after that, each run that rebuilds a season adds it (this season every run). A plain run never starts the pack. */
+  let HUNT0 = null; if (getPack && !startsOnly) { try { HUNT0 = (await getPack(P("hunt"))) || (await getPack(`p${Y - 1}_nfl-hunt`)) } catch { } }
+  const HUNT_ON = !startsOnly && (all || !!(HUNT0 && HUNT0.v === HUNT_V)), HUNTB = {};
   for (const s of seasons) {
     const L = await logs(s, log); if (L) { const DL = L.def; delete L.def; LOGS[s] = L; await put(P("def-" + s), DL) }
     try { const k = await kicking(s, log); if (k) KICK[s] = k } catch (e) { log("nfl: kicking " + s + ": " + e.message) }
     const B = await pbp(s, log, POS);
+    if (HUNT_ON && B) { try { HUNTB[s] = await huntSeason(s, log, POS) } catch (e) { log(`nfl: hunt ${s}: ${e.message}`) } }   /* the same file pbp() just read (kept in MEMO) */
     /* the play-by-play bonuses onto each game log, then the logs are written */
     if (L) { const BN = (B && B.bon) || {}, at = LOG_COLS.indexOf("ptd40"); let nb = 0; for (const id in L.p) { const m = BN[id]; if (!m) continue; for (const row of L.p[id]) { const x = m[row[2]]; if (x) { for (let i = 0; i < BON_N; i++) row[at + i] = x[i]; nb++ } } }
       if (B) delete B.bon; log(`nfl: logs ${s}: bonuses on ${nb} player-games`); await put(P("logs-" + s), L) }
@@ -1366,6 +1518,14 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
       if (!X || Object.keys(X.t).length < 32) { log(`nfl: ${s} when-he's-out came out short (${X ? Object.keys(X.t).length : 0} teams) — not written`); continue }
       await put(n, X); if (up[n]) { DONE.wo[s] = WO_V; TSB.push(`${n}: ${woBrief(w0)} → ${woBrief(X)} · ${kb(n)} → ${(up[n] / 1024).toFixed(0)} KB`) } }
     catch (e) { log(`nfl: ${s} when-he's-out: ${e.message}`) } }
+  if (HUNT_ON && Object.keys(HUNTB).some(s => HUNTB[s])) try { let SRC0 = null; try { SRC0 = getPack ? (await getPack(P("huntsrc"))) || (await getPack(`p${Y - 1}_nfl-huntsrc`)) : null } catch { }
+    const bi = PLAYER_COLS.indexOf("born") - 1, ri = PLAYER_COLS.indexOf("rookie") - 1, born = {}, rook = {}; for (const id in PLP) { const r = PLP[id]; if (r[bi]) born[id] = r[bi]; if (r[ri] != null) rook[id] = r[ri] }
+    const H = huntMerge(HUNT0, HUNTB, lastPlayed, POS, SRC0, { born, rook }), n = P("hunt");
+    const brief = X => { if (!X || !X.s) return "[none]"; const ss = Object.keys(X.s), q = (X.s[lastPlayed] || {}).qbk || {}, top = Object.entries(q).sort((a, b) => a[1][0] - b[1][0]).slice(0, 3).map(([t, x]) => `${t} ${(x[0] / 1000).toFixed(3)} (${x[1]} QB-games)`).join(", ");
+      return `[${ss.length} seasons${ss.length ? ` ${ss[0]}–${ss[ss.length - 1]}` : ""} · ${lastPlayed}: ${Object.keys(q).length} defenses, QBs furthest below their norm: ${top || "—"} · movers ${Object.values(X.mv || {}).reduce((a, L) => a + L.length, 0)} (${lastPlayed}: ${((X.mv || {})[lastPlayed] || []).length})]` };
+    if (Object.keys((H.s[lastPlayed] || {}).te || {}).length < 32) log(`nfl: ${n}: ${lastPlayed} has targets for ${Object.keys((H.s[lastPlayed] || {}).te || {}).length} teams — not written`);
+    else { await put(P("huntsrc"), H.SRC); await put(n, H); if (up[n]) TSB.push(`${n} (pattern hunt 1: QB killer, TE lean, vacated targets): ${brief(HUNT0)} → ${brief(H)} · ${kb(n)} → ${(up[n] / 1024).toFixed(0)} KB`) } }
+    catch (e) { log(`nfl: hunt: ${e.message}`) }
   if (GMB.length) log(`::notice title=NFL drives, first scores, QB-receiver pairs::${GMB.join(" | ").slice(0, 3800)}`);
   if (SYB.length) log(`::notice title=NFL QB short yardage and 4th downs::${SYB.join(" | ").slice(0, 3800)}`);
   if (TSB.length) log(`::notice title=NFL targets by situation and when he's out::${TSB.join(" | ").slice(0, 3800)}`);

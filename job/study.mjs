@@ -5,9 +5,14 @@
    - Reads CFBD through the site's proxy (/api/cfbd, with the run's probe sign-in, so answers the proxy already keeps cost no call) and
      CBBD through the basketball door (/api/job/cbbd, job token). Path strings for plays, box scores, rosters, recruits and player
      stats are written exactly as the page's builders and job/prefetch.mjs write them, so already-kept answers are reused.
-   - Writes NOTHING to packs and uploads no raw data: each batch goes to study-data/ on the runner's own disk (gone when the run ends), and
-     the workflow's next steps run the analysis (job/study3/*.py, published from cfb-board docs/research/patternhunt3/) and print only
-     results, as notices. This repo is public, so only aggregate results leave the runner.
+   - Keeps every answer it pulls (Sam, Oct 31 10:45 pm: "absorb as much information as you can and keep it even if we arent using it to
+     examine it again for these oddities and stats we are finding"): one study-only archive pack per batch and season,
+     p<season>_study-<cfb|cbb>-<batch> (p2000_ when the answer has no season; -2, -3 … when one season passes 22 MB gzipped), holding
+     { study: { v: 1, source, batch, season, at, answers: { "<path>": <the answer exactly as sent> } } }. The admin and the data job only
+     (src/api/packs.js, _study-), never read by a page. Plays are left to the play-by-play archive (another job), so cf_plays is not archived.
+   - For the analysis, each batch also goes to study-data/ on the runner's own disk (gone when the run ends); the workflow's next steps
+     run job/study3/*.py (published from cfb-board docs/research/patternhunt3/) and print only results, as notices. This repo is public,
+     so no raw data goes into the run's output.
    - What the site stores anyway: the proxy keeps every finished-season answer under 20 MB in its KV for good (src/cfbd.js, "past:cfbd"),
      for every caller. The notices give, per batch, how many answers were new to KV and their size.
    - Budget: before each batch the pool's calls-left is read (/info, free). A batch is skipped when calls-left minus the batch's size would
@@ -61,7 +66,7 @@ export function batches(cur) {
     C("cf_box", R(2004, cur).flatMap(y => [...W16.map(w => `/games/players?year=${y}&week=${w}&seasonType=regular`), `/games/players?year=${y}&week=1&seasonType=postseason`]),
       { compact: boxRows, perYear: true, stopEmpty: true }),
     C("cf_plays", R(2014, cur).flatMap(y => [...W16.map(w => `/plays?year=${y}&week=${w}&seasonType=regular`), `/plays?year=${y}&week=1&seasonType=postseason`]),
-      { compact: L => (L || []).map(playRow), perYear: true, stopEmpty: true }),
+      { compact: L => (L || []).map(playRow), perYear: true, stopEmpty: true, archive: false }),
     B("bb_stats", R(2008, cur + 1).map(y => ["/stats/player/season", { season: y }])),
     B("bb_roster", R(2008, cur + 1).map(y => ["/teams/roster", { season: y }])),
     B("bb_recruits", R(2007, cur + 1).map(y => ["/recruiting/players", { year: y }])),
@@ -77,7 +82,7 @@ const shape = x => { if (x == null || typeof x !== "object") return JSON.stringi
   if (Array.isArray(x)) return "[" + (x.length ? shape(x[0]) : "") + "]";
   return "{" + Object.entries(x).map(([k, v]) => k + ":" + (v && typeof v === "object" ? (Array.isArray(v) ? "[" + (v.length && typeof v[0] === "object" ? Object.keys(v[0]).join("|") : "") + "]" : "{" + Object.keys(v).join("|") + "}") : JSON.stringify(v)?.slice(0, 18))).join(",") + "}" };
 const pack = (L, max) => { const out = []; let s = ""; for (const x of L) { if ((s + x).length > 3900) { out.push(s); s = "" } s += x + " ‖ " } if (s) out.push(s); return out.slice(0, max) };
-export async function runStudy({ site, token, job, log = console.log, out = "study-data" }) {
+export async function runStudy({ site, token, job, log = console.log, out = "study-data", archive = process.env.STUDY_ARCHIVE !== "0" }) {
   const want = String(process.env.STUDY || "").split(",").map(s => s.trim()).filter(Boolean);
   const FLOOR = +process.env.STUDY_FLOOR || 46000, CAP = +process.env.STUDY_CAP || 20000;
   const now = new Date(), cur = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;   // the proxy's season (src/cfbd.js)
@@ -96,6 +101,19 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
         if (r.status === 429) await sleep(20000) } catch (e) { } await sleep(2500 * (k + 1)) } return { j: null, status: 0, err: "failed 4 times" } };
   const left = async () => { const r = await cfGet("/info"); return r.j && r.j.remainingCalls != null ? +r.j.remainingCalls : null };
   mkdirSync(out, { recursive: true });
+  /* the archive packs: written as each season finishes; the pack index once at the end (back-to-back index writes drop entries — cfbpunt.mjs) */
+  const IX = {}, ARCH = [];
+  const putPack = async (name, obj) => { const gz = gzipSync(Buffer.from(JSON.stringify(obj)));
+    for (let k = 0; k < 3; k++) { const r = await fetch(`${site}/api/pack/${name}`, { method: "PUT", body: gz, headers: { Authorization: "Bearer " + job, "x-encoding": "gzip", "Content-Type": "application/json" } });
+      if (r.ok) { const j = await r.json(); IX[name] = { sha: j.sha, bytes: j.bytes, at: Date.now() }; ARCH.push([name, j.bytes]); return j.bytes } await sleep(3000 * (k + 1)) }
+    throw new Error("PUT " + name + " failed") };
+  const putArchive = async (b, y, answers) => { const keys = Object.keys(answers); if (!keys.length) return { n: 0, mb: 0 };
+    const base = `p${y || 2000}_study-${b.api === "cfbd" ? "cfb" : "cbb"}-${b.name.replace(/^(cf|bb)_/, "")}`, meta = { v: 1, source: b.api, batch: b.name, season: y || null, at: Date.now() };
+    /* one pack per season unless it passes 22 MB gzipped (the pack limit is 24 MB): then split the answers into parts */
+    let groups = [keys]; for (let t = 0; t < 6; t++) { const sizes = groups.map(g => gzipSync(Buffer.from(JSON.stringify(Object.fromEntries(g.map(k => [k, answers[k]]))))).length);
+      if (sizes.every(x => x < 22e6)) break; groups = groups.flatMap((g, i) => sizes[i] < 22e6 || g.length < 2 ? [g] : [g.slice(0, g.length >> 1), g.slice(g.length >> 1)]) }
+    let n = 0, mb = 0; for (let i = 0; i < groups.length; i++) { const by = await putPack(base + (i ? "-" + (i + 1) : ""), { study: { ...meta, part: i + 1, parts: groups.length, answers: Object.fromEntries(groups[i].map(k => [k, answers[k]])) } }); n++; mb += by / 1e6 }
+    return { n, mb } };
   const L0 = await left(); log(`study start: ${L0 != null ? L0.toLocaleString() : "?"} calls left in the pool · floor ${FLOOR.toLocaleString()} · cap ${CAP.toLocaleString()} this run`);
   const man = { started: Date.now(), left0: L0, floor: FLOOR, cap: CAP, batches: [] };
   let used = 0; const LINES = [], SCHEMA = {};
@@ -103,12 +121,16 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
     const n = (b.paths || b.items).length, before = await left();
     if (before != null && before - n < FLOOR) { log(`::warning title=study ${b.name} skipped::${before} left − ${n} would pass the floor ${FLOOR}`); man.batches.push({ name: b.name, skipped: "floor" }); continue }
     if (used + n > CAP) { log(`::warning title=study ${b.name} skipped::this run's cap ${CAP} (used ${used})`); man.batches.push({ name: b.name, skipped: "cap" }); continue }
-    const t0 = Date.now(), res = {}, errs = []; let kept = 0, fresh = 0, newKV = 0, bytes = 0, got = 0, rows = 0;
+    const t0 = Date.now(), res = {}, raw = {}, errs = []; let kept = 0, fresh = 0, newKV = 0, bytes = 0, got = 0, rows = 0, packs = 0, packMB = 0;
+    const arch = archive && b.archive !== false;
     const list = b.api === "cfbd" ? b.paths.map(p => [p, p]) : b.items.map(it => [it[0] + "?" + new URLSearchParams(Object.entries(it[1]).map(([k, v]) => [k, String(v)])), it]);
     const year = key => +((key.match(/[?&](?:year|season)=(\d{4})/) || [])[1] || 0);
     const flush = y => { const part = Object.fromEntries(Object.entries(res).filter(([k]) => !y || year(k) === y)); if (!Object.keys(part).length) return;
       const gz = gzipSync(Buffer.from(JSON.stringify({ v: 1, batch: b.name, cols: b.name === "cf_plays" ? PLAY_COLS : undefined, data: part })));
-      writeFileSync(`${out}/${b.name}${y ? "_" + y : ""}.json.gz`, gz); for (const k of Object.keys(part)) delete res[k] };
+      writeFileSync(`${out}/${b.name}${y ? "_" + y : ""}.json.gz`, gz); for (const k of Object.keys(part)) delete res[k];
+      if (arch) archQ.push(putArchive(b, y, Object.fromEntries(Object.keys(part).filter(k => k in raw).map(k => [k, raw[k]]))).then(r => { packs += r.n; packMB += r.mb }).catch(e => errs.push("archive " + b.name + " " + y + ": " + String(e.message || e).slice(0, 120))));
+      for (const k of Object.keys(part)) delete raw[k] };
+    const archQ = [];
     const doneYear = new Set(); let emptyRun = {};
     for (let i = 0; i < list.length; i += 3) {
       const chunk = list.slice(i, i + 3);
@@ -116,7 +138,7 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
       for (const [key, r] of R3) {
         if (r.j == null) { errs.push(`${key} → ${r.status} ${r.err || ""}`.slice(0, 200)); continue }
         got++; bytes += r.bytes; if (r.kept) kept++; else { fresh++; const y = year(key); if (b.api === "cfbd" && y && y < cur && r.bytes > 2 && r.bytes < 20e6) newKV += r.bytes }
-        const v = b.compact ? b.compact(r.j) : r.j; if (Array.isArray(v)) rows += v.length; res[key] = v
+        const v = b.compact ? b.compact(r.j) : r.j; if (Array.isArray(v)) rows += v.length; res[key] = v; if (arch) raw[key] = r.j
         if (!SCHEMA[b.name] && Array.isArray(r.j) && r.j.length) SCHEMA[b.name] = shape(r.j[Math.min(5, r.j.length - 1)]) }
       /* the season being played: stop asking for weeks that haven't happened */
       if (b.stopEmpty) { const y = year(chunk[0][0]); if (y === cur) { const empties = R3.filter(([k, r]) => /seasonType=regular/.test(k) && Array.isArray(r.j) && !r.j.length).length; emptyRun[y] = (emptyRun[y] || 0) + empties;
@@ -124,15 +146,18 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
       /* per-season files for the big ones, so memory stays small */
       if (b.perYear) { const yNext = list[i + 3] ? year(list[i + 3][0]) : 0; for (const [k] of chunk) { const y = year(k); if (y !== yNext && !doneYear.has(y)) { flush(y); doneYear.add(y) } } }
     }
-    flush(0);
+    flush(0); await Promise.all(archQ);
     const after = await left(), calls = before != null && after != null ? before - after : fresh;
     used += calls;
-    const line = `${n} asked · ${got} answered · ${kept} already kept (no call) · ${fresh} fresh · pool ${before ?? "?"} → ${after ?? "?"} = ${calls} calls · ${rows ? rows + " rows · " : ""}${(bytes / 1e6).toFixed(1)} MB read · ${(newKV / 1e6).toFixed(1)} MB newly kept in the site's KV by the proxy · ${((Date.now() - t0) / 60e3).toFixed(1)} min${errs.length ? ` · ${errs.length} errors: ${errs.slice(0, 4).join(" | ")}` : ""}`;
+    const line = `${n} asked · ${got} answered · ${kept} already kept (no call) · ${fresh} fresh · pool ${before ?? "?"} → ${after ?? "?"} = ${calls} calls · ${rows ? rows + " rows · " : ""}${(bytes / 1e6).toFixed(1)} MB read · ${(newKV / 1e6).toFixed(1)} MB newly kept in the site's KV by the proxy · ${arch ? `archived as ${packs} study packs, ${packMB.toFixed(1)} MB gzipped · ` : ""}${((Date.now() - t0) / 60e3).toFixed(1)} min${errs.length ? ` · ${errs.length} errors: ${errs.slice(0, 4).join(" | ")}` : ""}`;
     log(`study ${b.name}: ${line}`); LINES.push(`${b.name}: ${line}`);
-    man.batches.push({ name: b.name, asked: n, got, kept, fresh, before, after, calls, rows, mb: +(bytes / 1e6).toFixed(2), newKVmb: +(newKV / 1e6).toFixed(2), errors: errs.slice(0, 20) });
+    man.batches.push({ name: b.name, asked: n, got, kept, fresh, before, after, calls, rows, mb: +(bytes / 1e6).toFixed(2), newKVmb: +(newKV / 1e6).toFixed(2), packs, packMB: +packMB.toFixed(2), errors: errs.slice(0, 20) });
   }
   const L1 = await left(); man.left1 = L1; man.used = used; man.cbbdLeft = lastLeft;
-  pack(LINES, 5).forEach((x, i) => log(`::notice title=study batches ${i + 1}::${x}`));
+  if (Object.keys(IX).length) { for (let k = 0; k < 3; k++) { const r = await fetch(`${site}/api/pack-index`, { method: "PUT", body: JSON.stringify(IX), headers: { Authorization: "Bearer " + job, "Content-Type": "application/json" } }); if (r.ok) break; await sleep(4000) } }
+  man.archive = { packs: ARCH.length, mb: +(ARCH.reduce((a, x) => a + x[1], 0) / 1e6).toFixed(1), names: ARCH };
+  log(`::notice title=study archive::${ARCH.length} study packs · ${man.archive.mb} MB gzipped · ${[...new Set(ARCH.map(x => x[0].replace(/^p\d{4}_/, "").replace(/-\d+$/, "")))].join(", ")}`.slice(0, 4000));
+  pack(LINES, 4).forEach((x, i) => log(`::notice title=study batches ${i + 1}::${x}`));
   pack(Object.entries(SCHEMA).map(([k, v]) => `${k} ${v}`.slice(0, 1200)), 3).forEach((x, i) => log(`::notice title=study fields ${i + 1}::${x}`));
   writeFileSync(`${out}/manifest.json`, JSON.stringify(man, null, 1));
   log(`study done: ${used.toLocaleString()} calls this run · ${L1 != null ? L1.toLocaleString() : "?"} left · ${(man.batches.reduce((a, x) => a + (x.newKVmb || 0), 0)).toFixed(1)} MB newly kept in KV`);

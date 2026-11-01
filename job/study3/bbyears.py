@@ -33,3 +33,18 @@ def first_season(stats_pid, stats_season, RO=None, R=None):
     first = F.min(axis=1); d0 = min(a.min(), b.min() if len(b) else 9999)
     backed = (F.ss < d0) | F.rc.notna()
     return first.where((first > d0) | backed)
+
+def link(A, F, R, log=print):
+    """recruits CBBD didn't link to a player id, matched by name + school + first season (recruit year + 1), added to R.
+    A: player seasons with pid, name, tid, season; F: first_season()."""
+    from load import norm_name
+    rc = frame('bb_recruits')
+    U = pd.DataFrame({'pid': pick(rc, 'athleteId').astype(str).str.replace(r'\.0$', '', regex=True), 'nm': pick(rc, 'name').map(norm_name), 'year': num(pick(rc, 'year', '_year')),
+                      'stars': num(pick(rc, 'stars')), 'rating': num(pick(rc, 'rating')), 'tid': pick(rc, 'committedTo.id').astype(str).str.replace(r'\.0$', '', regex=True)})
+    U = U[U.pid.isin(['nan', 'None', ''])]
+    f1 = A.assign(nm=A.name.map(norm_name), fy=A.pid.map(F))
+    f1 = f1[f1.season == f1.fy][['pid', 'nm', 'tid', 'fy']].drop_duplicates(['nm', 'tid', 'fy'], keep=False)
+    U = U.assign(fy=U.year + 1).merge(f1, on=['nm', 'tid', 'fy'], suffixes=('_x', ''))
+    log(f'recruits: {len(R)} linked by CBBD, {len(U)} more by name + school + first season; 5-stars linked {R[R.stars == 5].pid.nunique() + (U.stars == 5).sum()} of '
+        f'{int((num(pick(rc, "stars")) == 5).sum())}')
+    return pd.concat([R, U[['pid', 'year', 'stars', 'rating', 'tid']]], ignore_index=True), rc

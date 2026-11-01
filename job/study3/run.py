@@ -39,9 +39,11 @@ if FOCUS == 'coachdev':
     import coachdev; step('coachdev', coachdev.run, reg, log, D)
 if FOCUS in ('bbdiag', 'bbdev'):
     import bbdev; step(FOCUS, bbdev.diag if FOCUS == 'bbdiag' else bbdev.run, reg, log, D)
+if FOCUS == 'bb5':
+    import bb5star; step('bb5', bb5star.run, reg, log, D)
 # "focus:home" (Nov 1 follow-up): only the home-edge tests, so this follow-up's BH pass covers its own tests
-base = step('home', home.run, reg, log) if FOCUS == 'home' else None if FOCUS in ('coachdev', 'bbdiag', 'bbdev') else step('base', cfb_base.build)
-if base and FOCUS not in ('home', 'coachdev', 'bbdiag', 'bbdev'):
+base = step('home', home.run, reg, log) if FOCUS == 'home' else None if FOCUS in ('coachdev', 'bbdiag', 'bbdev', 'bb5') else step('base', cfb_base.build)
+if base and FOCUS not in ('home', 'coachdev', 'bbdiag', 'bbdev', 'bb5'):
     G, T, CO, TS = base
     log(f'base: {len(G)} games ({int(G.both_fbs.sum())} FBS v FBS), lines for {G.exp_home.notna().mean():.2f}; {len(CO)} coach-seasons; {len(TS)} team-seasons; '
         f'SRS {TS.srs.notna().mean():.2f}, talent {TS.talent.notna().mean():.2f}, recruiting {TS.rec4.notna().mean():.2f}')
@@ -50,7 +52,7 @@ if base and FOCUS not in ('home', 'coachdev', 'bbdiag', 'bbdev'):
     step('players', cfb_players.run, reg, log, G, T, CO, TS, P)
     if P is not None: step('box', cfb_box.run, reg, log, G, T, CO, TS, P)
     step('plays', cfb_plays.run, reg, log, G, T, CO, TS)
-if FOCUS not in ('home', 'coachdev', 'bbdiag', 'bbdev'): step('cbb', cbb.run, reg, log, D)
+if FOCUS not in ('home', 'coachdev', 'bbdiag', 'bbdev', 'bb5'): step('cbb', cbb.run, reg, log, D)
 
 R = reg.df()
 if len(R):
@@ -60,7 +62,7 @@ if len(R):
 # hypothesis's best 3 names; details cut to 200 characters
 if len(R):
     nm = R[R.kind == 'named'].sort_values('p')
-    keep = pd.concat([R[R.kind != 'named'], nm[(nm.p < .01) | nm.survives].groupby('hyp').head(25), nm.groupby('hyp').head(3), nm[nm.label.str.contains('Tom Izzo|Dan Hurley|Kyle Smith|Jamie Dixon')] if FOCUS == 'bbdev' else nm.head(0)]).drop_duplicates(['hyp', 'label'])
+    keep = pd.concat([R[R.kind != 'named'], nm[(nm.p < .01) | nm.survives].groupby('hyp').head(25), nm.groupby('hyp').head(3), nm[nm.label.str.contains('Tom Izzo|Dan Hurley|Kyle Smith|Jamie Dixon')] if FOCUS == 'bbdev' else nm[nm.label.str.contains('Tom Izzo|Dan Hurley|Bill Self|John Calipari|Jon Scheyer|Mike Krzyzewski|Mark Few')] if FOCUS == 'bb5' else nm.head(0)]).drop_duplicates(['hyp', 'label'])
     keep = keep.assign(detail=keep.detail.astype(str).str.slice(0, 200))
 else: keep = R
 try: man = json.load(open(os.path.join(D, 'manifest.json')))

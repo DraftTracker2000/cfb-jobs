@@ -92,17 +92,8 @@ def run(reg, log, D):
     log('old minus new year (200+ min): ' + str((A.yr_old - A.yr)[A['min'] >= 200].value_counts(normalize=True).sort_index().round(3).head(9).to_dict()))
     for n_ in ['Denzel Valentine', 'Matt Costello', 'Joey Hauser', 'Tristen Newton']:
         x = A[A.name == n_].sort_values('season'); log(f'{n_}: ' + ', '.join(f'{int(a)} yr {b} (old {c})' for a, b, c in zip(x.season, x.yr, x.yr_old)))
-    # recruits CBBD didn't link to a player id: matched by name + school + first season (recruit year + 1), so a 5-star isn't counted as unranked
-    rc = frame('bb_recruits'); from load import norm_name
-    U = pd.DataFrame({'pid': pick(rc, 'athleteId').astype(str).str.replace(r'\.0$', '', regex=True), 'nm': pick(rc, 'name').map(norm_name), 'year': num(pick(rc, 'year', '_year')),
-                      'stars': num(pick(rc, 'stars')), 'rating': num(pick(rc, 'rating')), 'tid': pick(rc, 'committedTo.id').astype(str).str.replace(r'\.0$', '', regex=True)})
-    U = U[U.pid.isin(['nan', 'None', ''])]
-    f1 = A.assign(nm=A.name.map(norm_name), fy=A.pid.map(F))
-    f1 = f1[f1.season == f1.fy][['pid', 'nm', 'tid', 'fy']].drop_duplicates(['nm', 'tid', 'fy'], keep=False)
-    U = U.assign(fy=U.year + 1).merge(f1, on=['nm', 'tid', 'fy'], suffixes=('_x', ''))
-    log(f'recruits: {len(R)} linked by CBBD, {len(U)} more by name + school + first season; 5-stars linked {R[R.stars == 5].pid.nunique() + (U.stars == 5).sum()} of '
-        f'{int((num(pick(rc, "stars")) == 5).sum())}')
-    R = pd.concat([R, U[['pid', 'year', 'stars', 'rating', 'tid']]], ignore_index=True)
+    # recruits CBBD didn't link to a player id: matched by name + school + first season, so a 5-star isn't counted as unranked (bbyears.link)
+    R, rc = bbyears.link(A, F, R, log)
     stars = R.sort_values('stars', ascending=False).drop_duplicates('pid').set_index('pid').stars
     A['stars'] = A.pid.map(stars)
     sr0 = frame('bb_srs'); sr = pd.DataFrame({'t': pick(sr0, 'teamId').astype(str), 's': num(pick(sr0, 'season', '_year')), 'r': num(pick(sr0, 'rating'))}).dropna().drop_duplicates(['t', 's']).set_index(['t', 's']).r

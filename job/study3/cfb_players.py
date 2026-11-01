@@ -180,7 +180,8 @@ def run(reg, log, G, T, CO, TS, P=None):
             hit = set(zip(dr.nm, dr.sch)); hitn = dr.groupby('nm').draft_year.apply(list).to_dict()
             X['drafted'] = [float((n, t) in hit or any(y + 3 <= dy <= y + 6 for dy in hitn.get(n, []))) for n, t, y in zip(X.nm, X.team, X.year)]
             X['rb'] = pd.qcut(X.rating.rank(method='first'), 20, labels=False); X['exp'] = X.groupby('rb').drafted.transform('mean'); X['res'] = X.drafted - X.exp
-            X['coach'] = [co.get((t, y)) for t, y in zip(X.team, X.year)]; X['season'] = X.year.astype(int)
+            X = X[X.team.map(lambda t: isinstance(t, str))].copy()   # a recruit with no school: a MultiIndex .get with NaN returns an array
+            X['coach'] = [co.get((t, int(y))) for t, y in zip(X.team, X.year)]; X['coach'] = X.coach.map(lambda c: c if isinstance(c, str) else None); X['season'] = X.year.astype(int)
             log(f'P10: {len(X)} recruits 2003-20; drafted {X.drafted.mean():.3f}; 5-star {X[X.stars == 5].drafted.mean():.2f}, 3-star {X[X.stars == 3].drafted.mean():.3f}')
             Tn, fam = named(reg, 'P10', 'Staff gets recruits drafted beyond their rating (head coach at signing)', X.dropna(subset=['coach']), 'coach', 'res', min_seasons=6, min_rows=60, g='rid', unit='draft rate')
             log(f'P10 split-half r {fam[0]:.2f} ({fam[2]})')

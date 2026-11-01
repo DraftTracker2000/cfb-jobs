@@ -4,7 +4,7 @@
    time zones it crossed. Looked up in GeoNames' free list of every town of 1,000+ people (cities1000, CC BY 4.0); the list is only
    downloaded when a city we haven't placed yet shows up. */
 import { execFileSync } from "node:child_process";
-import { writeFileSync, mkdtempSync } from "node:fs";
+import { writeFileSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -18,10 +18,14 @@ const COUNTRY = { "italy": "IT", "virgin islands": "VI", "bahamas": "BS", "mexic
 const CA_PROV = { PQ: "10", QC: "10", ON: "08", BC: "02", AB: "01", MB: "03", NS: "07", NB: "04" };
 const norm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/^st\.? /, "saint ").replace(/^ft\.? /, "fort ").replace(/[^a-z0-9 ]/g, "").trim();
 
+/* GEONAMES_TXT (tests, Refine 2 audit 2 D2-06): read the list from a local cities1000.txt instead of downloading it — the job test used to
+   reach download.geonames.org with curl, which its pretend fetch can't stub */
 function loadGeoNames(log) {
-  const dir = mkdtempSync(join(tmpdir(), "geo-")), zip = join(dir, "c.zip");
-  execFileSync("curl", ["-sSfL", "-o", zip, "https://download.geonames.org/export/dump/cities1000.zip"], { stdio: "inherit" });
-  const txt = execFileSync("unzip", ["-p", zip, "cities1000.txt"], { maxBuffer: 512 << 20 }).toString("utf8");
+  let txt;
+  if (process.env.GEONAMES_TXT) txt = readFileSync(process.env.GEONAMES_TXT, "utf8");
+  else { const dir = mkdtempSync(join(tmpdir(), "geo-")), zip = join(dir, "c.zip");
+    execFileSync("curl", ["-sSfL", "-o", zip, "https://download.geonames.org/export/dump/cities1000.zip"], { stdio: "inherit" });
+    txt = execFileSync("unzip", ["-p", zip, "cities1000.txt"], { maxBuffer: 512 << 20 }).toString("utf8") }
   const by = new Map(); let n = 0;
   for (const line of txt.split("\n")) { const f = line.split("\t"); if (f.length < 18) continue; n++;
     const rec = { lat: +f[4], lon: +f[5], cc: f[8], a1: f[10], pop: +f[14] || 0, tz: f[17] };

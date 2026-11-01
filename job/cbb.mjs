@@ -390,7 +390,7 @@ export async function main() {
     const c = recIx[normName(r.nm) + "|" + fs] || recIx[normName(r.nm) + "|" + (fs + 1)] || recIx[normName(r.nm) + "|" + (fs - 1)];
     REC[r.id] = c ? (c.find(x => x[1] === firstTeam[r.id]) || (c.length === 1 ? c[0] : null)) : null;
   }
-  log(`recruits: ${byId} matched by athlete id (${changed} differ from the old name match), the rest by name and school`); console.log(`::notice title=cbb recruits::${byId} matched by athlete id, ${changed} differ from the old name match`);
+  log(`recruits: ${byId} matched by athlete id (${changed} differ from the old name match), the rest by name and school`);   /* (Refine 2, audit 2 D2-05) the one-time id-vs-name check stays in the log, no longer a notice on every run */
 
   /* every player-season → features */
   const confNet = {}; for (const [y, m] of Object.entries(H.adj)) { const by = {}; for (const [, [n, c]] of Object.entries(m)) (by[c] = by[c] || []).push(n || 0); confNet[y] = Object.fromEntries(Object.entries(by).map(([c, a]) => [c, a.reduce((x, z) => x + z, 0) / a.length])) }

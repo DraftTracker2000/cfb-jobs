@@ -110,6 +110,11 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
         if (r.status === 429) await sleep(20000) } catch (e) { } await sleep(2500 * (k + 1)) } return { j: null, status: 0, err: "failed 4 times" } };
   const left = async () => { const r = await cfGet("/info"); return r.j && r.j.remainingCalls != null ? +r.j.remainingCalls : null };
   mkdirSync(out, { recursive: true });
+  /* t_echo: how much the run's notices and step summary carry (no calls) */
+  if (want.includes("t_echo")) { for (let i = 0; i < 30; i++) log(`::notice title=echo ${i}::${String(i).padStart(3, "0")} ` + "x".repeat(i < 3 ? 60000 : 6000));
+    for (let i = 0; i < 12; i++) log(`::warning title=echo w${i}::` + "w".repeat(3000));
+    if (process.env.GITHUB_STEP_SUMMARY) { const fs = await import("node:fs"); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, "# echo\n" + Array.from({ length: 2000 }, (_, i) => `line ${i} ` + "s".repeat(90)).join("\n")) }
+    return { batches: 0, calls: 0, keptMB: 0 } }
   const L0 = await left(); log(`::notice title=study start::${L0 != null ? L0.toLocaleString() : "?"} calls left in the pool · floor ${FLOOR.toLocaleString()} · cap ${CAP.toLocaleString()} this run`);
   const man = { started: Date.now(), left0: L0, floor: FLOOR, cap: CAP, batches: [] };
   let used = 0;

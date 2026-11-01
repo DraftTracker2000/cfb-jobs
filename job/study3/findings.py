@@ -157,9 +157,10 @@ def cfb():
         X['rb'] = pd.qcut(X.rating.rank(method='first'), 20, labels=False); X['res'] = X.drafted - X.groupby('rb').drafted.transform('mean')
         X['coach'] = [co.get((t_, int(y))) for t_, y in zip(X.team, X.year)]; X['coach'] = X.coach.map(lambda c_: c_ if isinstance(c_, str) else None); X['season'] = X.year.astype(int)
         Tn, fam = named(Reg(None), 'x', 'recruits drafted', X.dropna(subset=['coach']), 'coach', 'res', min_seasons=6, min_rows=60, g='rid', unit='draft rate'); Tn = names_bh(Tn)
-        out = {x.agent: {'v': R4(x.est), 'classes': int(x.ns), 'recruits': int(x.n), 'p': R4(x.p), 'q': R4(x.q), 'later_half': R4(x.late), 'shows': bool(x.shows)} for x in Tn.itertuples()} if len(Tn) else {}
+        famok = bool(np.isfinite(fam[0]) and fam[0] > 0 and fam[1] < .05)   # the family (early vs late classes across coaches) must repeat too
+        out = {x.agent: {'v': R4(x.est), 'classes': int(x.ns), 'recruits': int(x.n), 'p': R4(x.p), 'q': R4(x.q), 'later_half': R4(x.late), 'shows': bool(x.shows and famok)} for x in Tn.itertuples()} if len(Tn) else {}
         P['recruit_hits'] = {'label': 'Recruits drafted beyond their rating (head coach at signing), classes 2003-20', 'unit': 'draft rate', 'base_rate': R4(X.drafted.mean()),
-                             'family': {'split_half_r': R3(fam[0]), 'p': R4(fam[1]), 'coaches': int(fam[2])}, 'coaches': out, 'counts': {'coaches': len(out), 'shows': sum(v['shows'] for v in out.values())}}
+                             'family': {'split_half_r': R3(fam[0]), 'p': R4(fam[1]), 'coaches': int(fam[2]), 'passes': famok}, 'coaches': out, 'counts': {'coaches': len(out), 'shows': sum(v['shows'] for v in out.values())}}
         log(f'cfb recruit hits: {P["recruit_hits"]["counts"]}')
     except Exception as e: P['errors'].append('recruit_hits: ' + repr(e)[:200]); log(traceback.format_exc()[-1500:])
     # ---------- transfers ----------

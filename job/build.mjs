@@ -29,6 +29,8 @@
               next to the live one → pYYYY_grtest, packs only
      oltest   the OL draft chance: every FBS lineman, refit and graded → pYYYY_oltest + pYYYY_olgrade, packs only (weekly, Wednesday)
      avail    NFL availability only (weekly roster status 2016 on → weeks active / injured / away), a few minutes; also runs with weekly and history
+     study    pattern hunt 3 (job/study.mjs, Nov 1 — the owner 10:25 pm: study calls OK): CFBD/CBBD pulls for a study, encrypted to study-out/ (a run
+              artifact), nothing written to packs; STUDY picks batches; stops at STUDY_FLOOR calls left (default 46,000)
      prefetch finished-season CFBD answers pulled once and kept for good as builder-cache packs (job/prefetch.mjs, Oct 30): plays 2014–25,
               games/players 2021–25, the defender-grade pulls 2011–25; always the Lab page; stops at 4,000 CFBD calls left;
               PREFETCH_DRY=1 lists what it would ask for (no browser, no CFBD call) → packs only
@@ -59,15 +61,15 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof"];
+const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
-const NOFRESH = ["probe", "look"].includes(MODE) || /test$/.test(MODE);
+const NOFRESH = ["probe", "look", "study"].includes(MODE) || /test$/.test(MODE);
 const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest", "prefetch"];   // these write packs only; the shared data version is unchanged
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180 }[MODE];
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180, study: 300 }[MODE];
 /* prefetch always runs on the Lab page: the hook it needs (window.__PREFETCH) is a Lab builder */
 const PAGE = MODE === "prefetch" ? "/lab/" : ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 const started = Date.now();
@@ -152,7 +154,7 @@ async function main() {
   const { chromium } = await import("playwright"); const { lookCheck, lookMsg } = await import("./look.mjs");
 
   /* the big public files first, so the board's build can use them (prefetch builds nothing, so it leaves them alone) */
-  if (MODE !== "prefetch") { const refs = await refreshRefs({ site: SITE, jobToken: JOB, mode: MODE });
+  if (MODE !== "prefetch" && MODE !== "study") { const refs = await refreshRefs({ site: SITE, jobToken: JOB, mode: MODE });
     console.log(`reference files: ${refs.refreshed} refreshed of ${refs.checked}`) }
 
   /* Oct 26: runs that only look (probe, look) or test (…test) sign in as the probe user, so their page loads share the server's copies
@@ -175,6 +177,11 @@ async function main() {
     PFS.idx = idx; PFS.list = list }
   CFTOK = sess.token; CF0 = await cfbdLeft(); if (CF0 != null) console.log(`::notice title=CFBD::calls left at the start of this ${MODE} run: ${CF0.toLocaleString()}`);
 
+  /* MODE=study: pattern hunt 3's college pulls (job/study.mjs) — read through the proxy with the probe sign-in, sealed into study-out/ for
+     the run artifact, no packs written; the run's CFBD total goes on the report like every run's */
+  if (MODE === "study") { const { runStudy } = await import("./study.mjs");
+    const d = await runStudy({ site: SITE, token: sess.token, job: JOB, log: x => console.log(x) });
+    await report(true, `study · ${d.batches} batches · ${d.calls} calls (CFBD + CBBD) · ${d.keptMB} MB of finished-season answers newly kept by the proxy`); return }
   /* MODE=punt: college punts and returns from CFBD, 2015 on (job/cfbpunt.mjs, Oct 28 — the owner: yes); finished seasons are kept and never fetched again */
   if (MODE === "punt") { const { buildPunts } = await import("./cfbpunt.mjs");
     const getIndex = async () => { try { const r = await fetch(SITE + "/api/pack-index", { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? (await r.json()).packs : null } catch { return null } };

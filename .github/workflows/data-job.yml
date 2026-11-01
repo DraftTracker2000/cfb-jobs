@@ -10,14 +10,14 @@ on:
         description: "live · catchup · weekly · look · qb · views · avail · coaches · cdef · nfl · nflhistory · nfldraft · history · full"
         default: live
         type: choice
-        options: [live, cavail, look, probe, extras, honors, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, grtest, nfl, nflhistory, nfldraft, history, full, colgap, style, punt, prefetch, nflhof]
+        options: [live, cavail, look, probe, extras, honors, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, grtest, nfl, nflhistory, nfldraft, history, full, colgap, style, punt, prefetch, nflhof, study]
       page:
         description: "Which version of the site runs the build: / (live) or /lab/"
         default: "/"
         type: choice
         options: ["/", "/lab/"]
       probe:
-        description: "MODE=probe only: which probes (names from job/probes.mjs, comma-separated; empty = all)"
+        description: "MODE=probe: which probes (names from job/probes.mjs, comma-separated; empty = all) · MODE=study: which batches (job/study.mjs; empty = all)"
         default: ""
         type: string
       dry:
@@ -86,5 +86,16 @@ jobs:
           CATCHUP: ${{ steps.mode.outputs.catchup }}
           PAGE_PATH: ${{ github.event.inputs.page || '/' }}
           PROBE: ${{ github.event.inputs.probe || '' }}
+          STUDY: ${{ github.event.inputs.probe || '' }}
           PREFETCH_DRY: ${{ github.event.inputs.dry == 'true' && '1' || '' }}
         run: node job/build.mjs
+
+      # MODE=study (job/study.mjs): the study's pulls, already encrypted to the study key — kept 3 days, then GitHub deletes them
+      - name: Study output (encrypted)
+        if: always() && steps.mode.outputs.mode == 'study'
+        uses: actions/upload-artifact@v4
+        with:
+          name: study-out
+          path: study-out/
+          retention-days: 3
+          if-no-files-found: ignore

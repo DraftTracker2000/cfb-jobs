@@ -1,0 +1,53 @@
+# Study runs (job/study.mjs, MODE=study — pattern hunt 3, Nov 1): CFBD/CBBD pulls archived as study-only packs, the analysis
+# (job/study3/) run here, only results printed as notices. Its own queue, so a study never waits behind — or cancels a pending —
+# data-job run. Published from the site's private repo by tools/sync-jobs.mjs — edit it there.
+name: Study job
+
+on:
+  workflow_dispatch:
+    inputs:
+      batches:
+        description: "which batches (job/study.mjs; comma-separated; empty = all); add noarchive to rerun the analysis without rewriting the packs"
+        default: "noarchive"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: study-job
+  cancel-in-progress: false
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      # build.mjs loads playwright before it branches on the mode; the study mode never opens a browser, so no browser is installed
+      - name: Job modules
+        run: npm install --no-save --no-audit --no-fund playwright@1
+      - name: Pull and archive
+        env:
+          SITE_URL: ${{ secrets.SITE_URL || 'https://mycfbbigboard.com' }}
+          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
+          MODE: study
+          STUDY: ${{ github.event.inputs.batches || '' }}
+        run: node job/build.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Study analysis tools
+        run: pip install --quiet --no-input numpy==2.2.6 pandas==2.2.3 scipy==1.15.3
+      - name: Study analysis (results 1)
+        if: hashFiles('study-data/manifest.json') != '' && hashFiles('job/study3/run.py') != ''
+        run: python3 -I job/study3/run.py study-data 1
+      - name: Study analysis (results 2)
+        if: hashFiles('study-data/manifest.json') != '' && hashFiles('job/study3/run.py') != ''
+        run: python3 -I job/study3/run.py study-data 2
+      - name: Study analysis (results 3)
+        if: hashFiles('study-data/manifest.json') != '' && hashFiles('job/study3/run.py') != ''
+        run: python3 -I job/study3/run.py study-data 3

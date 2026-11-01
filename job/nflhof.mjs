@@ -49,7 +49,10 @@ export function parseHof(w) {
   let pt = clean(field(w, "pastteams") || field(w, "teams")); const co = pt.search(/As (?:a )?(?:head )?coach|As executive|'''Coach/i); if (co > 0) pt = pt.slice(0, co);
   /* link targets dropped first: "[[Boston Braves (NFL)|Boston Braves / Redskins]] / [[Washington Redskins]] (1932–1937)" (Oct 30) */
   const T = []; for (const l0 of pt.split("\n")) { if (!/^\s*\*/.test(l0) || /practice squad|offseason|\*\s*\{\{\s*small/i.test(l0)) continue; const l = unlink(l0), k = l.search(/\s\(/), t = frOf(k >= 0 ? l.slice(0, k) : l); if (!t) continue;
-    const par = k >= 0 ? l.slice(k) : "", y = seasons(par); if (/present/i.test(par)) y.push(NOW_SEASON()); if (y.length) T.push([t, Math.min(...y), Math.max(...y)]) }
+    const par = k >= 0 ? l.slice(k) : "", y = seasons(par); if (/present/i.test(par)) y.push(NOW_SEASON());
+    /* a stint marked with the infobox's footnote star ("* Offseason or practice squad member only": Chad Johnson, "Miami Dolphins (2012)*")
+       stays in `t` as before but is tagged `off`, which only the snubs' Pro Bowl path reads (a named array property: JSON leaves it out of the pack) */
+    if (y.length) { const e = [t, Math.min(...y), Math.max(...y)]; if (/\)\s*(?:\*|\{\{\s*sup\s*\|\s*\*\s*\}\}|<sup>\s*\*\s*<\/sup>)\s*$/i.test(l.trim())) e.off = 1; T.push(e) } }
   let h = clean(field(w, "highlights")); const hc = h.search(/'''\s*As (?:a )?(?:head )?coach|'''\s*As executive|\n;\s*As (?:a )?(?:head )?coach|\n;\s*As (?:an )?executive/i); if (hc > 0) h = h.slice(0, hc);
   const A = []; for (const l0 of h.split("\n")) { if (!/^\s*\*/.test(l0)) continue; const l = unlink(l0); const kd = KIND.find(([re]) => re.test(l)); if (!kd || !kd[1]) continue;
     const k = kd[1], cnt = +((l.match(/(\d+)\s*×/) || [])[1] || 1), par = l.slice(l.indexOf("(") >= 0 ? l.indexOf("(") : l.length), ys = seasons(par, k === "sb" || k === "sbmvp");
@@ -192,7 +195,7 @@ const honTxt = (pb, ap1) => [pb ? `${pb} Pro Bowl${pb === 1 ? "" : "s"}` : "", a
 const span = Y => { const y = [...Y].sort((a, b) => a - b); return y.length > 1 && y[y.length - 1] - y[0] === y.length - 1 ? `${y[0]}–${String(y[y.length - 1]).slice(2)}` : y.join(", ") };
 /* the Pro Bowl path's test, from his infobox (parseHof): { pb, n: seasons his team years cover, last, ok } */
 export function pbPath(x, nowY = new Date().getUTCFullYear()) {
-  const yrs = new Set(); for (const [, a, b] of x.t) for (let y = a; y <= b; y++) yrs.add(y);
+  const yrs = new Set(); for (const e of x.t) if (!e.off) for (let y = e[1]; y <= e[2]; y++) yrs.add(y);
   const pb = x.aw.filter(a => a[0] === "pb").length, ap1 = x.aw.filter(a => a[0] === "ap1").length, n = yrs.size, last = n ? Math.max(...yrs) : null;
   return { pb, ap1, n, last, ok: pb >= 5 && pb * 2 > n && !!last && last + 6 <= nowY } }
 const pbTxt = q => `Pro Bowl in ${q.pb} of ${q.n} seasons (${Math.round(100 * q.pb / q.n)}%)${q.ap1 ? ` + ${q.ap1} first-team All-Pro` : ""}`;
@@ -295,7 +298,7 @@ export async function buildNflHof({ putPack, putIndex, extra = [], dry = false, 
   const yrs = s => [s.finals.length ? `finalist ${s.finals.join(", ")}` : "", s.semis.length ? `semifinalist ${s.semis.join(", ")}` : ""].filter(Boolean).join("; ");
   const SL = Object.entries(SN.S).filter(([nm]) => !clash.includes(nm)).sort((a, b) => a[0].localeCompare(b[0]));
   /* the whole list, over as many notices as it takes (GitHub keeps ~4 KB of each and 10 a step, so the evidence sentences stay in the pack: snub.said) */
-  { const txt = `${ns} — ${SL.map(([nm, p]) => `${nm} (${(p.pos.split(/[\/,]/)[0] || "").trim()}): ${p.snub.why.join(" + ")} · ${yrs(p.snub)}`).join(" | ")}`;
+  { const txt = `${ns} — ${SL.map(([nm, p]) => `${nm} (${(p.pos.split(/[\/,]/)[0] || "").trim()}): ${p.snub.why.join(" + ")}${yrs(p.snub) ? " · " + yrs(p.snub) : ""}`).join(" | ")}`;
     for (let i = 0, n = 1; i < txt.length && n <= 3; i += 3900, n++) log(`::notice title=nfl hof snubs${n > 1 ? " " + n : ""}::${txt.slice(i, i + 3900)}`) }
   const M = SN.meta;
   /* the Pro Bowl path (the owner 8:31 pm): each title on its list and what its page gave, and who's on by that path alone */

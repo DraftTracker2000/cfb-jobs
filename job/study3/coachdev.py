@@ -14,11 +14,9 @@ def run(reg, log, D):
                       'min': m, 'name': pick(s, 'name'),
                       'bx40': (num(pick(s, 'points')) + num(pick(s, 'rebounds.total')) + num(pick(s, 'assists')) + num(pick(s, 'steals')) + num(pick(s, 'blocks')) - num(pick(s, 'turnovers'))) / m * 40})
     S = S[S['min'] >= 200].drop_duplicates(['pid', 'season'])
-    ro = frame('bb_roster', flat=False); start = {}
-    for L_ in ro.players if len(ro) and 'players' in ro else []:
-        for p_ in L_ if isinstance(L_, list) else []:
-            if p_.get('startSeason'): start[str(p_.get('id'))] = p_['startSeason']
-    S['yr'] = S.season - S.pid.map(start) + 1
+    # year in school fixed Nov 1 (bbyears.py): roster startSeason restarts at a transfer and is cut off where CBBD's rosters begin
+    import bbyears; _a = num(pick(s, 'minutes')) > 0
+    S['yr'] = S.season - S.pid.map(bbyears.first_season(pick(s, 'athleteId').astype(str)[_a], num(pick(s, 'season', '_year'))[_a])) + 1
     sr0 = frame('bb_srs'); sr = pd.DataFrame({'t': pick(sr0, 'teamId').astype(str), 's': num(pick(sr0, 'season', '_year')), 'r': num(pick(sr0, 'rating'))}).dropna().drop_duplicates(['t', 's']).set_index(['t', 's']).r
     CO = cb_.coaches(D)
     a = S[['pid', 'season', 'tid', 'team', 'yr', 'bx40', 'name']]; b = a[['pid', 'season', 'tid', 'bx40']].copy(); b['season'] -= 1

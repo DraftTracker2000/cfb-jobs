@@ -138,6 +138,11 @@ def run(reg, log, D):
         d = d.dropna(subset=['coach']).assign(season=lambda z: z.after)
         T, fam = named(reg, hyp, f'Basketball player development by coach, {lab} (bx40 beyond class, level, team SRS change)', d, 'coach', 'res', min_seasons=6, min_rows=mr, g='pid', unit='bx40')
         Tg[hyp] = (d, T); log(f'{hyp} {lab}: {len(d)} pairs; split-half r {fam[0]:.2f} (p {fam[1]:.3g}, {fam[2]} coaches)\n' + _top(T)); log(_ctx(T, hyp))
+    for c in CTX:
+        x = dev[dev.coach == c]; lo = Tg['BD02'][0]; lo = lo[lo.coach == c]
+        log(f'{c} (fixed year): {len(x)} pairs, mean {x.res.mean():+.2f}, SD {x.res.std():.2f}, improved {(x.res > 0).mean():.2f}, without top 3 {x.res.sort_values().iloc[:-3].mean():+.2f}; '
+            f'by position ' + ', '.join(f'{p_} {g.res.mean():+.2f} ({len(g)})' for p_, g in x.groupby('pos')) + f'; by stars ' +
+            ', '.join(f'{int(k_)}* {g.res.mean():+.2f} ({len(g)})' for k_, g in x.assign(sg=x.stars.fillna(0)).groupby('sg')) + f'; 3-star-and-below pairs {len(lo)}, mean {lo.res.mean():+.2f}')
     # ---------- BD03 blue-chip programs ----------
     # class scores from every listed recruit, linked to a player or not
     Rk = pd.DataFrame({'year': num(pick(rc, 'year', '_year')), 'rating': num(pick(rc, 'rating')), 'tid': pick(rc, 'committedTo.id').astype(str).str.replace(r'\.0$', '', regex=True),
@@ -149,6 +154,13 @@ def run(reg, log, D):
     blue = set(top[top >= ny / 2].index); tnm = dict(zip(A.tid, A.team))
     log(f'BD03 blue-chip programs (top-10 class in {int(np.ceil(ny / 2))}+ of {ny} classes): ' + ', '.join(f'{tnm.get(t, t)} {top[t]}' for t in sorted(blue, key=lambda t: -top[t])))
     log('next tier (6-9 top-10 classes): ' + ', '.join(f'{tnm.get(t, t)} {top[t]}' for t in top[(top >= 6) & (top < ny / 2)].sort_values(ascending=False).index))
+    for y_ in (2010, 2015, 2020, 2024):
+        x = C[C.year == y_].sort_values('rk').head(10); log(f'class top 10 {y_}: ' + ', '.join(tnm.get(t, t) for t in x.tid))
+    t15 = C[C.rk <= 15].groupby('tid').year.nunique(); blue15 = set(t15[t15 >= ny / 2].index)
+    log(f'check, top-15 class in {int(np.ceil(ny / 2))}+ classes: ' + ', '.join(f'{tnm.get(t, t)} {t15[t]}' for t in sorted(blue15, key=lambda t: -t15[t])))
+    for lab, mask in [('3-stars and below plus unranked', dev.stars.fillna(0) <= 3), ('not 5-stars', dev.stars.fillna(0) < 5)]:
+        d = dev[mask].copy(); d['res'] = _fit(d, 'chg', [d.bx40, d.dsrs] + [(d.yr == k) for k in (1, 2, 3)]); h = d[d.conf.isin(POWER)]; b15 = h.tid.isin(blue15)
+        o, _ = __import__('lib3').ols_cl(h.res, [b15.astype(float)], h.pid, ['b']); log(f'check {lab}, top-15 set vs other power: {h[b15].res.mean():+.2f} ({int(b15.sum())} pairs) vs {h[~b15].res.mean():+.2f}; diff {o.loc["b", "b"]:+.2f} (se {o.loc["b", "se"]:.2f}, p {o.loc["b", "p"]:.3f})')
     for lab, mask in [('3-stars and below plus unranked', dev.stars.fillna(0) <= 3), ('not 5-stars', dev.stars.fillna(0) < 5)]:
         d = dev[mask].copy(); d['blue'] = d.tid.isin(blue).astype(float); d['hm'] = d.conf.isin(POWER).astype(float)
         d['res'] = _fit(d, 'chg', [d.bx40, d.dsrs] + [(d.yr == k) for k in (1, 2, 3)])
@@ -197,7 +209,7 @@ def run(reg, log, D):
     st0['xfer'] = st0.pid.isin(set(oth.pid)).astype(float)
     st0['coach'] = [CO.get((t, int(f_))) for t, f_ in zip(st0.tid, st0.f)]; st0['season'] = st0.f.astype(int)
     st0['y'] = st0.stay3 - st0.groupby('season').stay3.transform('mean'); st0['bl'] = st0.tid.isin(blue)
-    log(f'BD05: {len(st0)} players starting 2009-2024 (listed recruits or 100+ minutes in two seasons); stayed 3+ seasons {st0.stay3.mean():.2f}, transferred within 3 {st0.xfer.mean():.2f}; '
+    log(f'BD05: {len(st0)} players starting 2008-2024 (listed recruits or 100+ minutes in two seasons; coach known from 2014, the coaches pack\'s first season); stayed 3+ seasons {st0.stay3.mean():.2f}, transferred within 3 {st0.xfer.mean():.2f}; '
         f'by season {st0.groupby("season").stay3.mean().round(2).to_dict()}; blue-chip {st0[st0.bl].stay3.mean():.2f} vs others {st0[~st0.bl].stay3.mean():.2f}')
     T, fam = named(reg, 'BD05', 'Coach whose starting players stay 3+ seasons (share, beyond the season)', st0.dropna(subset=['coach']), 'coach', 'y', min_seasons=6, min_rows=20, g='pid', unit='share')
     log(f'BD05 retention: split-half r {fam[0]:.2f} (p {fam[1]:.3g}, {fam[2]} coaches)\n' + _top(T)); log(_ctx(T, 'BD05 retention')); TR = T
@@ -210,13 +222,17 @@ def run(reg, log, D):
     def est(df, col, lo, hi, minr):
         x = df[(df.season >= lo) & (df.season <= hi)]; g = x.groupby('coach')[col]; e = g.mean(); return e[g.size() >= minr]
     dv = dev.dropna(subset=['coach']).assign(season=lambda z: z.after)
-    for lab, (r1, r2, d1, d2) in {'same years': ((2009, 2026), (2009, 2026), None, None), 'out of sample: retention 2009-16 cohorts, development 2017-26': ((2009, 2016), (2017, 2026), None, None)}.items():
-        e1 = est(st0.dropna(subset=['coach']), 'y', *r1, 15); e2 = est(dv, 'res', *r2, 25); k = e1.index.intersection(e2.index)
-        r, p, n = rtest(e1[k], e2[k])
-        if lab.startswith('out'):
-            reg.add('BD07', 'Coaches whose players stay are coaches whose players improve (r across coaches, out of sample)', 'family', r, np.nan, p, n, oos_pass=bool(np.isfinite(r) and r > 0 and p < .10),
-                    detail=f'{n} coaches; retention from 2009-16 starters, development from 2017-26 pairs', unit='r')
-        log(f'BD07 {lab}: r {r:.2f} (p {p:.3g}, {n} coaches); ' + '; '.join(f'{c} retention {e1.get(c, np.nan):+.2f} dev {e2.get(c, np.nan):+.2f}' for c in CTX))
+    # the coaches pack starts in 2014, so a split by years leaves almost no coach (first run: 7). Split by PLAYER instead: retention from
+    # players whose first season is odd, development from pairs of players whose first season is even — no player is in both.
+    dv['f'] = dv.pid.map(F); r0 = st0.dropna(subset=['coach'])
+    e1 = est(r0, 'y', 2008, 2026, 15); e2 = est(dv, 'res', 2008, 2026, 25); k = e1.index.intersection(e2.index); r, p, n = rtest(e1[k], e2[k])
+    log(f'BD07 same players and years: r {r:.2f} (p {p:.3g}, {n} coaches)')
+    e1 = est(r0[r0.f % 2 == 1], 'y', 2008, 2026, 10); e2 = est(dv[dv.f % 2 == 0], 'res', 2008, 2026, 20); k = e1.index.intersection(e2.index); r, p, n = rtest(e1[k], e2[k])
+    h1 = est(r0[(r0.f % 2 == 1)], 'y', 2008, 2026, 10); h2 = est(dv[(dv.f % 2 == 0) & (dv.season >= HOLD)], 'res', HOLD, 2026, 8); kh = h1.index.intersection(h2.index); rh, ph, nh = rtest(h1[kh], h2[kh])
+    reg.add('BD07', 'Coaches whose players stay are coaches whose players improve (r across coaches; retention and development from different players)', 'family', r, np.nan, p, n,
+            oos_pass=bool(np.isfinite(rh) and rh > 0 and ph < .10), detail=f'{n} coaches; retention from players starting in odd seasons, development from players starting in even seasons; '
+            f'holdout (development {HOLD}-26) r {rh:.2f} (p {ph:.3g}, {nh})', unit='r')
+    log(f'BD07 different players: r {r:.2f} (p {p:.3g}, {n} coaches); holdout r {rh:.2f} (p {ph:.3g}, {nh}); ' + '; '.join(f'{c} retention {e1.get(c, np.nan):+.2f} dev {e2.get(c, np.nan):+.2f}' for c in CTX))
     # ---------- the four coaches, all measures ----------
     rows = []
     for c in CTX:

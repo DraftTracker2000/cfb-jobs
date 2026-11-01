@@ -148,7 +148,10 @@ def run(reg, log, D):
     Rk = pd.DataFrame({'year': num(pick(rc, 'year', '_year')), 'rating': num(pick(rc, 'rating')), 'tid': pick(rc, 'committedTo.id').astype(str).str.replace(r'\.0$', '', regex=True),
                        'id': pick(rc, 'id')}).dropna(subset=['rating', 'year']).drop_duplicates(['id', 'year']); Rk = Rk[~Rk.tid.isin(['nan', 'None', ''])]
     Rk['i'] = Rk.groupby(['tid', 'year']).rating.rank(ascending=False, method='first') - 1
-    Rk['pts'] = Rk.rating * 100 * np.exp(-(Rk.i / 5) ** 2)                 # a class score: best recruit counts fully, the 5th about half
+    # a class score: each recruit's rating above the 3-star floor (.80), best recruit fully, the 5th about half. (Run 2 summed raw ratings, which
+    # put big low-major classes of 2-stars in the top 10 — Stephen F. Austin and UNC Greensboro in 2010 — so it was replaced.)
+    log('rating by stars: ' + str(R.groupby('stars').rating.describe()[['min', '50%', 'max']].round(3).to_dict('index')))
+    Rk['pts'] = (Rk.rating - .80).clip(lower=0) * 100 * np.exp(-(Rk.i / 5) ** 2)
     C = Rk.groupby(['year', 'tid']).pts.sum().reset_index(); C['rk'] = C.groupby('year').pts.rank(ascending=False, method='min')
     top = C[C.rk <= 10].groupby('tid').year.nunique(); ny = C.year.nunique()
     blue = set(top[top >= ny / 2].index); tnm = dict(zip(A.tid, A.team))

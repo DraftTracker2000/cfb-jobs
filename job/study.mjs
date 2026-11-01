@@ -83,7 +83,10 @@ const shape = x => { if (x == null || typeof x !== "object") return JSON.stringi
   return "{" + Object.entries(x).map(([k, v]) => k + ":" + (v && typeof v === "object" ? (Array.isArray(v) ? "[" + (v.length && typeof v[0] === "object" ? Object.keys(v[0]).join("|") : "") + "]" : "{" + Object.keys(v).join("|") + "}") : JSON.stringify(v)?.slice(0, 18))).join(",") + "}" };
 const pack = (L, max) => { const out = []; let s = ""; for (const x of L) { if ((s + x).length > 3900) { out.push(s); s = "" } s += x + " ‖ " } if (s) out.push(s); return out.slice(0, max) };
 export async function runStudy({ site, token, job, log = console.log, out = "study-data", archive = process.env.STUDY_ARCHIVE !== "0" }) {
-  const want = String(process.env.STUDY || "").split(",").map(s => s.trim()).filter(Boolean);
+  const want0 = String(process.env.STUDY || "").split(",").map(s => s.trim()).filter(Boolean);
+  /* "noarchive" in STUDY: an analysis rerun — the answers are already kept, so no study packs are written again */
+  if (want0.includes("noarchive")) archive = false;
+  const want = want0.filter(x => x !== "noarchive");
   const FLOOR = +process.env.STUDY_FLOOR || 46000, CAP = +process.env.STUDY_CAP || 20000;
   const now = new Date(), cur = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;   // the proxy's season (src/cfbd.js)
   const H = { headers: { Authorization: "Bearer " + token } }, sleep = ms => new Promise(z => setTimeout(z, ms));
@@ -153,6 +156,8 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
     log(`study ${b.name}: ${line}`); LINES.push(`${b.name}: ${line}`);
     man.batches.push({ name: b.name, asked: n, got, kept, fresh, before, after, calls, rows, mb: +(bytes / 1e6).toFixed(2), newKVmb: +(newKV / 1e6).toFixed(2), packs, packMB: +packMB.toFixed(2), errors: errs.slice(0, 20) });
   }
+  /* the site's own packs the analysis needs (read only): basketball head coaches by team and season (ESPN, built by the basketball job) */
+  for (const n of ["p2026_cbb-coaches"]) { try { const r = await fetch(`${site}/api/pack/${n}`, H); if (r.ok) writeFileSync(`${out}/site_${n}.json.gz`, gzipSync(Buffer.from(await r.text()))) } catch (e) { } }
   const L1 = await left(); man.left1 = L1; man.used = used; man.cbbdLeft = lastLeft;
   if (Object.keys(IX).length) { for (let k = 0; k < 3; k++) { const r = await fetch(`${site}/api/pack-index`, { method: "PUT", body: JSON.stringify(IX), headers: { Authorization: "Bearer " + job, "Content-Type": "application/json" } }); if (r.ok) break; await sleep(4000) } }
   man.archive = { packs: ARCH.length, mb: +(ARCH.reduce((a, x) => a + x[1], 0) / 1e6).toFixed(1), names: ARCH };

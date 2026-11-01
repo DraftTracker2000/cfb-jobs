@@ -1,0 +1,66 @@
+# Pattern hunt 3 — the driver the data job's study mode runs on the GitHub runner (job/study3/run.py study-data <part>). STUDY ONLY.
+# Part 1 runs every hypothesis (each in its own try, so one broken test doesn't stop the rest), one Benjamini-Hochberg pass over every
+# test registered this round, and packs the RESULTS (tests, survivors, the log of tables) as gzip + base64 in study-data/results.b64.
+# Each part then prints 10 pieces of it as notices (GitHub keeps 10 notices a step, 4,096 characters each): part 1 pieces 1-10, part 2
+# 11-20, part 3 21-30. Only aggregate results go out; the pulled data stays on the runner. Reassemble with read_results.py.
+import sys, os, json, gzip, base64, traceback, time
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import numpy as np, pandas as pd
+from lib3 import Reg, bh
+import load
+
+D, part = sys.argv[1], int(sys.argv[2])
+OUT = os.path.join(D, 'results.b64'); PIECE = 3900
+
+def emit(start):
+    if not os.path.exists(OUT): print('::warning title=study results::no results file'); return
+    s = open(OUT).read(); n = (len(s) + PIECE - 1) // PIECE
+    for i in range(start, min(start + 10, n)): print(f'::notice title=study results {i + 1:02d}/{n:02d}::{s[i * PIECE:(i + 1) * PIECE]}')
+    if part == 3 and n > 30: print(f'::warning title=study results::{n} pieces, only 30 printed — trim the log')
+
+if part > 1: emit((part - 1) * 10); sys.exit(0)
+
+load.init(D)
+LOG = []
+def log(*a):
+    s = ' '.join(str(x) for x in a); LOG.append(s); print(s, flush=True)
+reg = Reg(os.path.join(D, 'reg.pkl')); t0 = time.time(); errors = []
+def step(name, f, *a):
+    t = time.time()
+    try: r = f(*a); log(f'[{name}] done in {time.time() - t:.0f}s'); return r
+    except Exception as e: errors.append(f'{name}: {e!r}'); log(f'[{name}] FAILED: {traceback.format_exc()[-1500:]}'); return None
+
+import cfb_base, cfb_teams, cfb_players, cfb_box, cfb_plays, cbb
+base = step('base', cfb_base.build)
+if base:
+    G, T, CO, TS = base
+    log(f'base: {len(G)} games ({int(G.both_fbs.sum())} FBS v FBS), lines for {G.exp_home.notna().mean():.2f}; {len(CO)} coach-seasons; {len(TS)} team-seasons; '
+        f'SRS {TS.srs.notna().mean():.2f}, talent {TS.talent.notna().mean():.2f}, recruiting {TS.rec4.notna().mean():.2f}')
+    step('teams', cfb_teams.run, reg, log, G, T, CO, TS)
+    P = step('players', lambda: (cfb_players.run(reg, log, G, T, CO, TS), cfb_players.player_seasons())[1])
+    if P is not None: step('box', cfb_box.run, reg, log, G, T, CO, TS, P)
+    step('plays', cfb_plays.run, reg, log, G, T, CO, TS)
+step('cbb', cbb.run, reg, log, D)
+
+R = reg.df()
+if len(R):
+    R['p'] = pd.to_numeric(R.p, errors='coerce').clip(lower=1e-300).fillna(1.0); R['q'] = bh(R.p.values)
+    R['survives'] = (R.q < .10) & (R.oos_pass == True) & (R.loo_pass != False)
+keep = R[(R.kind != 'named') | (R.p < .2) | R.survives] if len(R) else R
+best = R[R.kind == 'named'].sort_values('p').groupby('hyp').head(3) if len(R) else R
+keep = pd.concat([keep, best]).drop_duplicates(['hyp', 'label']) if len(R) else R
+try: man = json.load(open(os.path.join(D, 'manifest.json')))
+except Exception: man = {}
+res = {'v': 1, 'at': time.time(), 'minutes': (time.time() - t0) / 60, 'manifest': man, 'errors': errors,
+       'counts': {'tests': int(len(R)), 'hyps': int(R.hyp.nunique()) if len(R) else 0, 'q10': int((R.q < .1).sum()) if len(R) else 0,
+                  'survive': int(R.survives.sum()) if len(R) else 0, 'named': int((R.kind == 'named').sum()) if len(R) else 0},
+       'per_hyp': (R.groupby('hyp').agg(n=('p', 'size'), best_q=('q', 'min'), surv=('survives', 'sum')).reset_index().to_dict('records') if len(R) else []),
+       'tests': json.loads(keep.replace({np.nan: None}).to_json(orient='records')) if len(R) else [], 'log': LOG}
+raw = json.dumps(res, default=str).encode()
+while True:
+    b = base64.b64encode(gzip.compress(raw, 9)).decode()
+    if len(b) <= 30 * PIECE or len(res['log']) < 50: break
+    res['log'] = res['log'][: int(len(res['log']) * .8)] + ['… log cut to fit the 30 notices']; raw = json.dumps(res, default=str).encode()
+open(OUT, 'w').write(b)
+print(f'results: {len(R)} tests, {res["counts"]["survive"]} survive; {len(b)} characters in {(len(b) + PIECE - 1) // PIECE} pieces; errors: {errors}')
+emit(0)

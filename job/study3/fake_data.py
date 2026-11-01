@@ -72,8 +72,12 @@ for y in YEARS:
     bg = []
     for k in range(600):
         a, b = rng.sample(range(40), 2); bg.append({'id': f'{y}{k}', 'season': y, 'homeTeamId': str(a), 'awayTeamId': str(b), 'homePoints': rng.randint(50, 90), 'awayPoints': rng.randint(50, 90),
-                                                  'neutralSite': False, 'startDate': f'{y}-0{rng.choice([1, 2, 3])}-10T00:00:00Z' if k % 2 else f'{y - 1}-1{rng.choice([1, 2])}-10T00:00:00Z', 'seasonType': 'regular'})
+                                                  'neutralSite': False, 'conferenceGame': k % 2 == 0, 'tournament': None, 'homeConference': 'A', 'awayConference': 'A' if k % 2 == 0 else 'B', 'startDate': f'{y}-0{rng.choice([1, 2, 3])}-10T00:00:00Z' if k % 2 else f'{y - 1}-1{rng.choice([1, 2])}-10T00:00:00Z', 'seasonType': 'regular'})
     put('bb_games', y, {f'/games?season={y}&startDateRange=x': bg})
+for y in YEARS:
+    put('cf_rankings', y, {f'/rankings?year={y}&seasonType=regular': [{'season': y, 'seasonType': 'regular', 'week': w, 'polls': [{'poll': 'AP Top 25', 'ranks': [{'rank': i + 1, 'school': TEAMS[(i + w) % 40]} for i in range(25)]}]} for w in range(1, 13)]})
+    put('bb_rankings', y, {f'/rankings?season={y}': [{'season': y, 'pollDate': f'{y - 1}-12-{d:02d}T00:00:00Z', 'pollType': 'AP Top 25', 'teamId': str((i + d) % 40), 'ranking': i + 1} for d in (1, 15) for i in range(25)]})
+    put('bb_lines', y, {f'/lines?season={y}&x=1': [{'gameId': f'{y}{k}', 'lines': [{'provider': 'consensus', 'spread': rng.uniform(-10, 10)}]} for k in range(600)]})
 json.dump({'cbb-coaches': {'coaches': {str(i): {'nm': f'BB Coach {i}'} for i in range(40)}, 'bySeason': {str(y): {str(t): str(t) for t in range(40)} for y in YEARS}}},
           gzip.open(f'{O}/site_p2026_cbb-coaches.json.gz', 'wt'))
 json.dump({'batches': []}, open(f'{O}/manifest.json', 'w')); print('fake data written')

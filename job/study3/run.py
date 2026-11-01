@@ -30,9 +30,13 @@ def step(name, f, *a):
     try: r = f(*a); log(f'[{name}] done in {time.time() - t:.0f}s'); return r
     except Exception as e: errors.append(f'{name}: {e!r}'); log(f'[{name}] FAILED: {traceback.format_exc()[-1500:]}'); return None
 
-import cfb_base, cfb_teams, cfb_players, cfb_box, cfb_plays, cbb
-base = step('base', cfb_base.build)
-if base:
+import cfb_base, cfb_teams, cfb_players, cfb_box, cfb_plays, cbb, home
+try: FOCUS = json.load(open(os.path.join(D, 'manifest.json'))).get('focus')
+except Exception: FOCUS = None
+log(f'focus: {FOCUS or "everything"}')
+# "focus:home" (Nov 1 follow-up): only the home-edge tests, so this follow-up's BH pass covers its own tests
+base = step('home', home.run, reg, log) if FOCUS == 'home' else step('base', cfb_base.build)
+if base and FOCUS != 'home':
     G, T, CO, TS = base
     log(f'base: {len(G)} games ({int(G.both_fbs.sum())} FBS v FBS), lines for {G.exp_home.notna().mean():.2f}; {len(CO)} coach-seasons; {len(TS)} team-seasons; '
         f'SRS {TS.srs.notna().mean():.2f}, talent {TS.talent.notna().mean():.2f}, recruiting {TS.rec4.notna().mean():.2f}')
@@ -41,7 +45,7 @@ if base:
     step('players', cfb_players.run, reg, log, G, T, CO, TS, P)
     if P is not None: step('box', cfb_box.run, reg, log, G, T, CO, TS, P)
     step('plays', cfb_plays.run, reg, log, G, T, CO, TS)
-step('cbb', cbb.run, reg, log, D)
+if FOCUS != 'home': step('cbb', cbb.run, reg, log, D)
 
 R = reg.df()
 if len(R):

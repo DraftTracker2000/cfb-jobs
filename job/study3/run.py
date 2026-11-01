@@ -35,9 +35,11 @@ try: FOCUS = json.load(open(os.path.join(D, 'manifest.json'))).get('focus')
 except Exception: FOCUS = None
 log(f'focus: {FOCUS or "everything"}')
 if FOCUS == 'findings': print('focus:findings — no hunt analysis this run; findings.py builds the packs'); sys.exit(0)
+if FOCUS == 'coachdev':
+    import coachdev; step('coachdev', coachdev.run, reg, log, D)
 # "focus:home" (Nov 1 follow-up): only the home-edge tests, so this follow-up's BH pass covers its own tests
-base = step('home', home.run, reg, log) if FOCUS == 'home' else step('base', cfb_base.build)
-if base and FOCUS != 'home':
+base = step('home', home.run, reg, log) if FOCUS == 'home' else None if FOCUS == 'coachdev' else step('base', cfb_base.build)
+if base and FOCUS not in ('home', 'coachdev'):
     G, T, CO, TS = base
     log(f'base: {len(G)} games ({int(G.both_fbs.sum())} FBS v FBS), lines for {G.exp_home.notna().mean():.2f}; {len(CO)} coach-seasons; {len(TS)} team-seasons; '
         f'SRS {TS.srs.notna().mean():.2f}, talent {TS.talent.notna().mean():.2f}, recruiting {TS.rec4.notna().mean():.2f}')
@@ -46,7 +48,7 @@ if base and FOCUS != 'home':
     step('players', cfb_players.run, reg, log, G, T, CO, TS, P)
     if P is not None: step('box', cfb_box.run, reg, log, G, T, CO, TS, P)
     step('plays', cfb_plays.run, reg, log, G, T, CO, TS)
-if FOCUS != 'home': step('cbb', cbb.run, reg, log, D)
+if FOCUS not in ('home', 'coachdev'): step('cbb', cbb.run, reg, log, D)
 
 R = reg.df()
 if len(R):

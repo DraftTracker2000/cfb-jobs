@@ -25,9 +25,11 @@ def run(reg, log, data_dir):
     m = num(pick(s, 'minutes'))
     S = pd.DataFrame({'pid': pick(s, 'athleteId').astype(str), 'season': num(pick(s, 'season', '_year')), 'tid': pick(s, 'teamId').astype(str),
                       'team': pick(s, 'team'), 'pos': pick(s, 'position'), 'min': m, 'name': pick(s, 'name'),
-                      'p40': num(pick(s, 'points')) / m * 40, 'ws40': num(pick(s, 'winShares.totalPer40')), 'porpag': num(pick(s, 'PORPAG', 'porpag'))})
+                      'p40': num(pick(s, 'points')) / m * 40, 'ws40': num(pick(s, 'winShares.totalPer40')), 'porpag': num(pick(s, 'PORPAG', 'porpag')),
+                      # box production per 40 (points + rebounds + assists + steals + blocks - turnovers): the player's own line, less tied to team wins than win shares
+                      'bx40': (num(pick(s, 'points')) + num(pick(s, 'rebounds.total')) + num(pick(s, 'assists')) + num(pick(s, 'steals')) + num(pick(s, 'blocks')) - num(pick(s, 'turnovers'))) / m * 40})
     S = S[S['min'] >= 200].drop_duplicates(['pid', 'season'])
-    met = 'ws40' if S.ws40.notna().mean() > .5 else 'p40'
+    met = 'bx40' if S.bx40.notna().mean() > .5 else 'p40'
     log(f'cbb: {len(S)} player-seasons with 200+ minutes, {int(S.season.min())}-{int(S.season.max())}; metric {met}')
     ro = frame('bb_roster', flat=False); start = {}
     if len(ro) and 'players' in ro:
@@ -62,7 +64,10 @@ def run(reg, log, data_dir):
     # B01 coaches whose players jump
     x = st.dropna(subset=['yr']).copy(); x = x[x.yr.between(1, 4)]
     if len(x) > 200:
-        X = np.column_stack([np.ones(len(x)), x[met]] + [(x.yr == k).astype(float) for k in (1, 2, 3)]); bb = np.linalg.lstsq(X, x.chg, rcond=None)[0]; x['res'] = x.chg - X @ bb
+        x['dsrs'] = [sr.get((t, s_ + 1), np.nan) - sr.get((t, s_), np.nan) for t, s_ in zip(x.tid, x.season)]; x = x.dropna(subset=['dsrs'])
+        # beyond class year, his own level and the TEAM's change (SRS this year minus last), so a coach isn't credited for a team that got better
+        X = np.column_stack([np.ones(len(x)), x[met], x.dsrs] + [(x.yr == k).astype(float) for k in (1, 2, 3)]); bb = np.linalg.lstsq(X, x.chg, rcond=None)[0]; x['res'] = x.chg - X @ bb
+        log(f'B01: {len(x)} returning-player pairs; per SRS point of team change {bb[2]:+.4f} {met}')
         x['coach'] = [CO.get((t, int(s_) + 1)) for t, s_ in zip(x.tid, x.season)]; x['season'] = x.season + 1
         Tn, fam = named(reg, 'B01', f'Basketball head coach whose players jump ({met} beyond class and level)', x.dropna(subset=['coach']), 'coach', 'res', min_seasons=6, min_rows=40, g='pid', unit=met)
         log(f'B01 split-half r {fam[0]:.2f} ({fam[2]} coaches)')
@@ -79,11 +84,13 @@ def run(reg, log, data_dir):
         G = G[~G.st.astype(str).str.contains('post', case=False)]
         G['hs'] = [sr.get((t, s_)) for t, s_ in zip(G.h, G.season)]; G['as_'] = [sr.get((t, s_)) for t, s_ in zip(G.a, G.season)]
         G = G.dropna(subset=['hs', 'as_']); G['m'] = G.hp - G.ap
-        h_ = G.assign(team=G.h, margin=G.m, home=np.where(G.neutral, .5, 1.0), over=G.m - (G.hs - G.as_)); a_ = G.assign(team=G.a, margin=-G.m, home=np.where(G.neutral, .5, 0.0), over=-(G.m - (G.hs - G.as_)))
+        hfa = (G.m - (G.hs - G.as_))[~G.neutral].mean(); log(f'basketball: {len(G)} games; league home edge beyond SRS {hfa:+.2f}')
+        ex = (G.hs - G.as_) + np.where(G.neutral, 0, hfa)        # expected home margin: SRS gap plus the league's home edge
+        h_ = G.assign(team=G.h, margin=G.m, home=np.where(G.neutral, .5, 1.0), over=G.m - ex); a_ = G.assign(team=G.a, margin=-G.m, home=np.where(G.neutral, .5, 0.0), over=-(G.m - ex))
         TG = pd.concat([h_, a_]).rename(columns={'gid': 'game_id'})
         HH = TG[~TG.neutral]; hs = HH.groupby(['season', 'team', 'home']).margin.mean().unstack(); Sh = (hs[1.0] - hs[0.0]).rename('v').reset_index()
         o = yoy(Sh, 'team', 'v'); log(f'B05 basketball home edge SD {Sh.v.std():.2f}; ' + reg_yoy(reg, 'B05', 'Basketball program home edge (home margin minus road margin)', o))
-        HH = HH.assign(sc=np.where(HH.home == 1, HH.over, -HH.over))
+        HH = HH.assign(sc=np.where(HH.home == 1, HH.over, -HH.over)); HH['sc'] = HH.sc - HH.groupby('season').sc.transform('mean')
         Tn, fam = named(reg, 'B05', 'Basketball program home edge beyond SRS (half of home-minus-road)', HH, 'team', 'sc', min_seasons=10, unit='points')
         if len(Tn): log(Tn.sort_values('p').head(8)[['name', 'ns', 'n', 'est', 'p', 'same_sign', 'oos', 'loo']].round(3).to_string())
         TG['mo'] = TG.date.dt.month; TG['late'] = np.where(TG.mo.isin([2, 3]), 1, np.where(TG.mo.isin([11, 12]), -1, 0))

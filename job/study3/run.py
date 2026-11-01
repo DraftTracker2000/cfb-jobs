@@ -37,7 +37,8 @@ if base:
     log(f'base: {len(G)} games ({int(G.both_fbs.sum())} FBS v FBS), lines for {G.exp_home.notna().mean():.2f}; {len(CO)} coach-seasons; {len(TS)} team-seasons; '
         f'SRS {TS.srs.notna().mean():.2f}, talent {TS.talent.notna().mean():.2f}, recruiting {TS.rec4.notna().mean():.2f}')
     step('teams', cfb_teams.run, reg, log, G, T, CO, TS)
-    P = step('players', lambda: (cfb_players.run(reg, log, G, T, CO, TS), cfb_players.player_seasons())[1])
+    P = step('player seasons', cfb_players.player_seasons)
+    step('players', cfb_players.run, reg, log, G, T, CO, TS, P)
     if P is not None: step('box', cfb_box.run, reg, log, G, T, CO, TS, P)
     step('plays', cfb_plays.run, reg, log, G, T, CO, TS)
 step('cbb', cbb.run, reg, log, D)
@@ -46,21 +47,28 @@ R = reg.df()
 if len(R):
     R['p'] = pd.to_numeric(R.p, errors='coerce').clip(lower=1e-300).fillna(1.0); R['q'] = bh(R.p.values)
     R['survives'] = (R.q < .10) & (R.oos_pass == True) & (R.loo_pass != False)
-keep = R[(R.kind != 'named') | (R.p < .2) | R.survives] if len(R) else R
-best = R[R.kind == 'named'].sort_values('p').groupby('hyp').head(3) if len(R) else R
-keep = pd.concat([keep, best]).drop_duplicates(['hyp', 'label']) if len(R) else R
+# what goes out: every pattern test, and the named tests that matter (survivors and p < .01, at most 25 per hypothesis), plus each
+# hypothesis's best 3 names; details cut to 200 characters
+if len(R):
+    nm = R[R.kind == 'named'].sort_values('p')
+    keep = pd.concat([R[R.kind != 'named'], nm[(nm.p < .01) | nm.survives].groupby('hyp').head(25), nm.groupby('hyp').head(3)]).drop_duplicates(['hyp', 'label'])
+    keep = keep.assign(detail=keep.detail.astype(str).str.slice(0, 200))
+else: keep = R
 try: man = json.load(open(os.path.join(D, 'manifest.json')))
 except Exception: man = {}
 res = {'v': 1, 'at': time.time(), 'minutes': (time.time() - t0) / 60, 'manifest': man, 'errors': errors,
        'counts': {'tests': int(len(R)), 'hyps': int(R.hyp.nunique()) if len(R) else 0, 'q10': int((R.q < .1).sum()) if len(R) else 0,
                   'survive': int(R.survives.sum()) if len(R) else 0, 'named': int((R.kind == 'named').sum()) if len(R) else 0},
-       'per_hyp': (R.groupby('hyp').agg(n=('p', 'size'), best_q=('q', 'min'), surv=('survives', 'sum')).reset_index().to_dict('records') if len(R) else []),
-       'tests': json.loads(keep.replace({np.nan: None}).to_json(orient='records')) if len(R) else [], 'log': LOG}
+       'per_hyp': (R.groupby('hyp').agg(n=('p', 'size'), best_q=('q', 'min'), surv=('survives', 'sum'), named_surv=('survives', lambda x: int((x & (R.loc[x.index, 'kind'] == 'named')).sum()))).reset_index().to_dict('records') if len(R) else []),
+       'log': LOG, 'tests': json.loads(keep.replace({np.nan: None}).to_json(orient='records')) if len(R) else []}
 raw = json.dumps(res, default=str).encode()
 while True:
     b = base64.b64encode(gzip.compress(raw, 9)).decode()
-    if len(b) <= 30 * PIECE or len(res['log']) < 50: break
-    res['log'] = res['log'][: int(len(res['log']) * .8)] + ['… log cut to fit the 30 notices']; raw = json.dumps(res, default=str).encode()
+    if len(b) <= 30 * PIECE: break
+    if len(res['tests']) > 300: res['tests'] = [t for t in res['tests'] if t['kind'] != 'named'] + sorted([t for t in res['tests'] if t['kind'] == 'named'], key=lambda t: t['p'])[: int(sum(t['kind'] == 'named' for t in res['tests']) * .8)]
+    elif len(res['log']) > 50: res['log'] = res['log'][: int(len(res['log']) * .8)] + ['… log cut to fit the 30 notices']
+    else: break
+    raw = json.dumps(res, default=str).encode()
 open(OUT, 'w').write(b)
 print(f'results: {len(R)} tests, {res["counts"]["survive"]} survive; {len(b)} characters in {(len(b) + PIECE - 1) // PIECE} pieces; errors: {errors}')
 emit(0)

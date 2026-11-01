@@ -262,7 +262,7 @@ export async function findSnubs({ have, api, log = () => { }, nowY = new Date().
 export async function buildNflHof({ putPack, putIndex, extra = [], dry = false, log = console.log, wiki = api, pause = 400, snubYears = null, pbCands = null }) {
   let reads = 0; const titles = new Set(); let cont = {};
   for (let g = 0; g < 5; g++) { const j = await wiki({ action: "query", list: "categorymembers", cmtitle: "Category:Pro Football Hall of Fame inductees", cmlimit: "500", cmnamespace: "0", ...cont }); reads++; if (!j) break;
-    for (const m of (j.query && j.query.categorymembers) || []) titles.add(m.title); if (!j.continue) break; cont = j.continue }
+    for (const m of (j.query && j.query.categorymembers) || []) if (!/^List of /.test(m.title)) titles.add(m.title); if (!j.continue) break; cont = j.continue }   /* (Refine 2, D2-05) the category's own list page isn't a person (it showed among the skipped every run) */
   if (titles.size < 300) throw new Error(`nflhof: only ${titles.size} inductees listed — not writing`);
   const XL = Object.fromEntries(extra.map(e => Array.isArray(e) ? e : [e, null])), drop = [];
   const L = [...titles].map(t => [t, 1]).concat(Object.keys(XL).filter(t => !titles.has(t)).map(t => [t, 0]));

@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned (Refine 2, audit 2 D2-05): ubuntu-latest moves to Ubuntu 26, which nothing here has been tested on
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@v5

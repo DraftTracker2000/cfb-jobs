@@ -393,7 +393,8 @@ async function main() {
   /* Oct 11: the run's logs can't be read from here, so what went wrong goes on the run as annotations — held packs and the builder's own
      messages (first and last few, and how many) */
   if (held.length) console.log(`::warning title=held packs::${held.join(", ")}`);
-  if (BLOG.length) console.log(`::notice title=builder messages (${BLOG.length})::${[...BLOG.slice(0, 6), ...(BLOG.length > 10 ? ["…"] : []), ...BLOG.slice(-4)].join(" | ").replace(/[\r\n]+/g, " ").slice(0, 3500)}`);
+  /* (Refine 2, audit 2 D2-05) the first 6 and the last 4 — or all of them when there are 10 or fewer (7–9 lines printed the middle ones twice) */
+  if (BLOG.length) console.log(`::notice title=builder messages (${BLOG.length})::${(BLOG.length > 10 ? [...BLOG.slice(0, 6), "…", ...BLOG.slice(-4)] : BLOG).join(" | ").replace(/[\r\n]+/g, " ").slice(0, 3500)}`);
   if (Object.keys(index).length) {
     await api("PUT", "/api/pack-index", { body: index });
     const mb = Object.values(index).reduce((a, x) => a + x.bytes, 0) / 1048576;

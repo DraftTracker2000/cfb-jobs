@@ -51,3 +51,15 @@ jobs:
       - name: Study analysis (results 3)
         if: hashFiles('study-data/manifest.json') != '' && hashFiles('job/study3/run.py') != ''
         run: python3 -I job/study3/run.py study-data 3
+      # focus:findings (Nov 1 — Sam 10:03 am, Lab first): the site's findings packs, built from the study archive and re-checked every run
+      # (job/study3/findings.py), then uploaded by job/findings.mjs; "dry" in the box lists them and writes nothing
+      - name: Findings packs (build)
+        if: contains(github.event.inputs.batches, 'focus:findings') && hashFiles('study-data/manifest.json') != ''
+        run: python3 -I job/study3/findings.py study-data
+      - name: Findings packs (upload)
+        if: contains(github.event.inputs.batches, 'focus:findings') && hashFiles('study-data/findings/p2026_cfb-findings.json') != ''
+        env:
+          SITE_URL: ${{ secrets.SITE_URL || 'https://mycfbbigboard.com' }}
+          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
+          DRY: ${{ contains(github.event.inputs.batches, 'dry') && '1' || '' }}
+        run: node job/findings.mjs study-data/findings

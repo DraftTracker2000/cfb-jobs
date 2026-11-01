@@ -36,7 +36,8 @@
               games/players 2021–25, the defender-grade pulls 2011–25; always the Lab page; stops at 4,000 CFBD calls left;
               PREFETCH_DRY=1 lists what it would ask for (no browser, no CFBD call) → packs only
      pbpfill  past seasons' college play-by-play packs (p<Y>_pbp) get the fields this season's builds add (first scores, drives, QB→receiver
-              pairs, kicks), added onto the pack and nothing else changed, plus a study-only red-zone pack p<Y>_rzt (job/pbpfill.mjs, Nov 1);
+              pairs, kicks), added onto the pack and nothing else changed, plus a study-only red-zone pack p<Y>_study-rzt (job/pbpfill.mjs, Nov 1);
+              first, every season's CFBD plays, drives and game context kept whole as study packs p<Y>_study-cfb-pbp-* (job/cfbarchive.mjs);
               always the Lab page; PBPFILL_SEASONS picks the seasons (default 2014 on); PREFETCH_DRY=1 (the dry box) lists seasons, pack
               sizes and CFBD calls, no browser and no CFBD call → packs only
 
@@ -74,7 +75,7 @@ const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180, study: 300, pbpfill: 180 }[MODE];
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180, study: 300, pbpfill: 300 }[MODE];
 /* prefetch always runs on the Lab page: the hook it needs (window.__PREFETCH) is a Lab builder */
 const PAGE = MODE === "prefetch" || MODE === "pbpfill" ? "/lab/" : ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 const started = Date.now();
@@ -191,9 +192,30 @@ async function main() {
     for (const s of plan) console.log(`::notice title=pbpfill plan ${s.y}${process.env.PREFETCH_DRY === "1" ? " (dry run)" : ""}::${M.planLine(s)}`);
     const todo = plan.filter(s => s.todo), est = todo.reduce((a, s) => a + s.est, 0);
     console.log(`::notice title=pbpfill plan::${seasons[0]}–${seasons[seasons.length - 1]} · ${todo.length} of ${plan.length} seasons to fill (${todo.map(s => s.y).join(" ") || "none"}) · at most ${est} CFBD calls · budget ${M.BUDGET.toLocaleString()} for the run, floor ${M.FLOOR.toLocaleString()} left${CF0 != null ? ` · ${CF0.toLocaleString()} left now` : ""}`);
-    if (process.env.PREFETCH_DRY === "1") { await report(true, `pbpfill dry run · ${todo.length} seasons to fill · at most ${est} CFBD calls`); return }
-    if (!todo.length) { await report(true, "pbpfill · nothing to fill"); return }
-    PBF = { M, plan, idx, getPack } }
+    /* the study archive first (job/cfbarchive.mjs — Sam, Oct 31 10:45 pm): its plan, sized from the plays the builders already keep gzipped
+       (p<Y>_bc-… of the same /plays answers, 2014–25); the run then reads every season through the proxy */
+    const A = await import("./cfbarchive.mjs"), PF = await import("./prefetch.mjs"), dry = process.env.PREFETCH_DRY === "1" ? " (dry run)" : "";
+    let man = null; try { man = await getPack(A.MANIFEST) } catch { }
+    const wk = [...Array(16)].map((_, i) => "r" + (i + 1)).concat(["p1"]);
+    const kept = y => { let b = 0, n = 0; for (const w of wk) { const e = idx[PF.bcPackName(A.playsPath(y, w), cur)]; if (e) { b += e.bytes; n++ } } return { b, n } };
+    const meas = seasons.map(y => kept(y)).filter(x => x.n >= 15), avg = meas.length ? meas.reduce((a, x) => a + x.b, 0) / meas.length : null;
+    let aMB = 0, aMax = 0, aN = 0;
+    for (const y of seasons) { const done = A.seasonDone(man, idx, y), x = kept(y), b = x.n >= 15 ? x.b : avg;
+      if (!done) { aN++; aMB += (b || 0) / 1048576; aMax += A.seasonMax(y, null) }
+      console.log(`::notice title=archive plan ${y}${dry}::${done ? "already archived — left as it is" : `plays ${x.n >= 15 ? `${(x.b / 1048576).toFixed(1)} MB gz (measured: the builders' kept copy, ${x.n} weeks)` : avg ? `about ${(avg / 1048576).toFixed(1)} MB gz (the measured seasons' average; earlier seasons have fewer plays)` : "size not known yet"} · at most ${A.seasonMax(y, null)} CFBD calls (0 for any the proxy kept)`}`) }
+    console.log(`::notice title=archive plan::${aN} seasons to archive · plays about ${aMB.toFixed(0)} MB gzipped (box scores and context measured as they come) · one pack per week, each well under the 24 MB pack limit · KV: the Workers Paid plan includes 1 GB, then $0.50 per GB-month · at most ${aMax.toLocaleString()} CFBD calls`);
+    if (process.env.PREFETCH_DRY === "1") { await report(true, `pbpfill dry run · archive ${aN} seasons (plays ~${aMB.toFixed(0)} MB gz, at most ${aMax} calls) · ${todo.length} seasons to fill · at most ${est} CFBD calls`); return }
+    const putPack = async (n, gz) => api("PUT", `/api/pack/${n}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+    const putIndex = async ix => api("PUT", "/api/pack-index", { body: ix });
+    /* every answer through the site's proxy with this run's sign-in: X-Kept = the proxy's copy, no CFBD call */
+    const cf = async p => { for (let k = 0; k < 3; k++) { try { const r = await fetch(SITE + "/api/cfbd?path=" + encodeURIComponent(p), { headers: { Authorization: "Bearer " + sess.token } });
+        if (r.ok) return { j: await r.json(), kept: !!r.headers.get("x-kept") }; if (r.status >= 400 && r.status < 500 && r.status !== 429) return { j: null, kept: false };
+        if (r.status === 429) await new Promise(z => setTimeout(z, 20000)) } catch (e) { } await new Promise(z => setTimeout(z, 2000 * (k + 1))) } throw new Error("CFBD " + p + " failed 3 times") };
+    const AR = await A.runArchive({ seasons, idx, cf, left: cfbdLeft, getPack, putPack, putIndex, budget: M.BUDGET, floor: M.FLOOR, deadline: started + 150 * 60e3, log: x => console.log(x) });
+    for (const x of AR.seasons) console.log(`::${x.err ? "warning" : "notice"} title=archive ${x.y}::${x.skip ? x.skip : x.err ? "ERROR " + x.err : `${x.weeks} weeks · ${(x.rows.plays || 0).toLocaleString()} plays · ${x.rows.drives || 0} drives · ${x.rows.games || 0} games · box ${x.rows.box || 0} · lines ${x.rows.lines || 0} · weather ${x.rows.weather || 0} · media ${x.rows.media || 0} · advanced ${x.rows.adv || 0}${x.noPlays ? " · NO PLAYS from CFBD" : ""} · ${x.packs} packs, ${((x.kb || 0) / 1024).toFixed(1)} MB gz · ${x.empty} empty answers · ${x.calls} CFBD calls (${x.left.toLocaleString()} left before this season)`}`);
+    console.log(`::${AR.stop === "error" || AR.indexFailed || AR.manifestFailed ? "warning" : "notice"} title=archive::${AR.packs} packs, ${AR.mb.toFixed(1)} MB gzipped · ${AR.calls} CFBD calls${AR.stop ? ` · stopped: ${AR.stop}` : " · every season done"}${AR.indexFailed ? " · PACK INDEX WRITE FAILED" : ""} · manifest ${A.MANIFEST}`);
+    if (!todo.length) { await report(!AR.indexFailed, `pbpfill · archive ${AR.packs} packs, ${AR.mb.toFixed(1)} MB, ${AR.calls} calls · nothing to fill`); return }
+    PBF = { M, plan, idx, getPack, AR } }
 
   /* MODE=study: pattern hunt 3's college pulls (job/study.mjs) — read through the proxy with the probe sign-in, archived as study-only packs,
      analysed on the runner (job/study3); the run's CFBD total goes on the report like every run's */
@@ -319,11 +341,11 @@ async function main() {
     if (cur !== pageSeason()) throw new Error(`pbpfill: the page's season ${cur} isn't the job's ${pageSeason()} — stopped`);
     const putPack = async (n, gz) => api("PUT", `/api/pack/${n}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
     const putIndex = async ix => api("PUT", "/api/pack-index", { body: ix });
-    const R = await PBF.M.runFill({ page, plan: PBF.plan, idx: PBF.idx, left: cfbdLeft, getPack: PBF.getPack, putPack, putIndex, deadline: deadline - 10 * 60e3, log: x => console.log(x) });
+    const R = await PBF.M.runFill({ page, plan: PBF.plan, idx: PBF.idx, left: cfbdLeft, getPack: PBF.getPack, putPack, putIndex, deadline: Math.min(deadline, started + 310 * 60e3) - 10 * 60e3, log: x => console.log(x), used0: PBF.AR.calls });
     for (const x of R.seasons) console.log(`::${x.err ? "warning" : "notice"} title=pbpfill ${x.y}::${((x.err ? "ERROR " + x.err + " · " : "") + (x.line || x.skip || "") + (x.packs && x.packs.length ? " · uploaded " + x.packs.join(", ") : "") + (x.calls != null ? ` · ${x.calls} CFBD calls · ${x.sec}s` : "")).replace(/[\r\n]+/g, " ").slice(0, 3900)}`);
     const bad = R.seasons.filter(x => x.err).length;
-    console.log(`::${bad || R.indexFailed || (R.stop && !/budget|floor|time/.test(R.stop)) ? "warning" : "notice"} title=pbpfill::${R.packs} packs uploaded (${(R.kb / 1024).toFixed(1)} MB; ${R.bc} builder-cache answers) · ${R.calls} CFBD calls (${R.proxyKept} answers from the proxy's kept copies)${bad ? ` · ${bad} season(s) with errors` : ""}${R.stop ? ` · stopped: ${R.stop}` : " · every planned season done"}${R.indexFailed ? " · PACK INDEX WRITE FAILED" : ""}`);
-    B.note = `pbpfill · ${R.seasons.filter(x => x.packs && x.packs.length).map(x => x.y).join(" ") || "no seasons"} filled · ${R.calls} CFBD calls${R.stop ? ` · stopped: ${R.stop}` : ""}`; B.packNames = []; PBF.R = R }
+    console.log(`::${bad || R.indexFailed || (R.stop && !/budget|floor|time/.test(R.stop)) ? "warning" : "notice"} title=pbpfill::${R.packs} packs uploaded (${(R.kb / 1024).toFixed(1)} MB; ${R.bc} fetched answers not re-kept as builder-cache packs — the proxy and the archive have them) · ${R.calls} CFBD calls (${R.proxyKept} answers from the proxy's kept copies)${bad ? ` · ${bad} season(s) with errors` : ""}${R.stop ? ` · stopped: ${R.stop}` : " · every planned season done"}${R.indexFailed ? " · PACK INDEX WRITE FAILED" : ""}`);
+    B.note = `pbpfill · archive ${PBF.AR.packs} packs, ${PBF.AR.mb.toFixed(1)} MB, ${PBF.AR.calls} calls${PBF.AR.stop ? ` (stopped: ${PBF.AR.stop})` : ""} · ${R.seasons.filter(x => x.packs && x.packs.length).map(x => x.y).join(" ") || "no seasons"} filled · ${R.calls} CFBD calls${R.stop ? ` · stopped: ${R.stop}` : ""}`; B.packNames = []; PBF.R = R }
   /* Oct 12: finished-season answers the page saved this run (BC_NEW, see apiFin) go up in every mode, so the next run reads them instead of CFBD */
   { const extra = await page.evaluate(() => { try { const P = window.__PACKS = window.__PACKS || {}; const L = []; for (const [k, v] of Object.entries(typeof BC_NEW === "object" ? BC_NEW : {})) if (!P[k]) { P[k] = v; L.push(k) } return L } catch (e) { return [] } });
     if (extra.length) { B.packNames = [...B.packNames, ...extra]; console.log(`saved for next runs: ${extra.length} finished-season answers`) } }

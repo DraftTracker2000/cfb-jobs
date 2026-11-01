@@ -12,6 +12,8 @@ from lib3 import named, yoy, reg_yoy, rtest, coef, ols_cl, HOLD
 import cbb as cb_, bbyears
 from bb5star import shrink
 
+import os
+ELITE = float(os.environ.get('BD_ELITE', 10))   # talent cut for 'elite rosters' (an env var only so the fake-data test can reach it)
 CTX = ['Tom Izzo', 'John Calipari', 'Bill Self', 'Jon Scheyer', 'Mike Krzyzewski', 'Mark Few', 'Dan Hurley']
 
 def run(reg, log, D):
@@ -95,6 +97,33 @@ def run(reg, log, D):
             if len(y): log(f'BD14 {c}: {len(y)} tournaments, {int(y.wins.sum())} wins, expected from talent {y.exp_t.sum():.1f}, from SRS {y.exp_s.sum():.1f}' + (f'; named p {t3.p[c]:.3f}' if c in t3.index else ''))
         k = W[W.team == 'Kentucky']; log('Kentucky NCAA: ' + '; '.join(f'{int(a)} {int(b_)}W (talent exp {c_:.1f}, SRS exp {d_:.1f})' for a, b_, c_, d_ in k[['season', 'wins', 'exp_t', 'exp_s']].values))
     else: log(f'BD14: no NCAA tournament field in the archive ({len(nc)} games matched) — skipped')
+    # ---------- BD16 elite rosters against elite rosters ----------
+    # The talent scale only separates rosters near the top (most mid-major rosters score 0: CBBD's recruit lists barely cover them), and
+    # one straight line from 0 to 19 decides what a Kentucky 'should' do. So: only team-seasons with talent 10+, each fitted on its own.
+    for cut in (12, 10):
+        log(f'team-seasons with talent {cut}+: {int((T.tal >= cut).sum())} ({(T.tal >= cut).mean():.3f}); programs: ' + ', '.join(f'{a} {b}' for a, b in T[T.tal >= cut].team.value_counts().head(14).items()))
+    E = TG.merge(T[['tid', 'season', 'tal']], on=['tid', 'season']); E = E[E.tal >= ELITE].copy()
+    E = E.merge(G[['gid', 'h', 'gap', 'home', 'm']], on='gid'); hs = E.tid == E.h
+    E['mm'] = np.where(hs, E.m, -E.m); E['gg'] = np.where(hs, E.gap, -E.gap); E['hh'] = np.where(hs, E.home, -E.home)
+    Te, ne = ols_cl(E.mm, [E.gg, E.hh], E.gid, ['gap', 'home']); be = Te.b; E['oe'] = E.mm - (be['const'] + be['gap'] * E.gg + be['home'] * E.hh)
+    log(f'BD16: {ne} games by talent-10+ rosters; margin = {be["gap"]:.3f} x talent gap + {be["home"]:.2f} home + {be["const"]:.2f} (all games: {b["gap"]:.3f}, {b["home"]:.2f}, {b["const"]:.2f})')
+    Tn5, fam5 = named(reg, 'BD16', 'Elite rosters (talent 10+): head coach outplays his roster\'s recruiting against expectations fitted on elite rosters only',
+                      E.dropna(subset=['coach']).rename(columns={'gid': 'game_id'}), 'coach', 'oe', min_seasons=4, unit='points/game')
+    Tn5 = shrink(Tn5); t5 = Tn5.set_index('agent') if len(Tn5) else pd.DataFrame()
+    log(f'BD16 by coach: split-half r {fam5[0]:.2f} (p {fam5[1]:.3g}, {fam5[2]} coaches)\n' + (Tn5.sort_values('est', ascending=False)[['name', 'ns', 'n', 'est', 'shrunk', 'p', 'late', 'loo']].round(2).to_string(index=False) if len(Tn5) else ''))
+    Se = E.dropna(subset=['coach']).groupby(['season', 'tid', 'coach']).oe.mean().rename('v').reset_index(); Se['key'] = Se.tid + '|' + Se.coach
+    log('BD16 ' + reg_yoy(reg, 'BD16', 'Elite roster outplays its recruiting (same team and coach)', yoy(Se, 'key', 'v')))
+    XE = X[X.tal >= ELITE].copy(); be2 = np.polyfit(XE.tal, XE.srs, 1); XE['oe'] = XE.srs - np.polyval(be2, XE.tal)
+    log(f'BD16 SRS among talent-10+ team-seasons ({len(XE)}): SRS = {be2[0]:.2f} x talent + {be2[1]:.1f}; by coach (4+ seasons): ' +
+        '; '.join(f'{c} {g.oe.mean():+.1f} ({len(g)})' for c, g in sorted(XE.dropna(subset=['coach']).groupby('coach'), key=lambda z: -z[1].oe.mean()) if len(g) >= 4))
+    if len(nc) > 200:
+        WE = W[W.tal >= ELITE].copy(); WE['oe'] = WE.wins - np.polyval(np.polyfit(WE.tal, WE.wins, 1), WE.tal)
+        log(f'BD16 NCAA wins among talent-10+ tournament teams ({len(WE)}): by coach (4+): ' + '; '.join(f'{c} {g.wins.sum():.0f} W vs {g.wins.sum() - g.oe.sum():.1f} expected ({len(g)})'
+            for c, g in sorted(WE.dropna(subset=['coach']).groupby('coach'), key=lambda z: -z[1].oe.sum()) if len(g) >= 4))
+    k = E[E.team == 'Kentucky'].groupby('season').oe.mean(); log('Kentucky vs elite expectation, points/game by season: ' + '; '.join(f'{int(a)} {v:+.1f}' for a, v in k.items()))
+    ck = E[(E.team == 'Kentucky') & (E.coach == 'John Calipari')]; ok = E[(E.team == 'Kentucky') & (E.coach != 'John Calipari')]
+    log(f'Kentucky under Calipari (2014-24 in the pack): {ck.oe.mean():+.2f} points/game over {ck.season.nunique()} seasons, {len(ck)} games; '
+        f'other elite rosters {E[E.team != "Kentucky"].oe.mean():+.2f}; Kentucky 2011-13 (coach not in the pack) {E[(E.team == "Kentucky") & (E.season <= 2013)].oe.mean():+.2f}')
     # ---------- BD15 5-stars reaching the 5-star median ----------
     P = A[A['min'] >= 200].copy(); P['f'] = P.pid.map(F); P['yr'] = P.season - P.f + 1; P = P[P.yr.between(1, 5)]; P['y4'] = P.yr.clip(upper=4)
     bars = P[P.stars == 5].groupby('y4').bx40.median(); P['bar'] = P.y4.map(bars)

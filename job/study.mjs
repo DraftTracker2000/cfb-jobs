@@ -74,6 +74,10 @@ export function batches(cur) {
     B("bb_srs", R(2008, cur + 1).map(y => ["/ratings/srs", { season: y }])),
     B("bb_coaches", [["/coaches", { season: cur + 1 }], ["/coaches", { season: cur }]]),
     B("bb_games", R(2008, cur + 1).flatMap(y => cbbRanges(y).map(([a, b]) => ["/games", { season: y, startDateRange: a, endDateRange: b }]))),
+    /* Nov 1 follow-up (home edge by game type, the owner 9:32 am): AP polls for both sports, basketball closing lines */
+    C("cf_rankings", R(2004, cur).map(y => `/rankings?year=${y}&seasonType=regular`)),
+    B("bb_rankings", R(2008, cur + 1).map(y => ["/rankings", { season: y }])),
+    B("bb_lines", R(2014, cur + 1).flatMap(y => cbbRanges(y).map(([a, b]) => ["/lines", { season: y, startDateRange: a, endDateRange: b }]))),
   ];
 }
 
@@ -86,7 +90,10 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
   const want0 = String(process.env.STUDY || "").split(",").map(s => s.trim()).filter(Boolean);
   /* "noarchive" in STUDY: an analysis rerun — the answers are already kept, so no study packs are written again */
   if (want0.includes("noarchive")) archive = false;
-  const want = want0.filter(x => x !== "noarchive");
+  /* "fromarchive": a batch already kept as study packs is read back from them (no CFBD/CBBD call); "focus:<name>" tells the analysis
+     which part to run (job/study3/run.py) */
+  const fromArchive = want0.includes("fromarchive"), focus = (want0.find(x => x.startsWith("focus:")) || "").slice(6) || null;
+  const want = want0.filter(x => x !== "noarchive" && x !== "fromarchive" && !x.startsWith("focus:"));
   const FLOOR = +process.env.STUDY_FLOOR || 46000, CAP = +process.env.STUDY_CAP || 20000;
   const now = new Date(), cur = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;   // the proxy's season (src/cfbd.js)
   const H = { headers: { Authorization: "Bearer " + token } }, sleep = ms => new Promise(z => setTimeout(z, ms));
@@ -118,7 +125,8 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
     let n = 0, mb = 0; for (let i = 0; i < groups.length; i++) { const by = await putPack(base + (i ? "-" + (i + 1) : ""), { study: { ...meta, part: i + 1, parts: groups.length, answers: Object.fromEntries(groups[i].map(k => [k, answers[k]])) } }); n++; mb += by / 1e6 }
     return { n, mb } };
   const L0 = await left(); log(`study start: ${L0 != null ? L0.toLocaleString() : "?"} calls left in the pool · floor ${FLOOR.toLocaleString()} · cap ${CAP.toLocaleString()} this run`);
-  const man = { started: Date.now(), left0: L0, floor: FLOOR, cap: CAP, batches: [] };
+  const man = { started: Date.now(), left0: L0, floor: FLOOR, cap: CAP, focus, batches: [] };
+  const getPackJ = async name => { try { const r = await fetch(`${site}/api/pack/${name}`, H); return r.ok ? await r.json() : null } catch (e) { return null } };
   let used = 0; const LINES = [], SCHEMA = {};
   for (const b of batches(cur).filter(b => !want.length || want.includes(b.name))) {
     const n = (b.paths || b.items).length, before = await left();
@@ -134,6 +142,18 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
       if (arch) archQ.push(putArchive(b, y, Object.fromEntries(Object.keys(part).filter(k => k in raw).map(k => [k, raw[k]]))).then(r => { packs += r.n; packMB += r.mb }).catch(e => errs.push("archive " + b.name + " " + y + ": " + String(e.message || e).slice(0, 120))));
       for (const k of Object.keys(part)) delete raw[k] };
     const archQ = [];
+    /* read back from the study archive when asked (and when the first season's pack is there); otherwise ask the API as usual */
+    if (fromArchive && b.archive !== false) {
+      const tag = `study-${b.api === "cfbd" ? "cfb" : "cbb"}-${b.name.replace(/^(cf|bb)_/, "")}`, years = [...new Set(list.map(([k]) => year(k)))];
+      let okA = true, nA = 0;
+      for (const y of years) { const p1 = await getPackJ(`p${y || 2000}_${tag}`); if (!p1 || !p1.study) { if (y === years[0]) { okA = false; break } continue }
+        const A = { ...p1.study.answers }; for (let i = 2; i <= (p1.study.parts || 1); i++) { const pi = await getPackJ(`p${y || 2000}_${tag}-${i}`); if (pi && pi.study) Object.assign(A, pi.study.answers) }
+        for (const [k, v] of Object.entries(A)) { got++; nA++; const c = b.compact ? b.compact(v) : v; if (Array.isArray(c)) rows += c.length; res[k] = c
+          if (!SCHEMA[b.name] && Array.isArray(v) && v.length) SCHEMA[b.name] = shape(v[Math.min(5, v.length - 1)]) }
+        flush(y) }
+      if (okA) { const after = await left(); flush(0); const line = `${n} paths · read ${nA} answers from the study archive (no call) · pool ${before ?? "?"} → ${after ?? "?"} · ${rows} rows`;
+        log(`study ${b.name}: ${line}`); LINES.push(`${b.name}: ${line}`); man.batches.push({ name: b.name, fromArchive: true, got: nA, rows, before, after, calls: 0 }); continue }
+    }
     const doneYear = new Set(); let emptyRun = {};
     for (let i = 0; i < list.length; i += 3) {
       const chunk = list.slice(i, i + 3);

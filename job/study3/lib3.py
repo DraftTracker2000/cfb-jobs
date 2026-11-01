@@ -177,7 +177,7 @@ def named(reg, hyp, label, R, agent, y, min_seasons=5, min_rows=0, names=None, u
     if len(T) == 0: return T, (np.nan, 1.0, 0)
     for _, x in T.iterrows():
         reg.add(hyp, f'{label}: {x["name"]}', 'named', x.est, x.se, x.p, x.n, x.oos, x.loo,
-                detail=(f"{x.ns} seasons {x.first}-{x.last}, {x.n} games; {x.same_sign}/{x.ns} seasons same sign; early {x.early:+.3f} late "
+                detail=(f"{x.ns} seasons {x['first']}-{x['last']}, {x.n} games; {x.same_sign}/{x.ns} seasons same sign; early {x.early:+.3f} late "
                         f"{x.late:+.3f}; p game-clustered {x.p_gc:.2g}, season-level {x.p_season:.2g}"), unit=unit)
     r, pr, k = rtest(T.early, T.late)
     reg.add(hyp, f'{label} — repeats (split-half r across agents)', 'family', r, np.nan, pr, k, oos_pass=bool(np.isfinite(r) and r > 0),

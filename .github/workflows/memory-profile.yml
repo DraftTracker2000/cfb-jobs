@@ -8,6 +8,14 @@ on:
       rounds:
         default: "2"
         type: string
+      page:
+        default: "/"
+        type: choice
+        options: ["/", "/lab/", "/cbb/lab/"]
+      sites:
+        default: "both"
+        type: choice
+        options: ["both", "football", "basketball"]
 permissions:
   contents: read
 jobs:
@@ -16,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         browser: [webkit, chromium]
-        site: [football, basketball]
+        site: ${{ fromJSON(github.event.inputs.sites == 'football' && '["football"]' || github.event.inputs.sites == 'basketball' && '["basketball"]' || '["football","basketball"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -32,6 +40,7 @@ jobs:
           BROWSER: ${{ matrix.browser }}
           SITE: ${{ matrix.site }}
           ROUNDS: ${{ github.event.inputs.rounds || '2' }}
+          PAGE_PATH: ${{ github.event.inputs.page || '/' }}
         run: node job/memprofile.mjs | tee mem.txt
       - if: always()
         run: echo "$(head -c 60000 mem.txt)" >> $GITHUB_STEP_SUMMARY

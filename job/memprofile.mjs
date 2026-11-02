@@ -12,7 +12,7 @@ import { chromium, webkit } from "playwright";
 import { readFileSync, readdirSync } from "node:fs";
 
 const BROWSER = process.env.BROWSER || "chromium", SITE = process.env.SITE || "football", JOB = process.env.JOB_TOKEN;
-const ROUNDS = +(process.env.ROUNDS || 2), WAIT = +(process.env.WAIT_MS || 6000);
+const ROUNDS = +(process.env.ROUNDS || 2), WAIT = +(process.env.WAIT_MS || 6000), PAGE = process.env.PAGE_PATH || "/";
 const URL0 = SITE === "basketball" ? (process.env.HOOPS_URL || "https://mycbbbigboard.com") : (process.env.FOOTBALL_URL || "https://mycfbbigboard.com");
 const F = (process.env.FOOTBALL_URL || "https://mycfbbigboard.com").replace(/\/+$/, "");
 const OUT = []; const log = (...a) => { const l = a.join(" "); OUT.push(l); console.log(l) };
@@ -88,7 +88,7 @@ const cdp = BROWSER === "chromium" ? await ctx.newCDPSession(p) : null;
 if (cdp) await cdp.send("Performance.enable");
 
 
-const rows = []; let prevVars = {}; const NAMES = [];
+const rows = []; let prevVars = {}; const NAMES = [], SETTLE = [];
 let prevTot = 0;
 async function snap(label, full) {
   await p.waitForTimeout(500);
@@ -109,7 +109,7 @@ async function snap(label, full) {
   log(`${label.padEnd(34)} tab ${MB(pm.tot).padStart(7)} MB${heap != null ? ` · JS ${MB(heap).padStart(6)} MB` : ""} · ${String(s.nodes || "?").padStart(6)} elements · downloaded ${MB(netBytes).padStart(6)} MB${grew.length ? " · grew: " + grew.map(([k, d]) => `${k} +${MB(d)}`).join(", ") : ""}`);
 }
 
-await p.goto(H + "/?ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
+await p.goto(H + PAGE + "?ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
 /* until the board shows */
 for (let i = 0; i < 240; i++) {
   const ok = await p.evaluate(SITE === "basketball"
@@ -135,12 +135,22 @@ for (let r = 1; r <= ROUNDS; r++) {
   for (const pg of pages) {
     const label = `r${r} ` + (pg.v || `${pg.lg} ${pg.sec}${pg.chip ? " " + pg.chip : ""}`);
     try {
+      const t0 = Date.now();
       await p.evaluate(SITE === "basketball" ? (pg) => go(pg.v) : (pg) => navGo(pg.lg, pg.sec, pg.chip), pg);
-      await p.waitForTimeout(WAIT);
-      await snap(label, false);
+      /* how quick: until the page stops changing (element count steady for 0.6 s, no loading line) */
+      let last = -1, steady = 0, settle = null;
+      while (Date.now() - t0 < WAIT + 20000) { await p.waitForTimeout(100);
+        const n = await p.evaluate(() => { const L = document.querySelector("#load,#panel .load"); return (L && L.offsetParent ? -1 : 1) * document.getElementsByTagName("*").length }).catch(() => -1);
+        if (n > 0 && n === last) { if (++steady >= 6) { settle = Date.now() - t0 - 600; break } } else steady = 0; last = n }
+      SETTLE.push([r, label, settle]);
+      await p.waitForTimeout(Math.max(0, WAIT - (Date.now() - t0)));
+      await snap(label + (settle != null ? ` (${(settle / 1000).toFixed(1)} s)` : " (slow)"), false);
     } catch (e) { log(`${label}: ${e.message.slice(0, 160)}`) }
   }
   await snap(`end of round ${r}`, true);
+  /* the let-go (Nov 1): let go right away instead of waiting 3 minutes, to see what it frees; the next round shows how quick pages come back */
+  if (r < ROUNDS) { const n = await p.evaluate(() => typeof window.__letGo === "function" ? window.__letGo() : null).catch(() => null);
+    if (n != null) { await p.waitForTimeout(1500); await snap(`after the let-go (${n} files)`, true) } }
 }
 await p.waitForTimeout(120000); await snap("after 2 idle minutes", true);
 
@@ -151,5 +161,7 @@ log("biggest variables at the end (estimated MB):");
 for (const [k, v] of Object.entries(last.s.vars || {}).sort((a, b) => parseInt(b[1]) - parseInt(a[1])).slice(0, 30)) log(`  ${k.padEnd(24)} ${MB(parseInt(v)).padStart(7)}${String(v).endsWith("+") ? "+ (stopped counting)" : ""}   (opened: ${MB(parseInt(first.s.vars[k] || 0))})`);
 if (last.s.mem) { log("MEM (saved data held in memory) by family, MB:"); for (const [k, v] of Object.entries(last.s.mem).sort((a, b) => b[1] - a[1]).slice(0, 25)) log(`  ${k.padEnd(14)} ${MB(v).padStart(7)}   (opened: ${MB((first.s.mem || {})[k] || 0)})`) }
 log(`styles ${MB(last.s.css || 0)} MB · localStorage ${MB(last.s.ls || 0)} MB · page errors: ${errs.length}${errs.length ? " — " + [...new Set(errs)].slice(0, 5).join(" | ").slice(0, 400) : ""}`);
+for (let r = 1; r <= ROUNDS; r++) { const v = SETTLE.filter(x => x[0] === r && x[2] != null).map(x => x[2]).sort((a, b) => a - b), slow = SETTLE.filter(x => x[0] === r && x[2] == null).length;
+  if (v.length) log(`=== round ${r} speed: median ${(v[v.length >> 1] / 1000).toFixed(2)} s · slowest ${(v[v.length - 1] / 1000).toFixed(1)} s · ${slow} pages never settled · slowest pages: ${SETTLE.filter(x => x[0] === r).sort((a, b) => (b[2] ?? 1e9) - (a[2] ?? 1e9)).slice(0, 4).map(x => x[1].replace(/^r\d /, "") + " " + (x[2] == null ? "slow" : (x[2] / 1000).toFixed(1) + "s")).join(", ")}`) }
 await browser.close();
 for (const l of OUT.filter(l => /^=== /.test(l))) console.log(`::notice title=memory ${SITE} ${BROWSER}::${l}`);

@@ -81,6 +81,13 @@ const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, e
 const H = URL0.replace(/\/+$/, "");
 await ctx.addCookies([{ name: "cfbs", value: ss.token, url: H }]);
 await ctx.addInitScript(t => { try { localStorage.setItem("cfbTok", t) } catch (e) { } }, ss.token);
+/* Nov 1 (the owner: "when i open other sites it isn't nearly as much ... including sleeper"): the same browser on a blank page and on other sites
+   first, so the board's number has something to stand next to. Each in its own fresh tab, closed before the next. */
+if (process.env.COMPARE) for (const u of ["about:blank", ...process.env.COMPARE.split(",")]) {
+  const c2 = await browser.newContext({ viewport: { width: 1440, height: 900 } }), q = await c2.newPage();
+  try { await q.goto(u, { waitUntil: "load", timeout: 60000 }); await q.waitForTimeout(8000); const m = procMem(); log(`compare ${u.padEnd(40)} tab ${MB(m.tot).padStart(7)} MB (${m.n} page processes)`) } catch (e) { log(`compare ${u}: ${e.message.slice(0, 100)}`) }
+  await c2.close(); await new Promise(r => setTimeout(r, 1500));
+}
 const p = await ctx.newPage();
 let errs = []; p.on("pageerror", e => errs.push(e.message));
 let netBytes = 0; p.on("requestfinished", async r => { try { netBytes += (await r.sizes()).responseBodySize } catch { } });

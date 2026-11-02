@@ -88,6 +88,11 @@ await ctx.addCookies([{ name: "cfbs", value: ss.token, url: H }]);
 await ctx.addInitScript(t => { try { localStorage.setItem("cfbTok", t) } catch (e) { } }, ss.token);
 /* Nov 2 (Sam's Safari timeline: style, layout and paint on every frame while idle, ~30% CPU): count animation-frame callbacks */
 await ctx.addInitScript(() => { window.__raf = 0; const r = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = f => { window.__raf++; return r(f) } });
+/* (Nov 2, chasing football Leaders → This week: ~150 style recalcs a second with no animation running) who sets timers, which observers fire */
+await ctx.addInitScript(() => { const T = window.__tmo = {}; const key = f => String(f).replace(/\s+/g, " ").slice(0, 90);
+  const st = window.setTimeout.bind(window); window.setTimeout = (f, ms, ...a) => { if (typeof f === "function") { const k = (ms || 0) + "ms " + key(f); T[k] = (T[k] || 0) + 1 } return st(f, ms, ...a) };
+  window.__obs = {}; for (const nm of ["ResizeObserver", "IntersectionObserver", "MutationObserver"]) { const O = window[nm]; if (!O) continue;
+    window[nm] = class extends O { constructor(cb, ...a) { const k = nm + " " + key(cb); super((...x) => { window.__obs[k] = (window.__obs[k] || 0) + 1; return cb(...x) }, ...a) } } } });
 /* Nov 1 (Sam: "when i open other sites it isn't nearly as much ... including sleeper"): the same browser on a blank page and on other sites
    first, so the board's number has something to stand next to. Each in its own fresh tab, closed before the next. */
 if (process.env.COMPARE) for (const u of ["about:blank", ...process.env.COMPARE.split(",")]) {
@@ -167,6 +172,12 @@ for (let r = 1; r <= ROUNDS; r++) {
         const an = await p.evaluate(() => { const A = document.getAnimations().filter(a => a.playState === "running"); const by = {};
           for (const a of A) { const t = a.effect && a.effect.target, nm = (a.animationName || a.transitionProperty || "anim") + " on " + (t ? (typeof t.className === "string" && t.className ? "." + t.className.split(" ")[0] : t.tagName) + (a.effect.pseudoElement || "") : "?"); by[nm] = (by[nm] || 0) + 1 }
           return Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => v + "× " + k).join(", ") });
+        if (g(m1, "RecalcStyleCount") - g(m0, "RecalcStyleCount") > 30) {   /* busy while idle: what's doing it */
+          await p.evaluate(() => { window.__tmo0 = { ...window.__tmo }; window.__obs0 = { ...window.__obs }; window.__mut = {}; window.__mo2 = new (Object.getPrototypeOf(window.MutationObserver))(L => { for (const m of L) { const t = m.target, d = (t.id ? "#" + t.id : t.className && typeof t.className === "string" ? "." + t.className.split(" ")[0] : t.nodeName) + " " + m.type + (m.attributeName ? ":" + m.attributeName : ""); window.__mut[d] = (window.__mut[d] || 0) + 1 } }); window.__mo2.observe(document, { subtree: true, attributes: true, childList: true, characterData: true }) }).catch(() => { });
+          await p.waitForTimeout(2000);
+          const why = await p.evaluate(() => { const top = (A, B) => Object.entries(A).map(([k, v]) => [k, v - ((B || {})[k] || 0)]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => v + "× " + k).join(" | ");
+            return { timers: top(window.__tmo, window.__tmo0), observers: top(window.__obs, window.__obs0), mutations: top(window.__mut, {}), hover: document.querySelectorAll(":hover").length } }).catch(e => ({ err: e.message }));
+          log(`   busy while idle → timers: ${why.timers || "none"} · observers: ${why.observers || "none"} · DOM changes: ${why.mutations || "none"}${why.err ? " · " + why.err : ""}`) }
         log(`   idle 2 s: ${raf1 - raf0} frame callbacks · ${g(m1, "LayoutCount") - g(m0, "LayoutCount")} layouts · ${g(m1, "RecalcStyleCount") - g(m0, "RecalcStyleCount")} style recalcs${an ? " · running: " + an : ""}`) }
     } catch (e) { log(`${label}: ${e.message.slice(0, 160)}`) }
   }

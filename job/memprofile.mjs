@@ -160,6 +160,12 @@ for (let r = 1; r <= ROUNDS; r++) {
     if (n != null) { await p.waitForTimeout(1500); await snap(`after the let-go (${n} files)`, true) } }
 }
 await p.waitForTimeout(120000); await snap("after 2 idle minutes", true);
+/* a return visit (Nov 1): the same browser opens the board again, with everything already saved, like the owner's own tab after the first day */
+if (process.env.REOPEN !== "0") { netBytes = 0; await p.goto(H + PAGE + "?ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
+  for (let i = 0; i < 240; i++) { const ok = await p.evaluate(SITE === "basketball" ? () => !document.querySelector("#panel .load") && document.querySelectorAll("#panel tbody tr").length > 10
+      : () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 }).catch(() => false); if (ok) break; await p.waitForTimeout(500) }
+  await p.waitForTimeout(WAIT); await snap("return visit: board showing", true);
+  log(`=== ${SITE} · ${BROWSER}: return visit, board showing: tab ${MB(rows[rows.length - 1].pm.tot)} MB (downloaded ${MB(netBytes)} MB) ===`) }
 
 /* the biggest holders at the end */
 const full = rows.filter(r => r.s && r.s.vars), last = full[full.length - 1], first = full[0];

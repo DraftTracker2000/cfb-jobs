@@ -17,6 +17,7 @@ for (const [dev, opts] of [["desktop", { viewport: { width: 1440, height: 900 } 
   const p = await ctx.newPage(); const errs = []; p.on("pageerror", e => errs.push(e.message));
   await p.goto(F + PAGE + "?ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
   for (let i = 0; i < 240; i++) { const ok = await p.evaluate(() => { const L = document.getElementById("load"); return !(L && L.offsetParent) && typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 }).catch(() => false); if (ok) break; await p.waitForTimeout(500) }
+  console.log(`page: ${await p.evaluate(() => location.pathname + " · nflCatchHTML has RB1: " + (typeof nflCatchHTML === "function" ? /RB1/.test(nflCatchHTML.toString()) : "missing") + " · role: " + (typeof ME !== "undefined" && ME ? ME.role : "?"))}`);
   for (const [side, me, opp] of [["pro", PRO[0], PRO[1]], ["college", COL[0], COL[1]]]) {
     const tag = `${dev}-${side}`;
     try {

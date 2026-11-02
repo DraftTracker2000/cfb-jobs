@@ -23,6 +23,9 @@ for (const [dev, opts] of [["desktop", { viewport: { width: 1440, height: 900 } 
       await p.evaluate(([side, me, opp]) => side === "pro" ? nflSrForm({ me, opp, go: 1 }) : srForm({ me, opp, go: 1 }), [side, me, opp]);
       await p.waitForSelector("#md .sv3tabs", { timeout: 60000 }); await p.waitForTimeout(9000);   /* the sections fill in after the frame */
       const tabs = await p.$$eval("#md .sv3tabs [data-tab]", b => b.map(x => [x.dataset.tab, x.textContent.trim()]));
+      if (process.env.TEXTONLY) { for (const [tab] of tabs) { await p.evaluate(t => document.querySelector(`#md .sv3tabs [data-tab="${t}"]`).click(), tab); await p.waitForTimeout(1500);
+          const tx = await p.evaluate(() => { const pan = [...document.querySelectorAll("#md .sv3pan")].find(x => !x.hidden); return pan ? pan.innerText.replace(/\n{2,}/g, "\n") : "" });
+          console.log(`\n===== ${tag} · ${tab} =====\n${tx.slice(0, 6000)}`) } await p.evaluate(() => { try { closeP() } catch (e) { } }); continue }
       for (const [tab, name] of tabs) {
         const subs = await p.$$eval(`#md [data-ph^="${tab}|"]`, b => b.map(x => [x.dataset.ph, x.textContent.trim()])).catch(() => []);
         for (const [ph, sname] of (subs.length ? subs : [[null, ""]])) {

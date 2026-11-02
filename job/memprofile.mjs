@@ -26,7 +26,7 @@ function procMem() {
   let tot = 0, n = 0;
   for (const pid of readdirSync("/proc").filter(d => /^\d+$/.test(d))) {
     let cmd = ""; try { cmd = readFileSync(`/proc/${pid}/cmdline`, "utf8") } catch { continue }
-    const isPage = BROWSER === "webkit" ? /WebKitWebProcess/.test(cmd) : /--type=renderer/.test(cmd) && !/--extension-process/.test(cmd);
+    const isPage = BROWSER === "webkit" ? /WebProcess/.test(cmd) : /--type=renderer/.test(cmd) && !/--extension-process/.test(cmd);
     if (!isPage) continue;
     try { const m = readFileSync(`/proc/${pid}/smaps_rollup`, "utf8").match(/^Pss:\s+(\d+) kB/m); if (m) { tot += +m[1] * 1024; n++ } } catch { }
   }
@@ -87,11 +87,8 @@ let netBytes = 0; p.on("requestfinished", async r => { try { netBytes += (await 
 const cdp = BROWSER === "chromium" ? await ctx.newCDPSession(p) : null;
 if (cdp) await cdp.send("Performance.enable");
 
-const html = await (await fetch(H + "/?ro=1", { headers: { Cookie: "cfbs=" + ss.token, "x-site-check": "1" } })).text();
-const NAMES = await topNames(html);
-log(`${SITE} · ${BROWSER} · page code ${MB(html.length)} MB · ${NAMES.length} top-level names to size`);
 
-const rows = []; let prevVars = {};
+const rows = []; let prevVars = {}; const NAMES = [];
 let prevTot = 0;
 async function snap(label, full) {
   await p.waitForTimeout(500);
@@ -121,6 +118,12 @@ for (let i = 0; i < 240; i++) {
   if (ok) break; await p.waitForTimeout(500);
 }
 await p.waitForTimeout(WAIT);
+/* the page's own code, as the browser loaded it: its inline scripts and the site's script files */
+const html = await p.evaluate(async () => { let t = [...document.scripts].filter(s => !s.src).map(s => s.textContent).join("\n");
+  for (const s of [...document.scripts].filter(s => s.src && new URL(s.src).origin === location.origin)) try { t += "\n" + await (await fetch(s.src)).text() } catch { }
+  return t });
+NAMES.push(...await topNames(html));
+log(`${SITE} · ${BROWSER} · page code ${MB(html.length)} MB · ${NAMES.length} top-level names to size`);
 await snap("opened (board showing)", true);
 
 /* every page in the menu */

@@ -16,6 +16,10 @@ on:
         description: "other sites to measure first (comma-separated), for comparison"
         default: ""
         type: string
+      idle:
+        description: "1 = after each page, sit still 2 s and log what keeps redrawing"
+        default: ""
+        type: string
       sites:
         default: "both"
         type: choice
@@ -46,6 +50,7 @@ jobs:
           ROUNDS: ${{ github.event.inputs.rounds || '2' }}
           PAGE_PATH: ${{ github.event.inputs.page || '/' }}
           COMPARE: ${{ github.event.inputs.compare }}
+          IDLE: ${{ github.event.inputs.idle }}
         run: node job/memprofile.mjs | tee mem.txt
       - if: always()
         run: echo "$(head -c 60000 mem.txt)" >> $GITHUB_STEP_SUMMARY

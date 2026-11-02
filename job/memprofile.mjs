@@ -86,6 +86,8 @@ const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, e
 const H = URL0.replace(/\/+$/, "");
 await ctx.addCookies([{ name: "cfbs", value: ss.token, url: H }]);
 await ctx.addInitScript(t => { try { localStorage.setItem("cfbTok", t) } catch (e) { } }, ss.token);
+/* Nov 2 (Sam's Safari timeline: style, layout and paint on every frame while idle, ~30% CPU): count animation-frame callbacks */
+await ctx.addInitScript(() => { window.__raf = 0; const r = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = f => { window.__raf++; return r(f) } });
 /* Nov 1 (Sam: "when i open other sites it isn't nearly as much ... including sleeper"): the same browser on a blank page and on other sites
    first, so the board's number has something to stand next to. Each in its own fresh tab, closed before the next. */
 if (process.env.COMPARE) for (const u of ["about:blank", ...process.env.COMPARE.split(",")]) {
@@ -157,6 +159,15 @@ for (let r = 1; r <= ROUNDS; r++) {
       SETTLE.push([r, label, settle]);
       await p.waitForTimeout(Math.max(0, WAIT - (Date.now() - t0)));
       await snap(label + (settle != null ? ` (${(settle / 1000).toFixed(1)} s)` : " (slow)"), false);
+      if (process.env.IDLE && r === 1) {   /* sit still 2 s: what keeps redrawing? */
+        const m0 = cdp ? (await cdp.send("Performance.getMetrics")).metrics : null, raf0 = await p.evaluate(() => window.__raf);
+        await p.waitForTimeout(2000);
+        const m1 = cdp ? (await cdp.send("Performance.getMetrics")).metrics : null, raf1 = await p.evaluate(() => window.__raf);
+        const g = (m, k) => m ? ((m.find(x => x.name === k) || {}).value || 0) : 0;
+        const an = await p.evaluate(() => { const A = document.getAnimations().filter(a => a.playState === "running"); const by = {};
+          for (const a of A) { const t = a.effect && a.effect.target, nm = (a.animationName || a.transitionProperty || "anim") + " on " + (t ? (typeof t.className === "string" && t.className ? "." + t.className.split(" ")[0] : t.tagName) + (a.effect.pseudoElement || "") : "?"); by[nm] = (by[nm] || 0) + 1 }
+          return Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => v + "× " + k).join(", ") });
+        log(`   idle 2 s: ${raf1 - raf0} frame callbacks · ${g(m1, "LayoutCount") - g(m0, "LayoutCount")} layouts · ${g(m1, "RecalcStyleCount") - g(m0, "RecalcStyleCount")} style recalcs${an ? " · running: " + an : ""}`) }
     } catch (e) { log(`${label}: ${e.message.slice(0, 160)}`) }
   }
   await snap(`end of round ${r}`, true);

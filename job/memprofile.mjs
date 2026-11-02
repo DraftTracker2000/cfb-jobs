@@ -70,9 +70,14 @@ const SIZER = (names) => {
     const r = est(v); if (r.bytes > 256 * 1024) out[n] = Math.round(r.bytes) + (r.cut ? "+" : "") }
   let mem = null;
   try { const M = (0, eval)("MEM"); if (M && typeof M === "object") { mem = {}; for (const k of Object.keys(M)) { const fam = (k.match(/^[a-z]+[0-9]*_?/i) || ["?"])[0].replace(/\d+_?$/, "#_"); const r = est(M[k], 5e6); mem[fam] = (mem[fam] || 0) + r.bytes } } } catch { }
+  /* the board's own holders, key by key (Nov 1): D (the board), its grades and recruit index */
+  const parts = {};
+  for (const nm of ["D", "D.res", "D.resD", "D.recIdx", "D.byYear", "D.career", "D.pool"]) { let v; try { v = (0, eval)(nm) } catch { continue } if (!v || typeof v !== "object") continue;
+    const ks = Object.keys(v); if (ks.length > 400) { const smp = ks.slice(0, 200), r = smp.reduce((a, k) => a + est(v[k], 2e5).bytes, 0); parts[nm + " (" + ks.length + " entries, est. from 200)"] = Math.round(r / smp.length * ks.length); continue }
+    for (const k of ks) { const r = est(v[k], 1e7); if (r.bytes > 512 * 1024) parts[nm + "." + k] = r.bytes } }
   const css = [...document.styleSheets].reduce((a, s) => { try { return a + [...s.cssRules].reduce((b, r) => b + r.cssText.length, 0) } catch { return a } }, 0);
   let ls = 0; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); ls += (k.length + (localStorage.getItem(k) || "").length) * 2 } } catch { }
-  return { vars: out, mem, nodes: document.getElementsByTagName("*").length, imgs: document.images.length, css: css * 2, ls };
+  return { vars: out, mem, parts, nodes: document.getElementsByTagName("*").length, imgs: document.images.length, css: css * 2, ls };
 };
 
 const B = BROWSER === "webkit" ? webkit : chromium;
@@ -172,6 +177,7 @@ const full = rows.filter(r => r.s && r.s.vars), last = full[full.length - 1], fi
 log(`\n=== ${SITE} · ${BROWSER}: tab ${MB(first.pm.tot)} MB when opened → ${MB(Math.max(...rows.map(r => r.pm.tot)))} MB at most → ${MB(last.pm.tot)} MB at the end (${pages.length} pages × ${ROUNDS}) ===`);
 log("biggest variables at the end (estimated MB):");
 for (const [k, v] of Object.entries(last.s.vars || {}).sort((a, b) => parseInt(b[1]) - parseInt(a[1])).slice(0, 30)) log(`  ${k.padEnd(24)} ${MB(parseInt(v)).padStart(7)}${String(v).endsWith("+") ? "+ (stopped counting)" : ""}   (opened: ${MB(parseInt(first.s.vars[k] || 0))})`);
+if (last.s.parts) { log("the board's holders, MB:"); for (const [k, v] of Object.entries(last.s.parts).sort((a, b) => b[1] - a[1]).slice(0, 40)) log(`  ${k.padEnd(44)} ${MB(v).padStart(7)}`) }
 if (last.s.mem) { log("MEM (saved data held in memory) by family, MB:"); for (const [k, v] of Object.entries(last.s.mem).sort((a, b) => b[1] - a[1]).slice(0, 25)) log(`  ${k.padEnd(14)} ${MB(v).padStart(7)}   (opened: ${MB((first.s.mem || {})[k] || 0)})`) }
 log(`styles ${MB(last.s.css || 0)} MB · localStorage ${MB(last.s.ls || 0)} MB · page errors: ${errs.length}${errs.length ? " — " + [...new Set(errs)].slice(0, 5).join(" | ").slice(0, 400) : ""}`);
 for (let r = 1; r <= ROUNDS; r++) { const v = SETTLE.filter(x => x[0] === r && x[2] != null).map(x => x[2]).sort((a, b) => a - b), slow = SETTLE.filter(x => x[0] === r && x[2] == null).length;

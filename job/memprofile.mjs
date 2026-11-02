@@ -1,0 +1,152 @@
+/* Where a tab's memory goes (Nov 1 — the owner: "the website on my desktop was pulling 400-800MBs + each ... and at times up to 1.3 gbs", in Safari).
+   Measurement only: signed in as the site's own probe, read-only (?ro=1), nothing saved to the site.
+   A fresh browser opens a board, then visits every page in the menu twice, and after each page reads:
+     - the tab's whole memory (the page's process, like Activity Monitor shows: PSS from /proc)
+     - Chrome only: the JavaScript memory and the number of page elements
+     - the size of every top-level variable the page's own code keeps (found by reading the page's scripts), and on football the
+       in-memory saved-data store (MEM) grouped by family. Sizes are estimates from walking the data (text 2 bytes a letter,
+       numbers 8, ~16 an entry for objects); a value shared between two variables is counted under both.
+   Run: JOB_TOKEN=… BROWSER=chromium|webkit SITE=football|basketball node job/memprofile.mjs
+   Prints the timeline and the biggest holders; posts nothing to the site. */
+import { chromium, webkit } from "playwright";
+import { readFileSync, readdirSync } from "node:fs";
+
+const BROWSER = process.env.BROWSER || "chromium", SITE = process.env.SITE || "football", JOB = process.env.JOB_TOKEN;
+const ROUNDS = +(process.env.ROUNDS || 2), WAIT = +(process.env.WAIT_MS || 6000);
+const URL0 = SITE === "basketball" ? (process.env.HOOPS_URL || "https://mycbbbigboard.com") : (process.env.FOOTBALL_URL || "https://mycfbbigboard.com");
+const F = (process.env.FOOTBALL_URL || "https://mycfbbigboard.com").replace(/\/+$/, "");
+const OUT = []; const log = (...a) => { const l = a.join(" "); OUT.push(l); console.log(l) };
+const MB = b => (b / 1048576).toFixed(1);
+
+const ss = await (await fetch(F + "/api/job/session", { method: "POST", headers: { Authorization: "Bearer " + JOB, "Content-Type": "application/json" }, body: JSON.stringify({ who: "probe" }) })).json();
+if (!ss.token) { console.error("no session", JSON.stringify(ss).slice(0, 200)); process.exit(1) }
+
+/* the page's process memory: every process this browser started that renders pages, PSS in bytes */
+function procMem() {
+  let tot = 0, n = 0;
+  for (const pid of readdirSync("/proc").filter(d => /^\d+$/.test(d))) {
+    let cmd = ""; try { cmd = readFileSync(`/proc/${pid}/cmdline`, "utf8") } catch { continue }
+    const isPage = BROWSER === "webkit" ? /WebKitWebProcess/.test(cmd) : /--type=renderer/.test(cmd) && !/--extension-process/.test(cmd);
+    if (!isPage) continue;
+    try { const m = readFileSync(`/proc/${pid}/smaps_rollup`, "utf8").match(/^Pss:\s+(\d+) kB/m); if (m) { tot += +m[1] * 1024; n++ } } catch { }
+  }
+  return { tot, n };
+}
+
+/* top-level names the page's own scripts declare (let/const/var/function at the start of a line, or comma-chained after one) */
+async function topNames(html) {
+  const names = new Set();
+  for (const m of html.matchAll(/(?:^|[;\n}])\s*(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=/g)) names.add(m[1]);
+  for (const m of html.matchAll(/(?:^|[;\n])\s*(?:let|var)\s+([A-Za-z_$][\w$]*(?:\s*=[^,;\n]{0,60})?(?:\s*,\s*[A-Za-z_$][\w$]*(?:\s*=[^,;\n]{0,60})?)+)\s*;/g))
+    for (const part of m[1].split(",")) { const n = part.trim().match(/^([A-Za-z_$][\w$]*)/); if (n) names.add(n[1]) }
+  return [...names];
+}
+
+/* runs in the page: estimated bytes held by each name, and (football) by MEM family */
+const SIZER = (names) => {
+  const est = (root, budget = 3e7) => {
+    const seen = new Set(); let bytes = 0, steps = 0; const st = [root];
+    while (st.length && steps < budget) {
+      const v = st.pop(); steps++;
+      if (v == null) continue;
+      const t = typeof v;
+      if (t === "string") { bytes += 12 + v.length * 2; continue }
+      if (t === "number" || t === "boolean") { bytes += 8; continue }
+      if (t !== "object") continue;
+      if (seen.has(v)) continue; seen.add(v);
+      if (v instanceof Node || v === window) { bytes += 64; continue }
+      if (ArrayBuffer.isView(v)) { bytes += v.byteLength; continue }
+      if (v instanceof ArrayBuffer) { bytes += v.byteLength; continue }
+      if (v instanceof Map) { bytes += 32 + v.size * 24; for (const [a, b] of v) { st.push(a); st.push(b) } continue }
+      if (v instanceof Set) { bytes += 32 + v.size * 16; for (const a of v) st.push(a); continue }
+      if (Array.isArray(v)) { bytes += 16 + v.length * 8; for (let i = 0; i < v.length; i++) st.push(v[i]); continue }
+      let ks; try { ks = Object.keys(v) } catch { continue }
+      bytes += 16 + ks.length * 16; for (const k of ks) { bytes += 12 + k.length * 2; try { st.push(v[k]) } catch { } }
+    }
+    return { bytes, cut: steps >= budget };
+  };
+  const out = {};
+  for (const n of names) { let v; try { v = (0, eval)(n) } catch { continue } if (v == null || typeof v === "function" || typeof v !== "object" && !(typeof v === "string" && v.length > 50000)) continue;
+    const r = est(v); if (r.bytes > 256 * 1024) out[n] = Math.round(r.bytes) + (r.cut ? "+" : "") }
+  let mem = null;
+  try { const M = (0, eval)("MEM"); if (M && typeof M === "object") { mem = {}; for (const k of Object.keys(M)) { const fam = (k.match(/^[a-z]+[0-9]*_?/i) || ["?"])[0].replace(/\d+_?$/, "#_"); const r = est(M[k], 5e6); mem[fam] = (mem[fam] || 0) + r.bytes } } } catch { }
+  const css = [...document.styleSheets].reduce((a, s) => { try { return a + [...s.cssRules].reduce((b, r) => b + r.cssText.length, 0) } catch { return a } }, 0);
+  let ls = 0; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); ls += (k.length + (localStorage.getItem(k) || "").length) * 2 } } catch { }
+  return { vars: out, mem, nodes: document.getElementsByTagName("*").length, imgs: document.images.length, css: css * 2, ls };
+};
+
+const B = BROWSER === "webkit" ? webkit : chromium;
+const browser = await B.launch(BROWSER === "chromium" ? { args: ["--enable-precise-memory-info", "--js-flags=--expose-gc"] } : {});
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, extraHTTPHeaders: { "x-site-check": "1" } });
+const H = URL0.replace(/\/+$/, "");
+await ctx.addCookies([{ name: "cfbs", value: ss.token, url: H }]);
+await ctx.addInitScript(t => { try { localStorage.setItem("cfbTok", t) } catch (e) { } }, ss.token);
+const p = await ctx.newPage();
+let errs = []; p.on("pageerror", e => errs.push(e.message));
+let netBytes = 0; p.on("requestfinished", async r => { try { netBytes += (await r.sizes()).responseBodySize } catch { } });
+const cdp = BROWSER === "chromium" ? await ctx.newCDPSession(p) : null;
+if (cdp) await cdp.send("Performance.enable");
+
+const html = await (await fetch(H + "/?ro=1", { headers: { Cookie: "cfbs=" + ss.token, "x-site-check": "1" } })).text();
+const NAMES = await topNames(html);
+log(`${SITE} · ${BROWSER} · page code ${MB(html.length)} MB · ${NAMES.length} top-level names to size`);
+
+const rows = []; let prevVars = {};
+let prevTot = 0;
+async function snap(label, full) {
+  await p.waitForTimeout(500);
+  if (cdp) { try { await cdp.send("HeapProfiler.collectGarbage") } catch { } }
+  await p.waitForTimeout(300);
+  const pm = procMem();
+  let heap = null;
+  if (cdp) { const m = (await cdp.send("Performance.getMetrics")).metrics; const g = k => (m.find(x => x.name === k) || {}).value || 0; heap = g("JSHeapUsedSize") }
+  if (!full && pm.tot - prevTot > 40 * 1048576) full = true;   /* a big jump: size everything to see what grew */
+  prevTot = pm.tot;
+  let s = null;
+  if (full) { try { s = await p.evaluate(SIZER, NAMES) } catch (e) { s = { vars: {}, err: e.message } } }
+  else s = { nodes: await p.evaluate(() => document.getElementsByTagName("*").length).catch(() => "?") };
+  if (!full) { rows.push({ label, pm, heap, s }); log(`${label.padEnd(34)} tab ${MB(pm.tot).padStart(7)} MB${heap != null ? ` · JS ${MB(heap).padStart(6)} MB` : ""} · ${String(s.nodes).padStart(6)} elements · downloaded ${MB(netBytes).padStart(6)} MB`); return }
+  const grew = Object.entries(s.vars || {}).map(([k, v]) => [k, parseInt(v) - parseInt(prevVars[k] || 0)]).filter(([, d]) => d > 1048576).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  prevVars = s.vars || {};
+  rows.push({ label, pm, heap, s });
+  log(`${label.padEnd(34)} tab ${MB(pm.tot).padStart(7)} MB${heap != null ? ` · JS ${MB(heap).padStart(6)} MB` : ""} · ${String(s.nodes || "?").padStart(6)} elements · downloaded ${MB(netBytes).padStart(6)} MB${grew.length ? " · grew: " + grew.map(([k, d]) => `${k} +${MB(d)}`).join(", ") : ""}`);
+}
+
+await p.goto(H + "/?ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
+/* until the board shows */
+for (let i = 0; i < 240; i++) {
+  const ok = await p.evaluate(SITE === "basketball"
+    ? () => !document.querySelector("#panel .load") && document.querySelectorAll("#panel tbody tr").length > 10
+    : () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 }).catch(() => false);
+  if (ok) break; await p.waitForTimeout(500);
+}
+await p.waitForTimeout(WAIT);
+await snap("opened (board showing)", true);
+
+/* every page in the menu */
+const pages = await p.evaluate(SITE === "basketball"
+  ? () => Object.keys(TAB_OF).map(v => ({ v }))
+  : () => { const o = [{ lg: "col", sec: "HOME" }]; for (const lg of Object.keys(NAV)) for (const [sec, chips] of Object.entries(NAV[lg])) for (const c of (Array.isArray(chips) ? chips : [])) o.push({ lg, sec, chip: c[0] }); return o });
+log(`${pages.length} pages in the menu`);
+for (let r = 1; r <= ROUNDS; r++) {
+  for (const pg of pages) {
+    const label = `r${r} ` + (pg.v || `${pg.lg} ${pg.sec}${pg.chip ? " " + pg.chip : ""}`);
+    try {
+      await p.evaluate(SITE === "basketball" ? (pg) => go(pg.v) : (pg) => navGo(pg.lg, pg.sec, pg.chip), pg);
+      await p.waitForTimeout(WAIT);
+      await snap(label, false);
+    } catch (e) { log(`${label}: ${e.message.slice(0, 160)}`) }
+  }
+  await snap(`end of round ${r}`, true);
+}
+await p.waitForTimeout(120000); await snap("after 2 idle minutes", true);
+
+/* the biggest holders at the end */
+const full = rows.filter(r => r.s && r.s.vars), last = full[full.length - 1], first = full[0];
+log(`\n=== ${SITE} · ${BROWSER}: tab ${MB(first.pm.tot)} MB when opened → ${MB(Math.max(...rows.map(r => r.pm.tot)))} MB at most → ${MB(last.pm.tot)} MB at the end (${pages.length} pages × ${ROUNDS}) ===`);
+log("biggest variables at the end (estimated MB):");
+for (const [k, v] of Object.entries(last.s.vars || {}).sort((a, b) => parseInt(b[1]) - parseInt(a[1])).slice(0, 30)) log(`  ${k.padEnd(24)} ${MB(parseInt(v)).padStart(7)}${String(v).endsWith("+") ? "+ (stopped counting)" : ""}   (opened: ${MB(parseInt(first.s.vars[k] || 0))})`);
+if (last.s.mem) { log("MEM (saved data held in memory) by family, MB:"); for (const [k, v] of Object.entries(last.s.mem).sort((a, b) => b[1] - a[1]).slice(0, 25)) log(`  ${k.padEnd(14)} ${MB(v).padStart(7)}   (opened: ${MB((first.s.mem || {})[k] || 0)})`) }
+log(`styles ${MB(last.s.css || 0)} MB · localStorage ${MB(last.s.ls || 0)} MB · page errors: ${errs.length}${errs.length ? " — " + [...new Set(errs)].slice(0, 5).join(" | ").slice(0, 400) : ""}`);
+await browser.close();
+for (const l of OUT.filter(l => /^=== /.test(l))) console.log(`::notice title=memory ${SITE} ${BROWSER}::${l}`);

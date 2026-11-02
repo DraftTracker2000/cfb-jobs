@@ -1,0 +1,37 @@
+# Where a tab's memory goes (job/memprofile.mjs, Nov 1): opens a board signed in as the site's probe (read-only), visits every page
+# twice, and prints the tab's memory after each page plus the biggest things the page holds. Measurement only. WebKit is Safari's
+# engine (on Linux, so close to Safari but not the same numbers). Published from the site's private repo by tools/sync-jobs.mjs — edit it there.
+name: Memory profile
+on:
+  workflow_dispatch:
+    inputs:
+      rounds:
+        default: "2"
+        type: string
+permissions:
+  contents: read
+jobs:
+  profile:
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [webkit, chromium]
+        site: [football, basketball]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: |
+          npm install --no-save playwright@1
+          npx playwright install --with-deps ${{ matrix.browser }}
+      - env:
+          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
+          BROWSER: ${{ matrix.browser }}
+          SITE: ${{ matrix.site }}
+          ROUNDS: ${{ github.event.inputs.rounds || '2' }}
+        run: node job/memprofile.mjs | tee mem.txt
+      - if: always()
+        run: echo "$(head -c 60000 mem.txt)" >> $GITHUB_STEP_SUMMARY

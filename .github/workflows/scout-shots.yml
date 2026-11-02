@@ -1,0 +1,41 @@
+# Scout report audit pictures (job/scoutshots.mjs, Nov 2): a pro and a college scout report, every tab and sub-tab, computer and phone
+# screens, read-only. Pictures and audit.json come back as the run's artifact. Published from the site's private repo by tools/sync-jobs.mjs.
+name: Scout report pictures
+on:
+  workflow_dispatch:
+    inputs:
+      page:
+        default: "/"
+        type: choice
+        options: ["/", "/lab/"]
+      pro:
+        default: "MIN,DET"
+        type: string
+      college:
+        default: "Ohio State,Michigan"
+        type: string
+permissions:
+  contents: read
+jobs:
+  shots:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: |
+          npm install --no-save playwright@1
+          npx playwright install --with-deps chromium
+      - env:
+          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
+          PAGE_PATH: ${{ github.event.inputs.page || '/' }}
+          PRO: ${{ github.event.inputs.pro }}
+          COL: ${{ github.event.inputs.college }}
+        run: mkdir -p shots && (node job/scoutshots.mjs | tee shots/log.txt || true)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scout-shots
+          path: shots/
+          retention-days: 7

@@ -172,6 +172,32 @@ if (process.env.REOPEN !== "0") { netBytes = 0; await p.goto(H + PAGE + "?ro=1",
   await p.waitForTimeout(WAIT); await snap("return visit: board showing", true);
   log(`=== ${SITE} · ${BROWSER}: return visit, board showing: tab ${MB(rows[rows.length - 1].pm.tot)} MB (downloaded ${MB(netBytes)} MB) ===`) }
 
+/* real sizes, Chrome only (Nov 1): the estimates above count a shared value twice, so at the very end each big holder is dropped in turn
+   and the JavaScript memory freed is read after a clean-up. Done last, because it breaks the page. */
+if (cdp && SITE === "football" && process.env.WHATIF !== "0") {
+  const heap = async () => { await cdp.send("HeapProfiler.collectGarbage"); await p.waitForTimeout(300); await cdp.send("HeapProfiler.collectGarbage"); const m = (await cdp.send("Performance.getMetrics")).metrics; return (m.find(x => x.name === "JSHeapUsedSize") || {}).value || 0 };
+  const STEPS = [
+    ["recruit index", `D.recIdx=null;for(const k in MEM)if(/^recidx_/.test(k))delete MEM[k]`],
+    ["grades (board results)", `D.res=null;D.cohort=null;for(const k in RES_P)delete RES_P[k];for(const k in MEM)if(/^rs_/.test(k))delete MEM[k]`],
+    ["grades detail + combine curves", `D.resD=null;D.resDP=null;D.resC=null`],
+    ["this season's roster (D.ros)", `D.ros=null;for(const k in MEM)if(/^ro_/.test(k))delete MEM[k]`],
+    ["past seasons by year (D.byYear)", `D.byYear=null`],
+    ["careers (D.career)", `D.career=null`],
+    ["roster seasons (D.hist)", `D.hist=null`],
+    ["transfers (D.xfer)", `D.xfer=null;for(const k in MEM)if(/^xfer_/.test(k))delete MEM[k]`],
+    ["NFL data (D.nflp, nfld, nfldX, pd)", `D.nflp=null;D.nfld=null;D.nfldX=null;D.pd=null;for(const k in MEM)if(/^nfl_/.test(k))delete MEM[k]`],
+    ["legacy results (D.legRes)", `D.legRes=null`],
+    ["combine (D.comb)", `D.comb=null;for(const k in MEM)if(/^comb_/.test(k))delete MEM[k]`],
+    ["season stats (ss5_ and D.season)", `D.season=null;for(const k in MEM)if(/^ss\d*_/.test(k))delete MEM[k]`],
+    ["the rest of saved data (MEM)", `for(const k in MEM)delete MEM[k]`],
+    ["the player pool (D.pool)", `D.pool=null`],
+    ["everything else in D", `for(const k in D)D[k]=null`],
+    ["the page's drawing (panel)", `const e=document.getElementById("panel")||document.querySelector("main");if(e)e.innerHTML=""`],
+  ];
+  let h0 = await heap(); log(`\nreal sizes (Chrome, JavaScript memory freed by dropping each in turn; start ${MB(h0)} MB):`);
+  for (const [nm, code] of STEPS) { try { await p.evaluate(c => { (0, eval)(c) }, code) } catch (e) { log(`  ${nm}: ${e.message.slice(0, 80)}`); continue } const h = await heap(); log(`  ${nm.padEnd(40)} ${MB(h0 - h).padStart(7)} MB`); h0 = h }
+  log(`  left (page code, other caches)            ${MB(h0).padStart(7)} MB · whole tab now ${MB(procMem().tot)} MB`);
+}
 /* the biggest holders at the end */
 const full = rows.filter(r => r.s && r.s.vars), last = full[full.length - 1], first = full[0];
 log(`\n=== ${SITE} · ${BROWSER}: tab ${MB(first.pm.tot)} MB when opened → ${MB(Math.max(...rows.map(r => r.pm.tot)))} MB at most → ${MB(last.pm.tot)} MB at the end (${pages.length} pages × ${ROUNDS}) ===`);

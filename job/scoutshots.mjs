@@ -3,14 +3,14 @@
    then goes through every tab and sub-tab the way a person would: scrolled down a bit, then taps the tab. For each it saves a picture of
    the screen and of the whole report, where the tab row sits on screen before and after the tap, and the report's text.
    Run: JOB_TOKEN=… node job/scoutshots.mjs   → shots/ (pictures + audit.json), uploaded by the workflow. Posts nothing to the site. */
-import { chromium } from "playwright";
+import { chromium, webkit } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 const F = (process.env.FOOTBALL_URL || "https://mycfbbigboard.com").replace(/\/+$/, ""), JOB = process.env.JOB_TOKEN, PAGE = process.env.PAGE_PATH || "/";
 const PRO = (process.env.PRO || "MIN,DET").split(","), COL = (process.env.COL || "Ohio State,Michigan").split(",");
 mkdirSync("shots", { recursive: true });
 const ss = await (await fetch(F + "/api/job/session", { method: "POST", headers: { Authorization: "Bearer " + JOB, "Content-Type": "application/json" }, body: JSON.stringify({ who: "probe" }) })).json();
-const browser = await chromium.launch(); const AUDIT = [];
-for (const [dev, opts] of [["desktop", { viewport: { width: 1440, height: 900 } }], ["phone", { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }]]) {
+const browser = await (process.env.BOARD ? webkit : chromium).launch(); const AUDIT = [];   /* the board check runs in Safari's engine */
+for (const [dev, opts] of [["desktop", { viewport: { width: 1440, height: 900 } }], ["phone", { viewport: { width: process.env.BOARD ? 393 : 390, height: 852 }, isMobile: !process.env.BOARD, hasTouch: true, deviceScaleFactor: process.env.BOARD ? 3 : 2 }]]) {
   const ctx = await browser.newContext({ ...opts, extraHTTPHeaders: { "x-site-check": "1" } });
   await ctx.addCookies([{ name: "cfbs", value: ss.token, url: F }]);
   await ctx.addInitScript(t => { try { localStorage.setItem("cfbTok", t) } catch (e) { } }, ss.token);
@@ -18,6 +18,17 @@ for (const [dev, opts] of [["desktop", { viewport: { width: 1440, height: 900 } 
   await p.goto(F + PAGE + "?ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
   for (let i = 0; i < 240; i++) { const ok = await p.evaluate(() => { const L = document.getElementById("load"); return !(L && L.offsetParent) && typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 }).catch(() => false); if (ok) break; await p.waitForTimeout(500) }
   console.log(`page: ${await p.evaluate(() => location.pathname + " · nflCatchHTML has RB1: " + (typeof nflCatchHTML === "function" ? /RB1/.test(nflCatchHTML.toString()) : "missing") + " · role: " + (typeof ME !== "undefined" && ME ? ME.role : "?"))}`);
+  /* (Nov 2, Sam: on the board, words show at the edges of the star column as the table slides left to right) the pinned columns,
+     measured: where each sits, its background, and what's on top at the edges after sliding the table */
+  if (process.env.BOARD) { await p.evaluate(() => { try { navGo("col", "PLAYERS", "board") } catch (e) { } }); await p.waitForTimeout(6000);
+    for (const sl of [0, 60, 160]) { const r = await p.evaluate(sl => { const t = document.getElementById("tbl"); if (!t) return "no #tbl"; const sc = t.closest(".scroll") || t.parentElement; sc.scrollLeft = sl;
+        const row = t.querySelector("tbody tr[data-id]"); if (!row) return "no rows"; const out = [];
+        for (const td of [...row.children].slice(0, 4)) { const b = td.getBoundingClientRect(), c = getComputedStyle(td); out.push(`${td.className || td.tagName}: ${Math.round(b.left * 10) / 10}–${Math.round(b.right * 10) / 10} ${c.position} left=${c.left} z=${c.zIndex} bg=${c.backgroundColor}`) }
+        const y = row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2, hits = [];
+        for (let x = 0; x < 90; x += 2) { const e = document.elementFromPoint(x, y); const td = e && e.closest("td"); hits.push(x + ":" + (td ? (td.className.split(" ")[0] || "td" + [...td.parentNode.children].indexOf(td)) : e ? e.tagName : "-")) }
+        return `scroll ${sc.scrollLeft} · tr bg=${getComputedStyle(row).backgroundColor} · ${out.join(" | ")}\n   on top, x from 0: ${hits.join(" ")}` }, sl);
+      console.log(`${dev} board: ${r}`) }
+    await ctx.close(); continue }
   for (const [side, me, opp] of [["pro", PRO[0], PRO[1]], ["college", COL[0], COL[1]]]) {
     const tag = `${dev}-${side}`;
     try {

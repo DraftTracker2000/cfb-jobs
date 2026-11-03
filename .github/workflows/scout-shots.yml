@@ -17,6 +17,9 @@ on:
       textonly:
         default: "1"
         type: string
+      board:
+        default: ""
+        type: string
 permissions:
   contents: read
 jobs:
@@ -30,13 +33,14 @@ jobs:
           node-version: 24
       - run: |
           npm install --no-save playwright@1
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
       - env:
           JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
           PAGE_PATH: ${{ github.event.inputs.page || '/' }}
           PRO: ${{ github.event.inputs.pro }}
           COL: ${{ github.event.inputs.college }}
           TEXTONLY: ${{ github.event.inputs.textonly }}
+          BOARD: ${{ github.event.inputs.board }}
         run: mkdir -p shots && (node job/scoutshots.mjs | tee shots/log.txt || true)
       - uses: actions/upload-artifact@v4
         with:

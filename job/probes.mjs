@@ -153,6 +153,10 @@ out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(",
      const ev=(sb&&sb.events||[]).slice(0,4);let w=0,f=0;for(const e of ev){const s=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/"+L[lg]+"/summary?event="+e.id).then(r=>r.ok?r.json():null).catch(()=>null);const off=s&&s.gameInfo&&s.gameInfo.officials||[];if(off.length)w++;
       const bs=s&&s.boxscore&&s.boxscore.teams||[];if(bs.some(t=>(t.statistics||[]).some(x=>/foul/i.test(x.name||x.label||""))))f++}
      o[lg][y]=ev.length+" games · "+w+" with officials · "+f+" with fouls"}return o` },
+  /* Nov 5 (Thursday #5): Our Top 25 with the old ±21 rating cap against the new ±35, this season's games, read-only */
+  { name: "res-cap", page: "/lab/", widths: [1280], settle: 8000, cap: 1, run: `const o={ok:false};const G=await api("/games?year="+CURYEAR+"&seasonType=regular&classification=fbs");const A=resumeRank(G,{rcap:21}),B=resumeRank(G);
+    const ra=Object.fromEntries(A.map(x=>[x.t,x.rank]));o.ok=true;o.rcap=RES_W.rcap;o.games=G.filter(g=>g.completed).length;o.top=B.slice(0,30).map(x=>x.rank+" "+x.t+" "+x.w+"-"+x.l+" (was "+ra[x.t]+")").join(" · ");
+    o.out=A.slice(0,25).filter(x=>B.find(y=>y.t===x.t).rank>25).map(x=>x.t+" "+x.rank+"→"+B.find(y=>y.t===x.t).rank).join(", ");return o` },
   /* Nov 5 (Sam, 1:25 pm, NBA scout report: "that's nowhere like we have the nfl and college data for both?"): the NBA play-by-play the
      season job already reads for minutes — does each shot carry where it was taken (area, distance, x/y), and is it on older seasons? */
   { name: "nba-pbp-shots", node: `const o={ok:false,tried:[],seasons:{}};const H={"User-Agent":"Mozilla/5.0","Referer":"https://www.nba.com/","Origin":"https://www.nba.com"};

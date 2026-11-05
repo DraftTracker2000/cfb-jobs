@@ -75,6 +75,8 @@ def _top(T, k=6):
     if not len(T): return '(none)'
     return T.sort_values('p').head(k)[['name', 'ns', 'n', 'est', 'p', 'late', 'oos', 'loo']].round(3).to_string(index=False)
 
+OUT = {}   # (Nov 5) the retention table for the findings pack (findings.py)
+
 def run(reg, log, D):
     s = frame('bb_stats'); m = num(pick(s, 'minutes'))
     A = pd.DataFrame({'pid': pick(s, 'athleteId').astype(str), 'season': num(pick(s, 'season', '_year')), 'tid': pick(s, 'teamId').astype(str), 'team': pick(s, 'team'),
@@ -206,7 +208,7 @@ def run(reg, log, D):
     log(f'BD05: {len(st0)} players starting 2008-2024 (listed recruits or 100+ minutes in two seasons; coach known from 2014, the coaches pack\'s first season); stayed 3+ seasons {st0.stay3.mean():.2f}, transferred within 3 {st0.xfer.mean():.2f}; '
         f'by season {st0.groupby("season").stay3.mean().round(2).to_dict()}; blue-chip {st0[st0.bl].stay3.mean():.2f} vs others {st0[~st0.bl].stay3.mean():.2f}')
     T, fam = named(reg, 'BD05', 'Coach whose starting players stay 3+ seasons (share, beyond the season)', st0.dropna(subset=['coach']), 'coach', 'y', min_seasons=6, min_rows=20, g='pid', unit='share')
-    log(f'BD05 retention: split-half r {fam[0]:.2f} (p {fam[1]:.3g}, {fam[2]} coaches)\n' + _top(T)); log(_ctx(T, 'BD05 retention')); TR = T
+    log(f'BD05 retention: split-half r {fam[0]:.2f} (p {fam[1]:.3g}, {fam[2]} coaches)\n' + _top(T)); log(_ctx(T, 'BD05 retention')); TR = T; OUT['retention'] = (T, fam)
     xc = st0.dropna(subset=['coach']); log('BD05 transferred out within 3 seasons: ' + '; '.join(f'{c} {xc[xc.coach == c].xfer.mean():.2f} of {int((xc.coach == c).sum())}' for c in CTX) + f'; league {st0.xfer.mean():.2f}')
     # ---------- BD06 the ones who stay improve ----------
     d = dev[dev.yr == 1].copy(); nxt = set(zip(ap.pid, ap.season, ap.tid)); d['stays'] = [(p, int(s_) + 2, t) in nxt for p, s_, t in zip(d.pid, d.season, d.tid)]

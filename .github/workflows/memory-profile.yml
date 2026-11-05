@@ -41,7 +41,7 @@ jobs:
         with:
           node-version: 24
       - run: |
-          npm install --no-save playwright@1
+          npm install --no-save "playwright@>=1.0 <1.65"
           npx playwright install --with-deps ${{ matrix.browser }}
       - env:
           JOB_TOKEN: ${{ secrets.JOB_TOKEN }}

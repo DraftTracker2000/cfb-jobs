@@ -56,6 +56,7 @@
 
 import { gzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
+import * as MIXW from "./mixw.mjs";
 import { refreshRefs } from "./refs.mjs";
 import { buildAvailability, uploadAvailability } from "./avail.mjs";
 import { buildInjHist, uploadInjHist } from "./injhist.mjs";
@@ -372,7 +373,13 @@ async function main() {
   const DS = /^(p\d{4})_res-ds(\d+)$/, dsPrev = {}, dsNew = {}; let dsPut = 0, dsSame = 0;
   const dsPrevOf = async pre => { if (!(pre in dsPrev)) { dsPrev[pre] = null; try { const r = await fetch(`${SITE}/api/pack/${pre}_res-dsix`, { headers: { Authorization: "Bearer " + ssTok } }); if (r.ok) dsPrev[pre] = (await r.json()).res || null } catch { } } return dsPrev[pre] };
   for (const name of B.packNames) {
-    const txt = await page.evaluate(n => JSON.stringify(window.__PACKS[n]), name);
+    let txt = await page.evaluate(n => JSON.stringify(window.__PACKS[n]), name);
+    /* Nov 5 (5:24 pm, P2-20): grade row weights never go to browsers; the Team mix sums go to p<Y>_res-mix-model (job/mixw.mjs) */
+    { const wm = MIXW.RES_W.exec(name); if (wm) { const o = JSON.parse(txt), res = o && o.res;
+      if (wm[2] === "board" && res) { const mp = MIXW.mixPack(res), mgz = gzipSync(Buffer.from(JSON.stringify({ res: mp })));
+        await api("PUT", `/api/pack/${wm[1]}_res-mix-model`, { raw: true, body: mgz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+        console.log(`team mix sums: ${wm[1]}_res-mix-model · ${Object.keys(mp.p).length} players (${(mgz.length / 1024).toFixed(0)} KB)`) }
+      const n = MIXW.stripW(wm[2], res); if (n) { txt = JSON.stringify(o); console.log(`${name}: ${n} row weights taken out`) } } }
     const gz = gzipSync(Buffer.from(txt));
     { const dm = DS.exec(name); if (dm) { if (held.includes(`${dm[1]}_res-detail`)) continue; const sha = createHash("sha256").update(gz).digest("hex").slice(0, 16), k = +dm[2], pv = await dsPrevOf(dm[1]);
       if (pv && Array.isArray(pv.s) && pv.s[k] === sha) dsSame++; else { await api("PUT", `/api/pack/${name}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } }); dsPut++ }

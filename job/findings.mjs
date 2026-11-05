@@ -13,7 +13,7 @@ export function summary(name, j) {
   const add = (lab, c) => { if (c) out.push(`${lab} ${Object.entries(c).map(([a, b]) => `${a} ${b}`).join(" ")}`) };
   for (const [t, x] of Object.entries(P.defense || {})) add(t + (x.family && x.family.passes ? "" : " (family fails)"), x.counts);
   for (const [t, x] of Object.entries(P.coach_style || {})) add(t + (x.family && x.family.passes ? "" : " (family fails)"), x.counts);
-  for (const t of ["recruit_hits", "transfers", "draft_flags", "home_court", "coach_development", "late_risers"]) if (P[t]) add(t, P[t].counts);
+  for (const t of ["recruit_hits", "transfers", "draft_flags", "home_court", "coach_development", "coach_retention", "coach_beyond_talent", "late_risers"]) if (P[t]) add(t, P[t].counts);
   for (const t of ["home_underdog"]) if (P[t]) out.push(`${t} passes ${P[t].passes}`);
   if (P.home_field && P.home_field.both_ranked) out.push(`both_ranked passes ${P.home_field.both_ranked.passes}`);
   return { key: k, errors: P.errors || [], lines: out };

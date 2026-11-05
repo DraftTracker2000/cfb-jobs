@@ -281,7 +281,9 @@ def cbb():
                 for p_ in L_ if isinstance(L_, list) else []:
                     if p_.get('startSeason'): start[str(p_.get('id'))] = p_['startSeason']
                     dest[(str(p_.get('id')), int(se_))] = tid_
-        S['yr'] = S.season - S.pid.map(start) + 1
+        # (Nov 5) year in school from bbyears.first_season — CBBD's startSeason restarts at a transfer (bb-development.md §0); with it the
+        # coach-development family no longer passes, so no coach is named here (the Hurley / Dixon / Kyle Smith tags drop off by the same rule)
+        import bbyears; Fs = bbyears.first_season(pick(s, 'athleteId').astype(str), num(pick(s, 'season', '_year'))); S['yr'] = S.season - S.pid.map(Fs) + 1
         CO = cb_.coaches(D)
         a = S[['pid', 'season', 'tid', 'pos', 'yr', 'bx40', 'name']]; b = a.copy(); b['season'] -= 1
         j = a.merge(b.drop(columns='name'), on=['pid', 'season'], suffixes=('', '_n')).dropna(subset=['bx40', 'bx40_n']); j['mover'] = (j.tid != j.tid_n).astype(float); j['chg'] = j.bx40_n - j.bx40
@@ -297,6 +299,23 @@ def cbb():
                                   'their own level and the team\'s SRS change', 'unit': 'bx40 per player-season', 'family': {'split_half_r': R3(fam[0]), 'p': R4(fam[1]), 'coaches': int(fam[2]), 'passes': famok},
                                   'coaches': dev, 'counts': {'coaches': len(dev), 'shows': sum(v['shows'] for v in dev.values())}}
         log(f'cbb coach development: {P["coach_development"]["counts"]}; family {P["coach_development"]["family"]}')
+    except Exception as e: P['errors'].append('coach_development: ' + repr(e)[:200]); log(traceback.format_exc()[-1500:])
+    # ---------- (Nov 5 — the owner: "i decide that you will decide which one makes the site better without cluttering it") the two coach lines that
+    # held in bb-development.md: players stay with him (BD05) and more than his talent from elite rosters (BD16). Same bar as the other coach
+    # tags: the family repeats (split-half r > 0, p < .05) and the coach passes BH (q < .10), his later half and leave-best-season-out. ----------
+    try:
+        import bbdev, bbtalent
+        quiet = lambda *a, **k: None
+        bbdev.run(Reg(None), quiet, D); bbtalent.run(Reg(None), quiet, D)
+        for key, mod, k, label, unit in [('coach_retention', bbdev, 'retention', "Share of the players who started their careers with him who stayed 3+ seasons, beyond that season's league rate", 'share'),
+                                         ('coach_beyond_talent', bbtalent, 'beyond', "Elite rosters (recruiting talent in the top 6%): game margin beyond what the two rosters' recruiting predicts, against other elite rosters", 'points/game')]:
+            T_, fam_ = mod.OUT.get(k, (pd.DataFrame(), (np.nan, 1.0, 0))); Tq = names_bh(T_); ok_ = bool(np.isfinite(fam_[0]) and fam_[0] > 0 and fam_[1] < .05)
+            rows_ = {str(x.agent): {'v': R4(x.est), 'seasons': int(x.ns), 'n': int(x.n), 'first': int(x.first), 'last': int(x.last), 'p': R4(x.p), 'q': R4(x.q), 'shows': bool(x.shows and ok_)} for x in Tq.itertuples()} if len(Tq) else {}
+            P[key] = {'label': label, 'unit': unit, 'family': {'split_half_r': R3(fam_[0]), 'p': R4(fam_[1]), 'coaches': int(fam_[2]), 'passes': ok_}, 'coaches': rows_,
+                      'counts': {'coaches': len(rows_), 'shows': sum(v['shows'] for v in rows_.values())}}
+            log(f'cbb {key}: {P[key]["counts"]}; family {P[key]["family"]}')
+    except Exception as e: P['errors'].append('coach_lines: ' + repr(e)[:200]); log(traceback.format_exc()[-1500:])
+    try:
         # transfers, adjusted for the new team's level
         mv = j[j.mover == 1].copy(); mv['gap'] = [sr.get((b_, s_), np.nan) - sr.get((a_, s_), np.nan) for a_, b_, s_ in zip(mv.tid, mv.tid_n, mv.season)]
         allp = j.copy(); allp['gap'] = 0.0; allp.loc[mv.index, 'gap'] = mv.gap; allp = allp.dropna(subset=['gap'])

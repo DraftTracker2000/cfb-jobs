@@ -16,6 +16,8 @@ import os
 ELITE = float(os.environ.get('BD_ELITE', 10))   # talent cut for 'elite rosters' (an env var only so the fake-data test can reach it)
 CTX = ['Tom Izzo', 'John Calipari', 'Bill Self', 'Jon Scheyer', 'Mike Krzyzewski', 'Mark Few', 'Dan Hurley']
 
+OUT = {}   # (Nov 5) the elite-roster table for the findings pack (findings.py)
+
 def run(reg, log, D):
     s = frame('bb_stats'); m = num(pick(s, 'minutes'))
     A = pd.DataFrame({'pid': pick(s, 'athleteId').astype(str), 'season': num(pick(s, 'season', '_year')), 'tid': pick(s, 'teamId').astype(str), 'team': pick(s, 'team'),
@@ -109,7 +111,7 @@ def run(reg, log, D):
     log(f'BD16: {ne} games by talent-10+ rosters; margin = {be["gap"]:.3f} x talent gap + {be["home"]:.2f} home + {be["const"]:.2f} (all games: {b["gap"]:.3f}, {b["home"]:.2f}, {b["const"]:.2f})')
     Tn5, fam5 = named(reg, 'BD16', 'Elite rosters (talent 10+): head coach outplays his roster\'s recruiting against expectations fitted on elite rosters only',
                       E.dropna(subset=['coach']).rename(columns={'gid': 'game_id'}), 'coach', 'oe', min_seasons=4, unit='points/game')
-    Tn5 = shrink(Tn5); t5 = Tn5.set_index('agent') if len(Tn5) else pd.DataFrame()
+    Tn5 = shrink(Tn5); t5 = Tn5.set_index('agent') if len(Tn5) else pd.DataFrame(); OUT['beyond'] = (Tn5, fam5)
     log(f'BD16 by coach: split-half r {fam5[0]:.2f} (p {fam5[1]:.3g}, {fam5[2]} coaches)\n' + (Tn5.sort_values('est', ascending=False)[['name', 'ns', 'n', 'est', 'shrunk', 'p', 'late', 'loo']].round(2).to_string(index=False) if len(Tn5) else ''))
     Se = E.dropna(subset=['coach']).groupby(['season', 'tid', 'coach']).oe.mean().rename('v').reset_index(); Se['key'] = Se.tid + '|' + Se.coach
     log('BD16 ' + reg_yoy(reg, 'BD16', 'Elite roster outplays its recruiting (same team and coach)', yoy(Se, 'key', 'v')))

@@ -78,7 +78,7 @@ jobs:
       - name: Install the headless browser
         if: steps.mode.outputs.skip != '1' && steps.mode.outputs.mode != 'cavail'
         run: |
-          npm install --no-save playwright@1
+          npm install --no-save "playwright@>=1.0 <1.65"
           npx playwright install --with-deps chromium
 
       - name: Build and publish

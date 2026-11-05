@@ -399,10 +399,10 @@ export function btAdd(BT, o) { const g = o.game_id; if (!g) return; const B = BT
   const hs = num(o.total_home_score), as = num(o.total_away_score), q = num(o.qtr); if (hs == null || as == null) return;
   if (q != null) B.q[q] = [hs, as];
   const pid = o.td_player_id && o.td_player_id !== "NA" ? o.td_player_id : null;
-  if (o.touchdown === "1" && pid) { const tm = hs > B.pv[0] ? B.h : as > B.pv[1] ? B.a : o.posteam; if (tm) { if (!B.ftd) B.ftd = [tm, pid, q]; B.tf = B.tf || {}; if (!B.tf[tm]) B.tf[tm] = pid } }
+  if (o.touchdown === "1" && pid) { const tm = hs > B.pv[0] ? B.h : as > B.pv[1] ? B.a : o.posteam; if (tm) { const nmk = () => { const n = o.td_player_name && o.td_player_name !== "NA" ? o.td_player_name : null; if (n) (B.nm = B.nm || {})[pid] = n }; if (!B.ftd) { B.ftd = [tm, pid, q]; nmk() } B.tf = B.tf || {}; if (!B.tf[tm]) { B.tf[tm] = pid; nmk() } } }
   B.pv = [hs, as] }
-export function btOut(BT) { const g = {}; for (const [k, B] of Object.entries(BT)) { const { pv, ...r } = B; g[k] = r } return { bet: { note: "per game: h/a teams, st season type, q {quarter: [home, away] cumulative at its end}, ftd [team, scorer, quarter] the game's first TD, tf {team: its first TD scorer}", g } } }
-export const BT_COLS = ["game_id", "season_type", "home_team", "away_team", "posteam", "qtr", "total_home_score", "total_away_score", "touchdown", "td_player_id"];
+export function btOut(BT) { const g = {}; for (const [k, B] of Object.entries(BT)) { const { pv, ...r } = B; g[k] = r } return { bet: { note: "per game: h/a teams, st season type, q {quarter: [home, away] cumulative at its end}, ftd [team, scorer, quarter] the game's first TD, tf {team: its first TD scorer}, nm {scorer id: name as the play-by-play gives it}", g } } }
+export const BT_COLS = ["game_id", "season_type", "home_team", "away_team", "posteam", "qtr", "total_home_score", "total_away_score", "touchdown", "td_player_id", "td_player_name"];
 export async function btOnly(S, log) { const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null; const BT = {}; rows(t, BT_COLS, o => btAdd(BT, o)); return btOut(BT) }
 /* carries by situation (Nov 5), the same situations as tsit */
 export function csAdd(CS, o) { const id = v => v && v !== "NA" ? v : null, rr = id(o.rusher_player_id);
@@ -614,7 +614,7 @@ export async function pbp(S, log, POS = null) {
     "fixed_drive", "half_seconds_remaining", "posteam_score", "defteam_score", "posteam_score_post", "defteam_score_post", "run_gap", "success",
     "solo_tackle_1_player_id", "solo_tackle_2_player_id", "assist_tackle_1_player_id", "assist_tackle_2_player_id", "tackle_with_assist_1_player_id", "tackle_with_assist_2_player_id",
     "pass_defense_1_player_id", "pass_defense_2_player_id", "interception_player_id", "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id",
-    "qb_hit_1_player_id", "qb_hit_2_player_id", "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id", "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id", "desc", "wp", "pass_touchdown", "rush_touchdown", "return_touchdown", "td_player_id", "receiving_yards", "rushing_yards",
+    "qb_hit_1_player_id", "qb_hit_2_player_id", "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id", "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id", "desc", "wp", "pass_touchdown", "rush_touchdown", "return_touchdown", "td_player_id", "td_player_name", "receiving_yards", "rushing_yards",
     "lateral_receiver_player_id", "lateral_receiving_yards", "lateral_rusher_player_id", "lateral_rushing_yards", "cpoe", "comp_air_epa", "comp_yac_epa", "qb_scramble", "pass_oe", "qb_dropback", "game_seconds_remaining", "spread_line", "yards_after_catch", "shotgun", "no_huddle", "pass_length", "goal_to_go", "fourth_down_converted", "time", "fixed_drive_result", "drive_quarter_start"], o => {
     const g = o.game_id; if (!g) return;
     /* Oct 29 (Sam: in-game injuries from our own play-by-play): each game's plays in order, each offense's snaps so far, and the last play every

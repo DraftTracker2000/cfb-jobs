@@ -78,6 +78,15 @@ export function batches(cur) {
     C("cf_rankings", R(2004, cur).map(y => `/rankings?year=${y}&seasonType=regular`)),
     B("bb_rankings", R(2008, cur + 1).map(y => ["/rankings", { season: y }])),
     B("bb_lines", R(2014, cur + 1).flatMap(y => cbbRanges(y).map(([a, b]) => ["/lines", { season: y, startDateRange: a, endDateRange: b }]))),
+    /* Nov 5 (5:43 pm: "for the college per play. for this api month we just do the seasons that have players that are still active this
+       season in them"): CFBD's per-play player credits (/plays/stats — who threw, caught, ran, sacked, hurried, broke up), one call per
+       game with an FBS team (CFBD answers at most 2,000 rows a call; a game is well under that). Seasons 2020–2025; game ids from each
+       season's /games answer, which the proxy already keeps (no call). Only when named: never part of an "all batches" run. */
+    C("cf_playstats", [], { optIn: true, perYear: true, pathsFrom: async cf => { const out = [];
+      for (const y of R(2020, Math.min(2025, cur - 1))) { const r = await cf(`/games?year=${y}&seasonType=both`);
+        for (const g of r.j || []) { const fbs = [g.homeClassification, g.awayClassification, g.home_division, g.away_division].some(x => String(x || "").toLowerCase() === "fbs");
+          if (fbs && g.completed !== false && g.id != null) out.push(`/plays/stats?year=${y}&gameId=${g.id}`) } }
+      return out } }),
   ];
 }
 
@@ -128,7 +137,8 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
   const man = { started: Date.now(), left0: L0, floor: FLOOR, cap: CAP, focus, batches: [] };
   const getPackJ = async name => { try { const r = await fetch(`${site}/api/pack/${name}`, H); return r.ok ? await r.json() : null } catch (e) { return null } };
   let used = 0; const LINES = [], SCHEMA = {};
-  for (const b of batches(cur).filter(b => !want.length || want.includes(b.name))) {
+  for (const b of batches(cur).filter(b => want.length ? want.includes(b.name) : !b.optIn)) {
+    if (b.pathsFrom) { b.paths = await b.pathsFrom(cfGet); log(`study ${b.name}: ${b.paths.length} paths`) }
     const n = (b.paths || b.items).length, before = await left();
     if (before != null && before - n < FLOOR) { log(`::warning title=study ${b.name} skipped::${before} left − ${n} would pass the floor ${FLOOR}`); man.batches.push({ name: b.name, skipped: "floor" }); continue }
     if (used + n > CAP) { log(`::warning title=study ${b.name} skipped::this run's cap ${CAP} (used ${used})`); man.batches.push({ name: b.name, skipped: "cap" }); continue }

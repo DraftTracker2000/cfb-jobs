@@ -394,6 +394,13 @@ export function tsAdd(TS, o) {
   const T = TS[o.posteam] = TS[o.posteam] || {}, c = o.complete_pass === "1", y = c ? num(o.receiving_yards) ?? num(o.yards_gained) ?? 0 : 0;
   for (const k of tsKeys(o)) { const x = (T[k] = T[k] || {})[rc] = T[k][rc] || [0, 0, 0]; x[0]++; if (c) { x[1]++; x[2] += y } } }
 export function tsOut(TS) { return { tsit: { cols: ["tgt", "rec", "yds"], sits: TS_SITS, note: "t[team][situation][receiver gsis] = [targets, catches, yards], regular season; d1 1st & 10 (not goal to go); d2s/m/l 2nd & 1–3 / 4–7 / 8+; d3s/m/l 3rd or 4th & 1–3 / 4–7 / 8+; rz from the 20 or closer; g2g goal to go; two the last 2:00 of either half (not OT); trl 4th quarter or OT, behind. Team targets = sum over receivers; otherwise = all − the situation", t: TS } } }
+/* carries by situation (Nov 5), the same situations as tsit */
+export function csAdd(CS, o) { const id = v => v && v !== "NA" ? v : null, rr = id(o.rusher_player_id);
+  if (o.season_type !== "REG" || o.play_type !== "run" || o.two_point_attempt === "1" || !rr || !o.posteam) return;
+  const T = CS[o.posteam] = CS[o.posteam] || {}, y = num(o.yards_gained) ?? 0; for (const k of tsKeys(o)) { const x = (T[k] = T[k] || {})[rr] = T[k][rr] || [0, 0]; x[0]++; x[1] += y } }
+export function csOut(CS) { return { csit: { cols: ["car", "yds"], sits: TS_SITS, note: "t[team][situation][rusher gsis] = [carries, yards], regular season; same situations as tsit", t: CS } } }
+export const CS_COLS = [...TS_COLS, "rusher_player_id"];
+export async function csOnly(S, log) { const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null; const CS = {}; rows(t, CS_COLS, o => csAdd(CS, o)); return csOut(CS) }
 export async function tsOnly(S, log) { const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null; const TS = {}; rows(t, TS_COLS, o => tsAdd(TS, o)); return tsOut(TS) }
 /* "When he's out" (Oct 31, 4:12 pm — Sam: "3. "When he's out" on team pages … - yes or even vice versa WR out more TE usage, could proabably
    start to tip 12 personnel"): each team's regular-season games in order, its targets in each, and for every player it targeted, his targets
@@ -586,7 +593,7 @@ export async function pbp(S, log, POS = null) {
   const df = (id, t) => { const d = DF[id] = DF[id] || { t, P: {}, R: { L: [0, 0], M: [0, 0], R: [0, 0] }, Q: [0, 0, 0, 0, 0, 0], sk: 0, qbh: 0, ff: 0, tfl: 0, g: new Set() }; d.t = t; return d };
   const ids = (o, ks) => { const out = []; for (const k of ks) if (o[k] && o[k] !== "NA" && !out.includes(o[k])) out.push(o[k]); return out };
   const hsF = o => num(o.total_home_score) != null && num(o.total_away_score) != null;
-  const WPS = {}, YACS = [], TD = {}, CH = {}, SX = {}, GX = {}, TS = {};
+  const WPS = {}, YACS = [], TD = {}, CH = {}, SX = {}, GX = {}, TS = {}, CS = {};
   const pl = (M, id) => M[id] = M[id] || { Z: {}, all: line(), late: line(), third: [0, 0], rz: line(), two: line() };
   /* field position of a snap: backed up (own 1–10), own 11 to midfield, their 49–21, red zone 20–11, inside the 10; short yardage = 3rd or 4th and 1–2 */
   const fpos = o => { const y = num(o.yardline_100) || 50; return y >= 90 ? "bk" : y >= 50 ? "own" : y >= 21 ? "opp" : y >= 11 ? "rz2" : "i10" }, shortY = o => num(o.down) >= 3 && (num(o.ydstogo) || 99) <= 2, longY = o => num(o.down) >= 3 && (num(o.ydstogo) || 0) >= 7;   /* 3rd/4th and 7+ (Oct 29, Sam: "for receivers it should really be 3rd and long … who the QBs most reliable receivers are") */
@@ -645,7 +652,7 @@ export async function pbp(S, log, POS = null) {
     const hs = num(o.total_home_score), as = num(o.total_away_score), q = num(o.qtr);
     if (hs != null && as != null) { const m = hs - as, x = G[g] = G[g] || [null, null, 0, 0, o.home_team, o.away_team];
       if (q <= 2) x[0] = m; if (q <= 3) x[1] = m; if (m < x[2]) x[2] = m; if (m > x[3]) x[3] = m }
-    tendAdd(TD, o); chAdd(CH, o); if (POS) syAdd(SX, o, POS); gmAdd(GX, o); tsAdd(TS, o);
+    tendAdd(TD, o); chAdd(CH, o); if (POS) syAdd(SX, o, POS); gmAdd(GX, o); tsAdd(TS, o); csAdd(CS, o);
     if (o.two_point_attempt === "1" || o.qb_spike === "1" || o.qb_kneel === "1" || o.aborted_play === "1") return;
     /* pass protection (Sam, Oct 1: the best offensive lines): dropbacks, sacks and QB hits, for the offense (prO, and game by game prG)
        and the defense (prD) — so a line's sack rate can be read against the pass rushes it faced */
@@ -831,7 +838,7 @@ export async function pbp(S, log, POS = null) {
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
     gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], tendCols: TEND_COLS, pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, gpl: GPL, bon: BON,
-    dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF, ...(POS ? syOut(SX) : {}), ...gmOut(GX), ...tsOut(TS) };
+    dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF, ...(POS ? syOut(SX) : {}), ...gmOut(GX), ...tsOut(TS), ...csOut(CS) };
 }
 /* rain or snow at kickoff, from the play-by-play's weather line ("Light Rain Temp: 45° F, …"): 0 clear or dry, 1 rain, 2 snow,
    null when there's no weather line. Indoors is always 0. "Chance of rain" is a forecast, not rain. (Sam, Sept 29: temp, wind and
@@ -1484,8 +1491,8 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
      carry air yards and YAC (ay, yac). A kept season whose pack has the 5-column pairs gets the 7-column ones in their place only when every
      pair and its first five numbers come out the same (duoSame5) — the two columns are the only change; and targets by situation (tsAdd:
      tsit) are added the same way, once (DONE.ts[season] = TS_V). */
-  const SY_V = 1, GM_V = 2, TS_V = 1; DONE.sy = DONE.sy || {}; DONE.gm = DONE.gm || {}; DONE.ts = DONE.ts || {}; for (const s of seasons) if (up[P("pbp-" + s)]) { DONE.sy[s] = SY_V; DONE.gm[s] = GM_V; DONE.ts[s] = TS_V }
-  if (!startsOnly && getPack) for (const s of [lastPlayed - 1]) { const wantSy = DONE.sy[s] !== SY_V, wantGm = DONE.gm[s] !== GM_V, wantTs = DONE.ts[s] !== TS_V; if (s < FIRST || seasons.includes(s) || (!wantSy && !wantGm && !wantTs)) continue;
+  const SY_V = 1, GM_V = 2, TS_V = 1, CS_V = 1; DONE.sy = DONE.sy || {}; DONE.gm = DONE.gm || {}; DONE.ts = DONE.ts || {}; DONE.cs = DONE.cs || {}; for (const s of seasons) if (up[P("pbp-" + s)]) { DONE.sy[s] = SY_V; DONE.gm[s] = GM_V; DONE.ts[s] = TS_V; DONE.cs[s] = CS_V }
+  if (!startsOnly && getPack) for (const s of [lastPlayed - 1]) { const wantSy = DONE.sy[s] !== SY_V, wantGm = DONE.gm[s] !== GM_V, wantTs = DONE.ts[s] !== TS_V, wantCs = DONE.cs[s] !== CS_V; if (s < FIRST || seasons.includes(s) || (!wantSy && !wantGm && !wantTs && !wantCs)) continue;
     try { const n = P("pbp-" + s), B0 = await getPack(n); if (!B0 || !B0.rush || !B0.pass) { log(`nfl: ${n} not read — ${[wantSy && "QB short yardage", wantGm && "drives / first scores / pairs", wantTs && "targets by situation"].filter(Boolean).join(", ")} not added`); continue }
       const keys0 = Object.keys(B0), sig0 = Object.fromEntries(keys0.map(k => [k, JSON.stringify(B0[k])])), bf = syBrief(B0), gf = gmBrief(B0), tf = tsBrief(B0), add = [], swap = [];
       if (wantSy) { if (B0.qsy || B0.t4) { log(`nfl: ${n} already has qsy/t4 — left as it is`); DONE.sy[s] = SY_V }
@@ -1502,12 +1509,16 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
       if (wantTs) { if (B0.tsit) { log(`nfl: ${n} already has tsit — left as it is`); DONE.ts[s] = TS_V }
         else { const X = await tsOnly(s, log);
           if (!X || Object.keys(X.tsit.t).length < 32) log(`nfl: ${s} targets by situation came out short — not added`); else { B0.tsit = X.tsit; add.push("ts") } } }
+      if (wantCs) { if (B0.csit) { log(`nfl: ${n} already has csit — left as it is`); DONE.cs[s] = CS_V }
+        else { const X = await csOnly(s, log);
+          if (!X || Object.keys(X.csit.t).length < 32) log(`nfl: ${s} carries by situation came out short — not added`); else { B0.csit = X.csit; add.push("cs") } } }
       if (!add.length) continue;
       const changed = keys0.filter(k => !swap.includes(k) && JSON.stringify(B0[k]) !== sig0[k]); if (changed.length) { log(`nfl: ${n}: existing fields would change (${changed.join(", ")}) — not written`); continue }
       await put(n, B0); if (up[n]) { const sz = `size ${kb(n)} → ${(up[n] / 1024).toFixed(0)} KB`;
         if (add.includes("sy")) { DONE.sy[s] = SY_V; SYB.push(`${s} (kept season, ${keys0.length} existing fields carried as read, 2 added): ${bf} → ${syBrief(B0)} · ${sz}`) }
         if (add.includes("gm")) { DONE.gm[s] = GM_V; GMB.push(`${s} (kept season, ${keys0.length} existing fields carried as read, 3 added): ${gf} → ${gmBrief(B0)} · ${sz}`) }
         if (add.includes("gm2")) { DONE.gm[s] = GM_V; GMB.push(`${s} (kept season, pairs given air yards and YAC — every pair's first five numbers the same as before): ${gf} → ${gmBrief(B0)} · ${sz}`) }
+        if (add.includes("cs")) { DONE.cs[s] = CS_V; log(`nfl: ${s} carries by situation added (kept season, once) · ${sz}`) }
         if (add.includes("ts")) { DONE.ts[s] = TS_V; TSB.push(`${s} (kept season, added once): ${tf} → ${tsBrief(B0)} · ${sz}`) } } }
     catch (e) { log(`nfl: ${s} play-by-play additions: ${e.message}`) } }
   /* "When he's out" (woBuild, Oct 31, 4:12 pm): this season every run, last season once (DONE.wo[season] = WO_V) — a pack of its own, so

@@ -65,6 +65,28 @@ export function lineupsOf(bx, pb) {
   return { out, bad, clutch };
 }
 
+/* shot spots (Nov 5 — Sam, 1:47 pm, on the NBA starting-five table: "yes. we should have it"): every field-goal try in the play-by-play
+   carries NBA.com's area (probe nba-pbp-shots: 2023-24 on). Three kinds, like the college table: at the rim (the restricted area),
+   other twos (paint outside the restricted area, mid-range), threes. Each one [made, tries, made on an assist], per player and per team
+   (o = the team's own shots, d = what it allowed) */
+export const SHK = ["rim", "two", "three"];
+export function shotKind(a) { if (!(a.isFieldGoal === 1 || a.actionType === "2pt" || a.actionType === "3pt")) return -1; if (a.actionType === "3pt") return 2; if (a.actionType !== "2pt") return -1; return a.area === "Restricted Area" ? 0 : a.area ? 1 : -1 }
+export function shotsOf(pb, home, away) {
+  const pl = {}, tm = { [home]: { o: [[0, 0, 0], [0, 0, 0], [0, 0, 0]], d: [[0, 0, 0], [0, 0, 0], [0, 0, 0]] }, [away]: { o: [[0, 0, 0], [0, 0, 0], [0, 0, 0]], d: [[0, 0, 0], [0, 0, 0], [0, 0, 0]] } };
+  let n = 0;
+  for (const a of (pb.game.actions || [])) { const k = shotKind(a), t = a.teamTricode; if (k < 0 || !tm[t] || !a.personId) continue; n++;
+    const made = a.shotResult === "Made" ? 1 : 0, ast = made && a.assistPersonId ? 1 : 0, opp = t === home ? away : home;
+    const P = pl[a.personId] = pl[a.personId] || [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (const r of [P[k], tm[t].o[k], tm[opp].d[k]]) { r[0] += made; r[1]++; r[2] += ast } }
+  return { pl, tm, n } }
+const addSh = (A, B) => { for (let k = 0; k < 3; k++) for (let i = 0; i < 3; i++) A[k][i] += B[k][i] };
+const z3 = () => [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+export function keepShots(P, gid, pb, home, away) { if ((P.shDone || {})[gid]) return false; const r = shotsOf(pb, home, away); if (!r.n) return false;
+  P.shK = SHK; P.sh = P.sh || {}; P.sht = P.sht || {}; P.shDone = P.shDone || {};
+  for (const [id, v] of Object.entries(r.pl)) addSh(P.sh[id] = P.sh[id] || z3(), v);
+  for (const [t, v] of Object.entries(r.tm)) { const T = P.sht[t] = P.sht[t] || { o: z3(), d: z3() }; addSh(T.o, v.o); addSh(T.d, v.d) }
+  P.shDone[gid] = 1; return true }
+
 /* the season's finished regular-season games from NBA.com's schedule file (Oct 22: game numbers aren't in date order — opening week's
    national games were 1–5 and the rest come later — so walking the numbers stopped early); null when the file can't be read */
 export async function nbaFinalIds(code) { const S = await j("https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"); if (!S || !S.leagueSchedule) return null;
@@ -94,11 +116,15 @@ export async function buildNbaSzn({ getPack, putPack, packStatus, log = console.
   if (!P || P.v !== 8 || P.season !== S) P = { v: 8, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
   const code = "002" + String(S - 1).slice(2); let read = 0, gap = 0; const IDS = await nbaFinalIds(code);
   const ids = IDS || Array.from({ length: 1230 }, (_, i) => code + String(i + 1).padStart(5, "0"));
-  for (const gid of ids) { if (read >= CAP || (!IDS && gap >= 12)) break; if (P.done[gid]) { gap = 0; continue }
+  for (const gid of ids) { if (read >= CAP || (!IDS && gap >= 12)) break;
+    /* games read before the shot spots were kept (Nov 5): one more read of the play-by-play for the shots only */
+    if (P.done[gid] && !(P.shDone || {})[gid] && P.g[gid]) { const pb = await j(`https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_${gid}.json`); read++; if (pb && pb.game) keepShots(P, gid, pb, P.g[gid][1], P.g[gid][2]); gap = 0; continue }
+    if (P.done[gid]) { gap = 0; continue }
     const bx = await j(`https://cdn.nba.com/static/json/liveData/boxscore/boxscore_${gid}.json`); if (!bx || !bx.game) { gap++; continue } gap = 0;
     if (bx.game.gameStatus !== 3) continue;
     const pb = await j(`https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_${gid}.json`); read++; if (!pb || !pb.game) continue;
     const g = bx.game, home = g.homeTeam.teamTricode, away = g.awayTeam.teamTricode;
+    try { keepShots(P, gid, pb, home, away) } catch (e) { }
     P.g[gid] = [String(g.gameEt || g.gameTimeUTC || "").slice(0, 10), home, away, +g.homeTeam.score, +g.awayTeam.score, g.period > 4 ? g.period - 4 : 0];
     for (const [side, t] of [["homeTeam", home], ["awayTeam", away]]) for (const p of g[side].players || []) { if (p.played !== "1") continue; const s = p.statistics || {};
       P.nm[p.personId] = [p.name, t, p.position || ""];
@@ -129,6 +155,6 @@ export async function buildNbaSzn({ getPack, putPack, packStatus, log = console.
       for (const d of Object.keys(P.injH).sort().slice(0, -10)) delete P.injH[d]; read++ } } catch (e) { log("nba injuries: " + e.message) }
   if (lineupsOf.dbg) P.dbg = lineupsOf.dbg;
   P.at = Date.now(); if (read) await putPack(name, P);
-  log(`nba season: read ${read} games · ${Object.keys(P.done).length} in all · ${Object.keys(P.box).length} players · lineup gaps in ${P.bad} games`);
+  log(`nba season: read ${read} games · ${Object.keys(P.done).length} in all · ${Object.keys(P.box).length} players · lineup gaps in ${P.bad} games · shot spots in ${Object.keys(P.shDone || {}).length} games`);
   return P;
 }

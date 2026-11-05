@@ -153,6 +153,13 @@ out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(",
      const ev=(sb&&sb.events||[]).slice(0,4);let w=0,f=0;for(const e of ev){const s=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/"+L[lg]+"/summary?event="+e.id).then(r=>r.ok?r.json():null).catch(()=>null);const off=s&&s.gameInfo&&s.gameInfo.officials||[];if(off.length)w++;
       const bs=s&&s.boxscore&&s.boxscore.teams||[];if(bs.some(t=>(t.statistics||[]).some(x=>/foul/i.test(x.name||x.label||""))))f++}
      o[lg][y]=ev.length+" games · "+w+" with officials · "+f+" with fouls"}return o` },
+  /* Nov 5 (Sam, 1:25 pm, NBA scout report: "that's nowhere like we have the nfl and college data for both?"): the NBA play-by-play the
+     season job already reads for minutes — does each shot carry where it was taken (area, distance, x/y), and is it on older seasons? */
+  { name: "nba-pbp-shots", node: `const o={ok:false,tried:[],seasons:{}};const H={"User-Agent":"Mozilla/5.0","Referer":"https://www.nba.com/","Origin":"https://www.nba.com"};
+    for(const id of ["0022500100","0022600010","0022400100","0022300100","0021900100","0021500100"]){const r=await fetch("https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_"+id+".json",{headers:H}).catch(()=>null);o.tried.push(id+":"+(r?r.status:"x"));if(!r||!r.ok)continue;
+     const A=(await r.json()).game.actions,S=A.filter(a=>a.isFieldGoal===1||/^(2pt|3pt)$/.test(a.actionType)),has=k=>S.filter(a=>a[k]!=null&&a[k]!=="").length;
+     o.seasons[id.slice(3,5)]={shots:S.length,area:has("area"),areaDetail:has("areaDetail"),shotDistance:has("shotDistance"),x:has("x"),assist:has("assistPersonId"),areas:[...new Set(S.map(a=>a.area))].slice(0,10)};
+     if(!o.ok){o.ok=true;o.sample=S.slice(0,3).map(a=>({t:a.actionType,s:a.subType,area:a.area,ad:a.areaDetail,dist:a.shotDistance,x:a.x,y:a.y,res:a.shotResult,p:a.personId,ast:a.assistPersonId}))}}return o` },
   /* Oct 21 (Sam: calls on players by official): does NBA.com's play-by-play name the official on each foul and violation? */
   { name: "nba-pbp-ofc", node: `const o={ok:false,tried:[]};const H={"User-Agent":"Mozilla/5.0","Referer":"https://www.nba.com/","Origin":"https://www.nba.com"};
     for(const id of ["0022600001","0022600005","0022600010","0022500100"]){const r=await fetch("https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_"+id+".json",{headers:H});o.tried.push(id+":"+r.status);if(!r.ok)continue;

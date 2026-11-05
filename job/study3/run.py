@@ -35,6 +35,8 @@ try: FOCUS = json.load(open(os.path.join(D, 'manifest.json'))).get('focus')
 except Exception: FOCUS = None
 log(f'focus: {FOCUS or "everything"}')
 if FOCUS == 'findings': print('focus:findings — no hunt analysis this run; findings.py builds the packs'); sys.exit(0)
+if FOCUS == 'cfprate':   # Thursday #5/#6 (Nov 5): the rating settings and Elo vs this season, its own notices; nothing else this run
+    import cfprate; step('cfprate', cfprate.run, reg, log, D); print('cfprate errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'coachdev':
     import coachdev; step('coachdev', coachdev.run, reg, log, D)
 if FOCUS in ('bbdiag', 'bbdev'):

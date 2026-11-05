@@ -26,6 +26,7 @@
 
    Every line is a plain array to keep the files small; the column lists sit at the top of each pack ("cols"). */
 
+import { nflCoachScoresOf } from "./nflco.mjs";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { fixCoaches } from "./staff.mjs";
 import { pickPack } from "./picks.mjs";
@@ -1399,6 +1400,8 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   if (!G || !G.g || G.g.length < 1000) throw new Error(`NFL schedule missing or short (${G && G.g ? G.g.length : 0} games) — nothing written`);
   /* this season's head coaches where nflverse still has last season's (job/staff.mjs) */
   { const hc = {}; for (const [t, v] of Object.entries(staff || {})) if (v.hc) hc[t] = { hc: v.hc, since: v.hcSince, interim: v.hcInterim }; fixCoaches(G, Y, hc, log) }
+  /* Nov 5 (5:24 pm, #61): CoachScore is worked out here and only the scores ride on the games pack (job/nflco.mjs) */
+  try { G.co = nflCoachScoresOf(G); log(`nfl: CoachScore for ${Object.keys(G.co).length} coaches`) } catch (e) { log(`nfl: CoachScore failed: ${e.message}`) }
   await put(P("games"), G);
   const POS = {}, PLN = {}; let JN0 = [0, 0, 0, 0], jnAfter = [0, 0, 0, 0];
   let DRAFTED = [], ESPN = {}, KP = {}, PLP = {};

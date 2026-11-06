@@ -94,6 +94,11 @@ for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=reg
   if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
   if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
 for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
+  /* Nov 6 (read only): the coach card "Outplays his recruiting" and its season table, after the coaches rebuild (Lab, then live) */
+  ...["/lab/","/"].map(pg=>({ name: pg==="/"?"coreclive":"coreclab", page: pg, widths: [1280], settle: 9000, run: `return await (async()=>{await coachLoad();let t=0;while(t++<30&&!coachScores())await w(1000);const St=coachScores();if(!St)return {err:"no scores"};const o={};
+for(const n of ["Curt Cignetti","Kirby Smart","Chris Petersen"]){const x=St.all.find(y=>y.c.n===n);if(!x){o[n]="none";continue}coachProfile(x.c.k);await w(1500);const md=document.getElementById("md");
+ const card=[...md.querySelectorAll(".pcard")].find(e=>/Outplays his recruiting/.test(e.textContent));const tb=[...md.querySelectorAll("details summary")].find(e=>/season by season/.test(e.textContent));
+ o[n]={card:card?card.innerText.replace(/\s+/g," "):null,table:tb?tb.parentElement.innerText.slice(0,300):null};closeP&&closeP();await w(500)}return o})()` })),
   /* Nov 6 (read only): a receiver's Situational Splits section, opened on his profile (Lab, then live) */
   ...["/lab/","/"].map(pg=>({ name: pg==="/"?"rsitlive":"rsitlab", page: pg, widths: [1280], settle: 9000, run: `return await (async()=>{const o={};for(const nm of ["Jeremiah Smith","Tetairoa McMillan"]){const id=Object.keys(D.pool||{}).find(k=>D.pool[k].name===nm);if(!id){o[nm]="not in pool";continue}
  profile(id);let t=0;while(t++<60){const e=document.getElementById("rsit");if(e&&!/Resolving/.test(e.textContent))break;await w(1000)}const e=document.getElementById("rsit");o[nm]=e?e.innerText.slice(0,900):"no section";closeP&&closeP();await w(800)}return o})()` })),

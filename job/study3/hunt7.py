@@ -155,6 +155,10 @@ def run_b(reg, log, D):
     j['mpg'] = j['min'] / j.g; j['mpg_n'] = j.min_n / j.g_n; j['p40'] = 40 * j.pts / j['min'].replace(0, np.nan); j['p40_n'] = 40 * j.pts_n / j.min_n.replace(0, np.nan)
     j['up'] = ((~j.oc.isin(POWER)) & j.dc.isin(POWER)).astype(float); j['down'] = (j.oc.isin(POWER) & ~j.dc.isin(POWER)).astype(float)
     log(f'hunt7b: {len(j)} movers with 10+ games before and after; up {int(j.up.sum())}, down {int(j.down.sum())}; median minutes {j.mpg.median():.1f} -> {j.mpg_n.median():.1f}')
+    j['grp'] = np.where(j.up == 1, 'up', np.where(j.down == 1, 'down', np.where(j.oc.isin(POWER), 'power-power', 'mid-mid')))
+    for gname, gg in j.groupby('grp'):
+        log(f'hunt7b group {gname}: {len(gg)} movers · minutes {gg.mpg.mean():.1f} -> {gg.mpg_n.mean():.1f} · points per 40 {gg.p40.mean():.1f} -> {gg.p40_n.mean():.1f} · rating {gg.rating.mean():.3f}')
+    for c in ('o', 'd'): pass
     for col, lab, unit in (('mpg', 'minutes a game', 'min'), ('p40', 'points per 40 minutes', 'pts/40')):
         k = j.dropna(subset=[col, col + '_n']); y = (k[col + '_n'] - k[col]).values
         for x, nm_ in (('up', 'moving up to a power conference'), ('down', 'moving down from a power conference')):
@@ -166,5 +170,6 @@ def run_b(reg, log, D):
     R = reg.df(); R = R[R.hyp.astype(str).str.startswith('H7-4')].copy()
     if not len(R): print('::notice title=hunt7b::no tests ran'); return
     R['q'] = bh(pd.to_numeric(R.p, errors='coerce').fillna(1).values); R['survives'] = (R.q < .10) & (R.oos_pass == True)
+    print('::notice title=hunt7b groups::' + ' ‖ '.join(f"{g}: {len(x)} · min {x.mpg.mean():.1f}->{x.mpg_n.mean():.1f} · p40 {x.p40.mean():.1f}->{x.p40_n.mean():.1f}" for g, x in j.groupby('grp')))
     out = ' ‖ '.join(f"{'SURVIVES' if x.survives else 'no'} · {x.hyp} {x.label}: est {x.est:+.4g} (p {x.p:.3g}, q {x.q:.3g}, n {x.n}) · {str(x.detail)[:240]}" for _, x in R.iterrows())
     for i in range(0, min(len(out), 3800 * 4), 3800): print(f'::notice title=hunt7b {i // 3800 + 1}::{out[i:i + 3800]}')

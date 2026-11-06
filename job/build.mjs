@@ -304,6 +304,10 @@ async function main() {
   await page.goto(`${SITE}${PAGE}?builder=${MODE}${SUNDAY_CATCHUP ? "&catchup=1" : ""}${PBPY ? "&pbpy=" + PBPY : ""}`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => typeof window.__BUILDER_SEED === "function" || window.__BUILDER, null, { timeout: 120000 });
   /* a page without the prefetch hook would take "prefetch" for an ordinary build — stop before it starts */
+  /* a page-only builder the page doesn't know yet (Nov 5: the first cfbpick run reached the Lab page before the deploy carried its hook, fell
+     through to the full build and spent 640 CFBD calls): stop before anything is uploaded */
+  if (["nflpick", "cfbpick"].includes(MODE)) { await page.waitForFunction(() => typeof go === "function", null, { timeout: 60000 }).catch(() => null);
+    if (!(await page.evaluate(m => typeof go === "function" && go.toString().includes('BUILDER==="' + m + '"'), MODE).catch(() => false))) { await browser.close(); throw new Error(`${MODE}: ${PAGE} has no ${MODE} builder yet — is the change deployed?`) } }
   if (MODE === "prefetch" && !(await page.evaluate(() => window.__PREFETCH_V === 1))) { await browser.close(); throw new Error(`prefetch: ${PAGE} has no prefetch hook (window.__PREFETCH_V) — is the Lab change live?`) }
   if (MODE === "pbpfill" && !(await page.evaluate(() => window.__PBPFILL_V === 1))) { await browser.close(); throw new Error(`pbpfill: ${PAGE} has no fill hook (window.__PBPFILL_V) — is the Lab change live?`) }
   await page.evaluate(s => window.__BUILDER_SEED && window.__BUILDER_SEED(s), seed);

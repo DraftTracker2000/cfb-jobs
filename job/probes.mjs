@@ -17,6 +17,19 @@ const base={};for(const pos of ["QB","RB","WR","TE"]){const L=LB.filter(x=>x.pos
 const zB=x=>x.g/x.se,zC=x=>(x.g-base[x.pos].meanGain)/x.se;const keepC=LB.filter(x=>x.g>0&&zC(x)>=OFF_Z).sort((a,b)=>zC(b)-zC(a));
 return {ok:true,A:{credited:LA.length,kept:LA.filter(x=>x.z>=OFF_Z).length},B:{moves:LB.length,up:LB.filter(x=>x.g>0).length,kept:LB.filter(x=>x.g>0&&zB(x)>=OFF_Z).length},base,C:{kept:keepC.length,thisSeason:keepC.filter(x=>x.cur).length,
  names:keepC.slice(0,40).map(x=>x.p+" "+x.pos+" → "+x.to+" "+x.y+" ("+x.coach+") +"+x.g.toFixed(2)+" z "+zC(x).toFixed(2))}}` },
+  /* Nov 5, 11:19 pm (the owner: "including the broadcasting refresh"; item 85 "fits to your desktop screen … side scrolling"; "on the broadcast game stats
+     page nine has the words extending off screen to the right"): every broadcast page in the workspace frame, measured — how far the page
+     scrolls sideways, and the elements whose right edge passes the screen or whose text runs past its own box (read only) */
+  { name: "bcfit", page: "/lab/", widths: [1280, 1440, 1920], settle: 4000, run: `return await (async()=>{const PG=["week","prep","live","slate","season","search","pins","episode","fweek","settings","more"],out={};
+for(const pg of PG){const f=document.createElement("iframe");f.style.cssText="position:fixed;left:0;top:0;width:"+innerWidth+"px;height:"+innerHeight+"px;border:0;z-index:99999;background:#000";f.src="/lab/?broadcast=1&embed=portal&pg="+pg;document.body.appendChild(f);
+ let d=null;for(let k=0;k<60;k++){await w(500);try{d=f.contentDocument;const R=d&&d.getElementById("bcRoot");if(R&&R.children.length&&!/Loading/.test(R.textContent.slice(0,80))&&k>6)break}catch(e){}}
+ await w(2500);const o={};try{const de=d.documentElement,cw=de.clientWidth;o.sideScroll=Math.max(0,de.scrollWidth-cw);const R=d.getElementById("bcRoot");o.rootScroll=R?Math.max(0,R.scrollWidth-R.clientWidth):null;
+  const nm=e=>e.tagName.toLowerCase()+(e.id?"#"+e.id:"")+(e.className&&typeof e.className==="string"?"."+e.className.trim().split(/\\s+/).slice(0,2).join("."):"");
+  const past=[],spill=[];for(const e of (R||d.body).querySelectorAll("*")){const r=e.getBoundingClientRect();if(!r.width||!r.height)continue;if(r.right>cw+1&&past.length<6&&!past.some(x=>e.closest&&x.el.contains(e)))past.push({el:e,s:nm(e)+" →"+Math.round(r.right-cw)+"px "+(e.textContent||"").trim().slice(0,40)});
+   const cs=getComputedStyle(e);if(e.children.length===0&&e.scrollWidth>e.clientWidth+2&&cs.overflowX==="visible"&&spill.length<6)spill.push(nm(e)+" +"+(e.scrollWidth-e.clientWidth)+"px "+(e.textContent||"").trim().slice(0,40))}
+  o.past=past.map(x=>x.s);o.spill=spill;o.title=(d.querySelector("#bcRoot h2,#bcRoot h1")||{}).textContent||""}catch(e){o.err=String(e.message||e).slice(0,120)}
+ out[pg]=o;f.remove();await w(300)}
+const bad=Object.entries(out).filter(([k,v])=>v.sideScroll||v.rootScroll||(v.past||[]).length).map(([k])=>k);return {ok:true,W,bad,out}})()` },
   /* Nov 5 (item 9, read only): the saved college picks against the private model worked out on the Lab page — this week's games and 400 pairings */
   { name: "cfbpickcmp", page: "/lab/", widths: [1280], settle: 8000, run: `return await (async()=>{await loadModel();if(typeof colPickCalc!=="function")return {ok:false,err:"no model"};
 const get=k=>fetch("/api/pack/"+k,{headers:{Authorization:"Bearer "+TOKEN}}).then(r=>r.ok?r.json():null);const [A,B]=await Promise.all([get("p"+CURYEAR+"_cfb-picks"),get("p"+CURYEAR+"_cfb-pairs")]);if(!A||!B)return {ok:false,err:"no packs"};

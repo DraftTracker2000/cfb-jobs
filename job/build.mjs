@@ -68,17 +68,17 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick"];
+const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const NOFRESH = ["probe", "look", "study"].includes(MODE) || /test$/.test(MODE);
-const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest", "prefetch", "pbpfill", "nflpick"];   // these write packs only; the shared data version is unchanged
+const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest", "prefetch", "pbpfill", "nflpick", "cfbpick"];   // these write packs only; the shared data version is unchanged
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflpick: 20, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180, study: 300, pbpfill: 300 }[MODE];
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflpick: 20, cfbpick: 25, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180, study: 300, pbpfill: 300 }[MODE];
 /* prefetch always runs on the Lab page: the hook it needs (window.__PREFETCH) is a Lab builder */
-const PAGE = MODE === "prefetch" || MODE === "pbpfill" ? "/lab/" : ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
+const PAGE = MODE === "prefetch" || MODE === "pbpfill" || MODE === "cfbpick" ? "/lab/" : ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 const started = Date.now();
 
 if (!SITE || !JOB) { console.error("SITE_URL and JOB_TOKEN are required"); process.exit(1) }

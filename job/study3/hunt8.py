@@ -60,7 +60,7 @@ def run(reg, log, D):
 
     # ---------- H8-04 the end of the half ----------
     d1 = P.groupby(['g', 'driveId']).agg(off=('offense', 'first'), q=('period', 'first'), c=('clockSec', 'first'), season=('season', 'first'),
-                                       s0=('offenseScore', 'first'), s1=('offenseScore', 'max')).reset_index()
+                                       s0=('offenseScore', 'first'), s1=('offenseScore', 'max'), ytg=('yardsToGoal', 'first'), pts0=('pt', 'first'), ptl=('pt', 'last')).reset_index()
     d1['pts'] = (d1.s1 - d1.s0).clip(lower=0, upper=8)
     e = d1[(d1.q == 2) & (d1.c <= 120)]
     E = e.groupby(['off', 'season']).pts.agg(['mean', 'size']).reset_index().rename(columns={'off': 'key', 'mean': 'v', 'size': 'n'})
@@ -76,6 +76,22 @@ def run(reg, log, D):
     A = A1.join(A0).reset_index(); A = A[A.na >= 15]; A['v'] = A.a - A.base; A = A.rename(columns={'off': 'key'})
     log(f'H8-05: {len(A)} team-seasons; answer rate {A.a.mean():.3f} vs base {A.base.mean():.3f}')
     yy('H8-05', 'Scoring right after the opponent scores, minus the team\'s normal drive scoring rate', A[['key', 'season', 'v']])
+
+    # H8-05b the same with the starting yard line held fixed (round 2): each drive's expected scoring rate from where it started (FBS, that season)
+    d1['yb'] = (d1.ytg // 10).clip(0, 9)
+    d1['exp'] = d1.groupby(['season', 'yb']).scored.transform('mean')
+    ans = d1[(d1.prev_off.notna()) & (d1.prev_off != d1.off)]
+    A1 = ans[ans.prev_scored == 1].assign(x=lambda z: z.scored - z.exp).groupby(['off', 'season']).x.agg(['mean', 'size']).reset_index()
+    A1 = A1[A1['size'] >= 15].rename(columns={'off': 'key', 'mean': 'v'})
+    log(f'H8-05b: {len(A1)} team-seasons; answer drives score {A1.v.mean():+.3f} over their starting spot')
+    yy('H8-05b', 'Scoring right after the opponent scores, beyond what the starting yard line gives', A1[['key', 'season', 'v']])
+    # H8-06 after a takeaway: the drive right after the defense forces a turnover, beyond its starting spot
+    to = d1.ptl.str.contains('Interception|Fumble', case=False, na=False)
+    d1['prev_to'] = to.groupby(d1.g).shift().fillna(False).astype(bool)
+    T6 = d1[d1.prev_to & (d1.prev_off != d1.off)].assign(x=lambda z: z.scored - z.exp).groupby(['off', 'season']).x.agg(['mean', 'size']).reset_index()
+    T6 = T6[T6['size'] >= 8].rename(columns={'off': 'key', 'mean': 'v'})
+    log(f'H8-06: {len(T6)} team-seasons; drives after a takeaway score {T6.v.mean():+.3f} over their starting spot')
+    yy('H8-06', 'Scoring on the drive after a takeaway, beyond what the starting yard line gives', T6[['key', 'season', 'v']])
 
     R = reg.df(); R = R[R.hyp.astype(str).str.startswith('H8-')].copy()
     if not len(R): print('::notice title=hunt8::no tests ran'); return

@@ -110,7 +110,7 @@ const rows=[];for(const g of S){for(const x of injStints(IH,g)){if(x.side||!(x.m
 rows.sort((a,b)=>b[4]-a[4]||a[0].localeCompare(b[0]));return rows.slice(${k*80},${k*80+80}).map(r=>r.join("|")).join(";")})()` })),
   /* Nov 6 (read only): the This day file — days covered by month and Nov 7's moments, to check the Posts page */
   { name: "tdday", node: `const H={headers:{Authorization:"Bearer "+TOKEN}};const P=await (await fetch(SITE+"/api/pack/p2000_thisday",H)).json();const bym={};for(const d in P.d)bym[d.slice(0,2)]=(bym[d.slice(0,2)]||0)+1;
-return {at:P.at,days:Object.keys(P.d).length,byMonth:bym,nov7:P.d["11-07"].slice(0,40)}` },
+const pick=d=>{const L=P.d[d]||[],by={};for(const r of L)if(!by[r[0]])by[r[0]]=r;return Object.values(by).map(r=>r[1]+" | "+r[3]+" | "+r[4])};return {at:P.at,days:Object.keys(P.d).length,nov7:pick("11-07"),nov8:pick("11-08"),mar17:pick("03-17")}` },
   /* Nov 6 (read only — #77): what raw injury reports we keep and how big, before recording them into players' histories and releasing them */
   { name: "injkept", node: `const H={headers:{Authorization:"Bearer "+TOKEN}},o={};const ix=(await (await fetch(SITE+"/api/pack-index",H)).json()).packs||{};
 o.packs=Object.fromEntries(Object.entries(ix).filter(([n])=>/cavail|cbbavail|injhist|nfl-inj|cbb-inj|nbainj/.test(n)).map(([n,v])=>[n,v.bytes]));

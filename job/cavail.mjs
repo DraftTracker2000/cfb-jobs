@@ -112,3 +112,25 @@ export async function uploadCollegeAvail({ api, season, data }) {
   await api("PUT", "/api/pack-index", { body: { [name]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });
   return { name, bytes: r.bytes };
 }
+
+/* Nov 6 (Sam, 1:00 pm: "i thought we were starting to keep the injury reports for college sports now"; 1:10 pm: "read and account for all
+   the injuries from here on out"): men's basketball availability reports from the same report service — ACC and SEC answer for
+   "Men's Basketball" (Big 12 doesn't under that name; Pac-12 and Sun Belt post no basketball file). Every version kept in
+   p{S}_cbbavail-arc (S = the season's ending year), same shape as football's archive. Read by the basketball referee run (every 6 hours). */
+export async function keepCbbAvail({ api, readPack, season, fetchFn = fetch, log = console.log }) {
+  const all = [], src = {};
+  for (const org of ["ACC", "SEC"]) {
+    try { const r = await fetchFn(HD, { method: "POST", headers: { "content-type": "application/json", accept: "application/json", referer: "https://app.hdintelligence.com/", "user-agent": UA }, body: JSON.stringify({ sport: "Men's Basketball", organization: org, conference: org }) });
+      if (!r.ok) { src[org] = "error " + r.status; continue } const E = parseHd(await r.json(), org); all.push(...E); src[org] = `ok ${E.length} teams` } catch (e) { src[org] = "error " + e.message } }
+  const name = `p${season}_cbbavail-arc`;
+  let st = null, A = null; try { const x = await readPack(name); st = x && x.status; A = x && x.j } catch (e) { st = "error " + e.message }
+  if (!A || A.v !== ARC_V || A.season !== season || !A.g) {
+    if (A || st !== 404) { log(`basketball availability: ${name} not read (${A ? "unexpected shape" : "status " + st}) — not written this run`); return { src } }
+    A = { v: ARC_V, season, cols: ["name", "pos", "num", "status"], g: {} } }
+  const added = mergeAvailArchive(A, all);
+  if (added) { A.at = Date.now(); const gz = gzipSync(Buffer.from(JSON.stringify(A)));
+    const r = await api("PUT", `/api/pack/${name}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+    await api("PUT", "/api/pack-index", { body: { [name]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } }) }
+  log(`basketball availability: ${Object.entries(src).map(([k, v]) => k + " " + v).join(", ")} · ${added} version(s) added · ${Object.keys(A.g).length} games kept`);
+  return { src, added };
+}

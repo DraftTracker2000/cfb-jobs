@@ -1424,7 +1424,11 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   const kb = n => prevIx[n] && prevIx[n].bytes ? (prevIx[n].bytes / 1024).toFixed(0) + " KB" : "?";
   const spN = (o, k) => Object.values((o && o.spec) || {}).filter(x => x[k] && x[k].length).length;
   { let b0 = null, d0 = null; try { b0 = getPack ? await getPack(P("players")) : null } catch { } try { d0 = getPack ? await getPack(P("dplayers")) : null } catch { } JN0 = [jn(b0), b0 && b0.p ? Object.keys(b0.p).length : 0, jn(d0), d0 && d0.p ? Object.keys(d0.p).length : 0] }
-  { const PL = await players(log, Y), DP = PL.def; DRAFTED = PL.drafted; ESPN = PL.espn; KP = PL.kp; delete PL.def; delete PL.drafted; delete PL.espn; delete PL.kp; PLP = PL.p; for (const id in PL.p) { POS[id] = PL.p[id][1]; PLN[id] = PL.p[id][0] } await put(P("players"), PL); await put(P("dplayers"), { cols: PLAYER_COLS.slice(1), p: DP }); jnAfter = [jn(PL), Object.keys(PL.p).length, jn({ cols: PLAYER_COLS.slice(1), p: DP }), Object.keys(DP).length] }
+  { const PL = await players(log, Y), DP = PL.def; DRAFTED = PL.drafted; ESPN = PL.espn; KP = PL.kp; delete PL.def; delete PL.drafted; delete PL.espn; delete PL.kp; PLP = PL.p; for (const id in PL.p) { POS[id] = PL.p[id][1]; PLN[id] = PL.p[id][0] } await put(P("players"), PL); /* arm length (Nov 5 — Sam, doc item 24: "a"): the official combine's, matched by name and the year he entered the league; null when not tested */
+    { let AR = null; try { AR = await (await import("./draft.mjs")).combineArms() } catch (e) { log("nfl: combine arms: " + e.message) }
+      const ak = s => String(s || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, ""); let na = 0;
+      for (const id in DP) { const r = DP[id], y = r[6] || r[10], a = AR && y ? (AR[ak(r[0]) + "|" + y] ?? null) : null; r.push(a); if (a) na++ } log(`nfl: arm length for ${na} of ${Object.keys(DP).length} defenders`) }
+    await put(P("dplayers"), { cols: [...PLAYER_COLS.slice(1), "arm"], p: DP }); jnAfter = [jn(PL), Object.keys(PL.p).length, jn({ cols: PLAYER_COLS.slice(1), p: DP }), Object.keys(DP).length] }
   const lastPlayed = Math.max(...G.g.filter(g => g[7] != null).map(g => g[1]));
   /* first run under a new year prefix (the calendar rolls over in March): write every season again so the page's p<Y> set is complete */
   if (!all && getPack) { let have = null; try { have = await getPack(P("logs-" + FIRST)) } catch { } if (!have) { all = true; log(`nfl: no ${P("logs-" + FIRST)} yet: writing every season`) } }

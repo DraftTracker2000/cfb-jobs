@@ -99,6 +99,11 @@ for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);
 for(const t in (DP&&DP.teams)||{})for(const pos in DP.teams[t])for(const x of DP.teams[t][pos])if(x[2]===1)S.add(x[0]);
 const rows=[];for(const g of S){for(const x of injStints(IH,g)){if(x.side||!(x.m>0)||!INJ_SIDED.test(x.inj||""))continue;rows.push([(PL[g]||{}).name,g,x.y,x.w0+"-"+x.w1,x.inj,x.m])}}
 rows.sort((a,b)=>b[5]-a[5]);const by=k=>rows.filter(r=>r[5]>=k).length;return {starters:S.size,rows:rows.length,m4:by(4),m2:by(2),top:rows.slice(0,60).map(r=>r.join("|"))}})()` },
+  /* Nov 6: the 1–3 game tier, skill positions only, every injury (sided or not) so stints of one injury can be merged */
+  ...[0,1,2,3,4].map(k=>({ name: "skillinj"+k, page: "/", widths: [1280], settle: 9000, run: `return await (async()=>{const DP=await nflPack("depth"),IH=await nflInjHist(),PL=await nflPlayers();const S=new Set();
+for(const t in (DP&&DP.teams)||{})for(const pos in DP.teams[t])if(/^(QB|RB|WR|TE)$/.test(pos))for(const x of DP.teams[t][pos])if(x[2]===1)S.add(x[0]);
+const rows=[];for(const g of S){for(const x of injStints(IH,g)){if(!(x.m>=1))continue;rows.push([g.slice(3),x.y,x.w0+"-"+x.w1,x.inj,x.m,x.side||""])}}
+rows.sort((a,b)=>a[0].localeCompare(b[0])||a[1]-b[1]);return rows.slice(${k*90},${k*90+90}).map(r=>r.join("|")).join(";")})()` })),
   ...[0,1,2,3].map(k=>({ name: "starterinj"+k, page: "/", widths: [1280], settle: 9000, run: `return await (async()=>{const DP=await nflPack("depth"),IH=await nflInjHist();const S=new Set();
 for(const t in (DP&&DP.teams)||{})for(const pos in DP.teams[t])for(const x of DP.teams[t][pos])if(x[2]===1)S.add(x[0]);
 const rows=[];for(const g of S){for(const x of injStints(IH,g)){if(x.side||!(x.m>=4)||!INJ_SIDED.test(x.inj||""))continue;rows.push([g.slice(3),x.y,x.w0+"-"+x.w1,x.inj,x.m])}}

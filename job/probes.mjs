@@ -94,6 +94,13 @@ for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=reg
   if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
   if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
 for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
+  /* Nov 6 (read only — the owner 11:36: injury sides): what we keep for Lamar Jackson's side, how many players have a side on file, and whether
+     ESPN's per-player injury history (core API) carries left/right for past injuries — 3 reads */
+  { name: "injside", node: `const o={};const r=await fetch(SITE+"/api/inj",{headers:{Authorization:"Bearer "+TOKEN}});const j=r.ok?await r.json():{};const sd=j.sd||{};o.sidesKept=Object.keys(sd).length;o.lamar=sd["3916387"]||null;
+const cur=(j.p||j.inj||{});o.curKeys=Object.keys(j).slice(0,10);o.lamarNow=JSON.stringify((j.p&&j.p["3916387"])||null).slice(0,300);
+for(const id of ["3916387"]){try{const h=await fetch("https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/athletes/"+id+"/injuries?limit=50");const hj=h.ok?await h.json():null;o.histStatus=h.status;o.histCount=hj&&hj.count;
+ const items=(hj&&hj.items||[]).slice(0,3);o.hist=[];for(const it of items){const x=await (await fetch(it.$ref.replace("http:","https:"))).json();o.hist.push(JSON.stringify({date:x.date,status:x.status,type:x.type,details:x.details,short:x.shortComment}).slice(0,500))}}catch(e){o.histErr=String(e)}}
+return o` },
   /* Nov 6 (study only — the owner 11:27, basketball "when he's out"): the team side against the line. Player box scores from the open
      sportsdataverse files (who played), our referee files for the closing line (same ESPN game ids). Out = a team game between his first
      and last game for the team that he didn't play (coach's decisions left out); key = 24+ minutes a game, 5+ games out. */

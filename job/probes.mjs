@@ -69,6 +69,11 @@ return {ok:true,seasons:yrs,pairs:rows.length,newQB:{all:fit(C),before2022:fit(C
 const nba=M&&M.nba&&M.nba.adopted?{T:M.nba.T,adopted:true,ver:M.nba.ver||null}:{adopted:false};const {gzipSync}=await import("node:zlib");
 const r=await fetch(SITE+"/api/pack/p2000_pickscale",{method:"PUT",body:gzipSync(Buffer.from(JSON.stringify({v:1,nba}))),headers:{Authorization:"Bearer "+J,"x-encoding":"gzip","Content-Type":"application/json"}});
 return {ok:r.ok,st:r.status,nba,cfbAdopted:!!(M.cfb&&M.cfb.adopted)}` },
+  /* Nov 6 (read only): can the jobs reach the NBA's Last Two Minute reports (official.nba.com JSON) and the MIT compilation on GitHub? */
+  { name: "l2mreach", node: `const o={};for(const id of ["0022100747","0022300100","0022400500","0022500100"]){try{const r=await fetch("https://official.nba.com/l2m/json/"+id+".json",{headers:{Referer:"https://official.nba.com/","User-Agent":"Mozilla/5.0"}});const t=await r.text();o[id]={st:r.status,len:t.length,head:t.slice(0,300)}}catch(e){o[id]=String(e)}}
+try{const r=await fetch("https://raw.githubusercontent.com/atlhawksfanatic/L2M/master/1-tidy/L2M/L2M.csv");o.csv={st:r.status,len:(await r.text()).length}}catch(e){o.csv=String(e)}
+try{const r=await fetch(SITE+"/api/pack/p2024_cbb-refraw-n",{headers:{Authorization:"Bearer "+TOKEN}});const j=r.ok?await r.json():null;o.raw=j?{cols:j.cols,n:Object.keys(j.g||{}).length,ex:Object.entries(j.g||{}).slice(0,2)}:r.status}catch(e){o.raw=String(e)}
+return o` },
   /* Nov 6 (read only): "outplays his recruiting" on the real coach data before the coaches rebuild — fetch team recruiting, run the
      model's coachCtx/coachStats, report the fit and the top and bottom coaches */
   { name: "corec", page: "/lab/", widths: [1280], settle: 9000, run: `return await (async()=>{const o={};await loadModel();if(typeof coachCtx!=="function")return {err:"no model"};const CO0=await coachLoad();if(!CO0)return {err:"no coaches"};

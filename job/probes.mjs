@@ -94,6 +94,9 @@ for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=reg
   if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
   if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
 for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
+  /* Nov 6 (read only): a receiver's Situational Splits section, opened on his profile (Lab, then live) */
+  ...["/lab/","/"].map(pg=>({ name: pg==="/"?"rsitlive":"rsitlab", page: pg, widths: [1280], settle: 9000, run: `return await (async()=>{const o={};for(const nm of ["Jeremiah Smith","Tetairoa McMillan"]){const id=Object.keys(D.pool||{}).find(k=>D.pool[k].name===nm);if(!id){o[nm]="not in pool";continue}
+ profile(id);let t=0;while(t++<60){const e=document.getElementById("rsit");if(e&&!/Resolving/.test(e.textContent))break;await w(1000)}const e=document.getElementById("rsit");o[nm]=e?e.innerText.slice(0,900):"no section";closeP&&closeP();await w(800)}return o})()` })),
   /* Nov 6 (read only): the NBA referee table's Last 2 min column on the basketball Lab */
   { name: "l2mcol", page: "/cbb/lab/", widths: [1280], settle: 8000, run: `return await (async()=>{await renderRefs(true);await w(4000);const t=document.getElementById("tbl");if(!t)return {err:"no table",panel:(document.getElementById("panel")||{}).innerText?.slice(0,300)};
 const H=[...t.querySelectorAll("th")].map(x=>x.textContent),R=[...t.querySelectorAll("tbody tr")].slice(0,6).map(r=>[...r.cells].map(c=>c.textContent).join(" | "));

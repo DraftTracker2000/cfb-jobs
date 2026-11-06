@@ -17,13 +17,15 @@ const p = await ctx.newPage(); const errs = []; p.on("pageerror", e => errs.push
 /* the workspace page by page, whole */
 for (const pg of PAGES) {
   try {
-    await p.goto(`${F}/lab/?broadcast=1&embed=portal&pg=${pg}`, { waitUntil: "domcontentloaded", timeout: 90000 });
+    const [pg0, sp] = pg.split(":");   /* "slate:nba" = the Every game page on that sport's tab (Nov 6) */
+    await p.goto(`${F}/lab/?broadcast=1&embed=portal&pg=${pg0}`, { waitUntil: "domcontentloaded", timeout: 90000 });
+    if (sp) { await p.waitForTimeout(6000); await p.evaluate(s => { BC.slateSp = s; bcRender() }, sp).catch(() => { }) }
     for (let i = 0; i < 80; i++) { await p.waitForTimeout(500); const ok = await p.evaluate(() => { const R = document.getElementById("bcRoot"); return !!(R && R.children.length && !/Loading|Building/.test(R.textContent.slice(0, 120))) }).catch(() => false); if (ok && i > 8) break }
     await p.waitForTimeout(3000);
     /* the workspace scrolls inside its own box: let it grow to its full height for the picture */
     await p.evaluate(() => { const R = document.getElementById("bcRoot"); if (R) { R.style.position = "static"; R.style.height = "auto"; R.style.maxHeight = "none"; R.style.overflow = "visible" } document.documentElement.style.overflow = "visible"; document.body.style.overflow = "visible"; for (const c of [...document.body.children]) if (c.id !== "bcRoot" && c.tagName !== "SCRIPT") c.style.display = "none" });
     await p.waitForTimeout(500);
-    await p.screenshot({ path: `bcshots/${TAG}-${pg}.png`, fullPage: true });
+    await p.screenshot({ path: `bcshots/${TAG}-${pg.replace(":", "-")}.png`, fullPage: true });
     LOG.push(`${pg}: ${await p.evaluate(() => { const R = document.getElementById("bcRoot"); return R ? (R.querySelector("h1,h2") || {}).textContent + " · " + R.scrollHeight + "px tall" : "no workspace" })}`);
   } catch (e) { LOG.push(`${pg}: ${String(e.message || e).slice(0, 200)}`) }
 }

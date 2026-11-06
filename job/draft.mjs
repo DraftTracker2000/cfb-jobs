@@ -110,13 +110,15 @@ export async function buildDraft({ getPack, putPack, curYear, log = console.log 
 
 /* the combine in the columns the page has always read (player_name, school, pos, season, draft_round, draft_ovr, ht, wt, forty, vertical,
    broad_jump, cone, shuttle, bench): official combine results, plus 2021's pro days (no combine that year) */
+/* the official combine's arm lengths by name and year, for the NFL job's defenders (Nov 5, doc item 24) */
+export async function combineArms() { const M = {}; for (const o of table(await text(PD + "combine_official.csv"))) { const a = +o.arm_length; if (o.player && +o.year && a > 20) M[nk(o.player) + "|" + +o.year] = a } return M }
 export async function buildCombine({ draftCsv, log = console.log }) {
   const off = table(await text(PD + "combine_official.csv")), pro = table(await text(PD + "combine_pro_day.csv"));
   const DR = {}; if (draftCsv) for (const o of table(draftCsv)) DR[nk(o.name) + "|" + o.season] = o;
-  const out = ["player_name,school,pos,season,draft_round,draft_ovr,ht,wt,forty,vertical,broad_jump,cone,shuttle,bench"];
-  const add = (nm, sch, pos, y, ht, wt, f, v, b, c, s, be) => { const d = DR[nk(nm) + "|" + y] || {}; out.push([nm, sch, pos, y, d.round || "", d.pick || "", ht, wt, f, v, b, c, s, be].map(esc).join(",")) };
+  const out = ["player_name,school,pos,season,draft_round,draft_ovr,ht,wt,forty,vertical,broad_jump,cone,shuttle,bench,arm"];   /* arm (Nov 5 — the owner, doc item 24: "a"): the official combine's arm length, inches */
+  const add = (nm, sch, pos, y, ht, wt, f, v, b, c, s, be, arm = "") => { const d = DR[nk(nm) + "|" + y] || {}; out.push([nm, sch, pos, y, d.round || "", d.pick || "", ht, wt, f, v, b, c, s, be, arm].map(esc).join(",")) };
   let n = 0; for (const o of off) { if (!o.player || !+o.year) continue; n++;
-    add(o.player, o.college, o.position, +o.year, o.height, o.weight, o.forty_yard_dash, o.vertical_jump, o.broad_jump, o.three_cone_drill, o.twenty_yard_shuttle, o.bench_press) }
+    add(o.player, o.college, o.position, +o.year, o.height, o.weight, o.forty_yard_dash, o.vertical_jump, o.broad_jump, o.three_cone_drill, o.twenty_yard_shuttle, o.bench_press, +o.arm_length > 20 ? o.arm_length : "") }
   let p21 = 0; for (const o of pro) { if (+o.Year !== 2021 || !o.player) continue; p21++;
     add(o.player, o.College, o.POS || o.POS_GP, 2021, o["Height (in)"], o["Weight (lbs)"], o["40 Yard"], o["Vert Leap (in)"], o["Broad Jump (in)"], o["3Cone"], o.Shuttle, o["Bench Press"]) }
   log(`combine: ${n} official results + ${p21} pro days for 2021`);

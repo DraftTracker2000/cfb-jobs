@@ -94,6 +94,14 @@ for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=reg
   if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
   if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
 for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
+  /* Nov 6 (read only — the owner 11:21: an injury post for a player ruled out): this week's Out players with an injury history, the readout
+     numbers (career games missed, times with this injury) and the body picture as the site draws it */
+  { name: "injpost", page: "/", widths: [1280], settle: 9000, run: `return await (async()=>{const DP=await nflPack("depth"),IH=await nflInjHist(),PL=await nflPlayers();const out=[];
+for(const g in (DP&&DP.inj)||{}){const i=DP.inj[g];if(!nflInjCur(DP,i)||!/^out$/i.test(i[1]||""))continue;const St=injStints(IH,g);if(St.length<3)continue;const p=PL[g]||{};
+ const missed=St.reduce((a,x)=>a+(x.m||0),0),cur=String(i[2]||""),sp=INJ_SPOT.find(([re])=>re.test(cur)),same=sp?St.filter(x=>sp[0].test(x.inj||"")):[];
+ out.push({g,name:p.name,pos:p.pos,team:i[4],week:i[0],injury:cur,missed,same:same.length,stints:St.slice(0,10).map(x=>({y:x.y,w0:x.w0,w1:x.w1,inj:x.inj,side:x.side||"",m:x.m})),n:St.length})}
+out.sort((a,b)=>b.missed-a.missed);const top=out.slice(0,4);for(const t of top){try{t.body=injBodyHTML(injStints(IH,t.g)).slice(0,30000)}catch(e){t.body="err "+e.message}}
+return {n:out.length,top,others:out.slice(4,20).map(x=>x.name+" ("+x.team+", "+x.injury+", "+x.missed+" missed)")}})()` },
   /* Nov 6 (study only, read only — the owner 10:13 am: "just tell me after"): pattern hunt 6, NBA side, from our referee files (every game
      2003 on: score, closing line and total, fouls, free throws, officials). Bar: BH q < .10 and the holdout seasons (2022 on) the same way. */
   { name: "nbahunt", node: `const R=[];for(let y=2003;y<=2026;y++){const r=await fetch(SITE+"/api/pack/p"+y+"_cbb-refraw-n",{headers:{Authorization:"Bearer "+TOKEN}});if(!r.ok)continue;const P=await r.json(),C=Object.fromEntries(P.cols.map((c,i)=>[c,i]));

@@ -69,6 +69,31 @@ return {ok:true,seasons:yrs,pairs:rows.length,newQB:{all:fit(C),before2022:fit(C
 const nba=M&&M.nba&&M.nba.adopted?{T:M.nba.T,adopted:true,ver:M.nba.ver||null}:{adopted:false};const {gzipSync}=await import("node:zlib");
 const r=await fetch(SITE+"/api/pack/p2000_pickscale",{method:"PUT",body:gzipSync(Buffer.from(JSON.stringify({v:1,nba}))),headers:{Authorization:"Bearer "+J,"x-encoding":"gzip","Content-Type":"application/json"}});
 return {ok:r.ok,st:r.status,nba,cfbAdopted:!!(M.cfb&&M.cfb.adopted)}` },
+  /* Nov 6 (read only): "this day in history" candidates for Nov 7, 8 and 9 — NFL (games, closing lines, player game logs), college and
+     NBA basketball (the referee files: every game 2003 on with score and line), college football (CFBD games + AP polls, 2014 on) */
+  { name: "thisday", page: "/", widths: [1280], settle: 9000, run: `return await (async()=>{const DAYS=["11-07","11-08","11-09"],o={cols:null,d:{}};for(const d of DAYS)o.d[d]=[];const add=(d,x)=>o.d[d].push(x);
+const G=await nflGames();o.cols=Object.keys(G[0]);const PL=await nflPlayers();const dk=g=>String(g.gameday||g.date||"").slice(5,10);
+for(const g of G){const d=dk(g);if(!DAYS.includes(d)||g.homeScore==null)continue;const y=String(g.gameday||g.date).slice(0,4),m=g.homeScore-g.awayScore,sp=g.spread;
+ if(sp!=null){const dogHome=sp<0,dogWon=dogHome?m>0:m<0;if(dogWon&&Math.abs(sp)>=9)add(d,{k:"nflupset",y,s:Math.abs(sp),t:g.away+" "+g.awayScore+" at "+g.home+" "+g.homeScore+" · line "+sp})}
+ const tot=g.homeScore+g.awayScore;if(tot>=80)add(d,{k:"nflpts",y,s:tot,t:g.away+" "+g.awayScore+" at "+g.home+" "+g.homeScore})}
+const byId=G.byId;for(let S=1999;S<=2025;S++){const L=await nflLogs(S).catch(()=>null);if(!L)continue;for(const gs in L)for(const r of L[gs]){const g=byId[r.game];if(!g)continue;const d=dk(g);if(!DAYS.includes(d))continue;
+ const nm=(PL[gs]&&PL[gs].name)||gs,ln=g.away+" at "+g.home+" "+g.awayScore+"-"+g.homeScore;
+ if((r.pyd||0)>=450)add(d,{k:"pyd",y:S,s:r.pyd,t:nm+" "+r.cmp+"/"+r.att+", "+r.pyd+" yds, "+r.ptd+" TD · "+ln});
+ if((r.ptd||0)>=5)add(d,{k:"ptd",y:S,s:r.ptd,t:nm+" "+r.ptd+" TD passes, "+r.pyd+" yds · "+ln});
+ if((r.ryd||0)>=200)add(d,{k:"ryd",y:S,s:r.ryd,t:nm+" "+r.car+" car, "+r.ryd+" yds, "+r.rtd+" TD · "+ln});
+ if((r.yds||0)>=200)add(d,{k:"recyd",y:S,s:r.yds,t:nm+" "+r.rec+" rec, "+r.yds+" yds, "+r.td+" TD · "+ln});
+ if(((r.rtd||0)+(r.td||0))>=4)add(d,{k:"td",y:S,s:r.rtd+r.td,t:nm+" "+(r.rtd+r.td)+" TD · "+ln})}}
+for(const lg of ["n","c"])for(let y=2003;y<=2026;y++){const r=await fetch("/api/pack/p"+y+"_cbb-refraw-"+lg,{headers:{Authorization:"Bearer "+TOKEN}}).catch(()=>null);if(!r||!r.ok)continue;const P=await r.json(),C=P.cols;
+ for(const row of Object.values(P.g||{})){const x=Object.fromEntries(C.map((c,i)=>[c,row[i]]));const d=String(x.date||"").slice(5,10);if(!DAYS.includes(d)||x.hs==null)continue;const m=x.hs-x.as,yy=String(x.date).slice(0,4);
+  if(x.spread!=null){const dogHome=x.spread>0,won=dogHome?m>0:m<0;if(won&&Math.abs(x.spread)>=(lg==="n"?12:18))add(d,{k:lg+"bbupset",y:yy,s:Math.abs(x.spread),t:x.away+" "+x.as+" at "+x.home+" "+x.hs+" · line "+x.spread})}
+  if(x.hs+x.as>=(lg==="n"?280:200))add(d,{k:lg+"bbpts",y:yy,s:x.hs+x.as,t:x.away+" "+x.as+" at "+x.home+" "+x.hs})}}
+for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=regular&classification=fbs").catch(()=>[]);const R=await api("/rankings?year="+y+"&seasonType=regular").catch(()=>[]);const rk={};
+ for(const w of R||[])for(const p of w.polls||[])if(/AP/i.test(p.poll))for(const r of p.ranks||[])rk[w.week+"|"+r.school]=r.rank;
+ for(const g of Gc||[]){if(!g.completed)continue;const dt=new Date(g.startDate);const et=new Date(dt.getTime()-5*36e5).toISOString();const d=et.slice(5,10);if(!DAYS.includes(d))continue;
+  const hr=rk[g.week+"|"+g.homeTeam],ar=rk[g.week+"|"+g.awayTeam],hw=g.homePoints>g.awayPoints,W=hw?g.homeTeam:g.awayTeam,Lr=hw?ar:hr,Wr=hw?hr:ar;
+  if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
+  if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
+for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
   /* Nov 6 (read only): can the jobs reach the NBA's Last Two Minute reports (official.nba.com JSON) and the MIT compilation on GitHub? */
   { name: "l2mreach", node: `const o={};for(const id of ["0022100747","0022300100","0022400500","0022500100"]){try{const r=await fetch("https://official.nba.com/l2m/json/"+id+".json",{headers:{Referer:"https://official.nba.com/","User-Agent":"Mozilla/5.0"}});const t=await r.text();o[id]={st:r.status,len:t.length,head:t.slice(0,300)}}catch(e){o[id]=String(e)}}
 try{const r=await fetch("https://raw.githubusercontent.com/atlhawksfanatic/L2M/master/1-tidy/L2M/L2M.csv");o.csv={st:r.status,len:(await r.text()).length}}catch(e){o.csv=String(e)}

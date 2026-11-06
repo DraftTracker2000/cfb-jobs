@@ -69,14 +69,14 @@ async function oldSeasons(from, to, log) {
     for (const g in first) if (first[g] < y && last[g] > y && !play[y][g]) { const prevY = play[y - 1] && play[y - 1][g] ? y - 1 : null; if (prevY == null) continue; const M = mainT[prevY][g], t = Object.keys(M).sort((a, b) => M[b] - M[a])[0]; const n = (teamW[y][t] || new Set()).size || 16; S[g] = [0, n, 0, 0, 0] } }
   return out }
 
-export async function buildAvailability({ from = 1999, to, log = console.log, prev = null } = {}) {
+export async function buildAvailability({ from = 1999, to, log = console.log, prev = null, prevFill = 0 } = {}) {
   const out = {};
   const oldTo = Math.min(2015, to); let OLD = null;
   if (from <= oldTo) { const need = []; for (let y = from; y <= oldTo; y++) if (!(prev && prev[y] && Object.keys(prev[y]).length > 500)) need.push(y);
     if (need.length) OLD = await oldSeasons(from, oldTo, log);
     for (let y = from; y <= oldTo; y++) out[y] = OLD ? OLD[y] || {} : prev[y] }
   for (let y = Math.max(from, 2016); y <= to; y++) {
-    if (prev && y < to && prev[y] && Object.keys(prev[y]).length > 500) { out[y] = prev[y]; continue }   /* a finished season, kept (Oct 12) */
+    if (prev && y < to && prev[y] && Object.keys(prev[y]).length > 500 && (y > 2018 || prevFill >= FILL_V)) { out[y] = prev[y]; continue }   /* a finished season, kept (Oct 12); 2016–18 read once more for the Nov 5 fill */
     const r = await fetch(NFLV + y + ".csv", { redirect: "follow" });
     if (!r.ok) { log(`availability ${y}: ${r.status}`); continue }
     const rows = csvRows(await r.text());
@@ -84,11 +84,12 @@ export async function buildAvailability({ from = 1999, to, log = console.log, pr
     const iS = ix("status"), iC = ix("status_description_abbr"), iP = ix("position"), iG = ix("gsis_id"), iT = ix("game_type"), iW = ix("week");
     /* game-day inactives (A01) the injury report lists with an injury that week count as injured: a player ruled out
        with a sprained ankle is marked inactive, not put on reserve (Lamar Jackson missed 10 games in 2021–22 that way) */
-    const hurt = new Set();
+    const hurt = new Set(), outRep = new Set();
     try {
       const ir = await fetch(NFLI + y + ".csv", { redirect: "follow" });
       if (ir.ok) { const R = csvRows(await ir.text()), h = R[0], jG = h.indexOf("gsis_id"), jW = h.indexOf("week"), jT = h.indexOf("game_type"), jI = h.indexOf("report_primary_injury");
-        for (let i = 1; i < R.length; i++) { const x = R[i]; if (x[jT] && x[jT] !== "REG") continue; const inj = x[jI] || ""; if (!inj || notHurt(inj)) continue; hurt.add(x[jG] + "|" + x[jW]) } }
+        const jS = h.indexOf("report_status");
+        for (let i = 1; i < R.length; i++) { const x = R[i]; if (x[jT] && x[jT] !== "REG") continue; const inj = x[jI] || ""; if (!inj || notHurt(inj)) continue; hurt.add(x[jG] + "|" + x[jW]); if (/^(out|doubtful)$/i.test(x[jS] || "")) outRep.add(x[jG] + "|" + x[jW]) } }
       else log(`injury reports ${y}: ${ir.status}`);
     } catch (e) { log(`injury reports ${y}: ${e.message}`) }
     const S = {}, seen = new Set();
@@ -99,18 +100,23 @@ export async function buildAvailability({ from = 1999, to, log = console.log, pr
       const k = g + "|" + x[iW]; if (seen.has(k)) continue; seen.add(k);   // one row per player-week
       let c = classify(x[iS], x[iC]);
       if (c === 3 && hurt.has(k)) c = 2;
+      /* Nov 5 (Sam, doc item 17: "a" — the 2016–18 missed games): those seasons' roster files list a game-day out as active, so a week the
+         injury report rules him Out or Doubtful with an injury counts as missed hurt (2019–25 check: Out was inactive or on reserve 97% of
+         the time, Doubtful 95%; docs/research/qb-receiver-study-2.md) */
+      if (c === 0 && y <= 2018 && outRep.has(k)) c = 2;
       (S[g] = S[g] || [0, 0, 0, 0, 0])[c]++;
     }
     out[y] = S;
-    log(`availability ${y}: ${Object.keys(S).length} players`);
+    log(`availability ${y}: ${Object.keys(S).length} players · ${Object.values(S).reduce((a, v) => a + v[1] + v[2], 0)} weeks missed hurt${y <= 2018 && prev && prev[y] ? ` (was ${Object.values(prev[y]).reduce((a, v) => a + v[1] + v[2], 0)})` : ""}`);
   }
   return out;
 }
 
+export const FILL_V = 1;   /* the 2016–18 injury-report fill (Nov 5) */
 /* upload as a pack (the same place the QB packs live) */
 export async function uploadAvailability({ api, season, data }) {
   const name = `p${season}_availability`;
-  const gz = gzipSync(Buffer.from(JSON.stringify({ avail: { t: Date.now(), v: 2, from: Math.min(...Object.keys(data).map(Number)), d: data } })));
+  const gz = gzipSync(Buffer.from(JSON.stringify({ avail: { t: Date.now(), v: 2, f1618: FILL_V, from: Math.min(...Object.keys(data).map(Number)), d: data } })));
   const r = await api("PUT", `/api/pack/${name}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
   await api("PUT", "/api/pack-index", { body: { [name]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });
   return { name, bytes: r.bytes };

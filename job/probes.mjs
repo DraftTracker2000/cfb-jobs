@@ -69,6 +69,17 @@ return {ok:true,seasons:yrs,pairs:rows.length,newQB:{all:fit(C),before2022:fit(C
 const nba=M&&M.nba&&M.nba.adopted?{T:M.nba.T,adopted:true,ver:M.nba.ver||null}:{adopted:false};const {gzipSync}=await import("node:zlib");
 const r=await fetch(SITE+"/api/pack/p2000_pickscale",{method:"PUT",body:gzipSync(Buffer.from(JSON.stringify({v:1,nba}))),headers:{Authorization:"Bearer "+J,"x-encoding":"gzip","Content-Type":"application/json"}});
 return {ok:r.ok,st:r.status,nba,cfbAdopted:!!(M.cfb&&M.cfb.adopted)}` },
+  /* Nov 6 (read only): "outplays his recruiting" on the real coach data before the coaches rebuild — fetch team recruiting, run the
+     model's coachCtx/coachStats, report the fit and the top and bottom coaches */
+  { name: "corec", page: "/lab/?model=1", widths: [1280], settle: 9000, run: `return await (async()=>{const o={};const CO0=await coachLoad();if(!CO0)return {err:"no coaches"};
+const RP={},rec4={};for(let y=2000;y<=CURYEAR;y++){const R=(await api("/recruiting/teams?year="+y).catch(()=>[]))||[];o["n"+y]=R.length;for(const r of R)if(r.team&&r.points!=null)RP[r.team+"|"+y]=+r.points}
+const tms=new Set(Object.keys(RP).map(k=>k.slice(0,k.lastIndexOf("|"))));for(const t of tms)for(let y=1990;y<=CURYEAR;y++){const v=[0,1,2,3].map(i=>RP[t+"|"+(y-i)]).filter(x=>x!=null);if(v.length>=3)rec4[t+"|"+y]=+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1)}
+CO0.rec4=rec4;const ctx=coachCtx(CO0);o.fit=ctx.recFit;o.rec4n=Object.keys(rec4).length;
+const L=CO0.coaches.map(c=>{const x=coachStats(c,ctx);return {n:c.n,v:x.recOver,g:x.recN,cur:x.cur,sch:x.school}}).filter(x=>x.v!=null&&x.g>=50);
+L.sort((a,b)=>b.v-a.v);o.n=L.length;o.top=L.slice(0,12).map(x=>x.n+" "+x.v.toFixed(1)+" ("+x.g+")");o.bot=L.slice(-6).map(x=>x.n+" "+x.v.toFixed(1)+" ("+x.g+")");
+o.named=["Chris Petersen","Kirby Smart","Nick Saban","Curt Cignetti","Kirk Ferentz","Kyle Whittingham","Ryan Day","Paul Johnson"].map(n=>{const x=L.find(y=>y.n===n);return n+": "+(x?x.v.toFixed(1)+" ("+x.g+")":"—")});
+const pj=CO0.coaches.find(c=>c.n==="Curt Cignetti");if(pj){const x=coachStats(pj,ctx);o.cignetti=x.recBy}
+return o})()` },
   /* Nov 6 (read only): sizes of the college QB packs (before → after the receiver rebuild) */
   { name: "qbsizes", node: `const r=await fetch(SITE+"/api/pack-index",{headers:{Authorization:"Bearer "+TOKEN}});const I=await r.json(),P=I.packs||I;const by={};
 for(const [k,v] of Object.entries(P)){const m=k.match(/^p(\\d{4})_.*-qb$/);if(!m)continue;const b=by[m[1]]=by[m[1]]||{n:0,bytes:0,at:0};b.n++;b.bytes+=+(v.size||v.bytes||v.len||0);b.at=Math.max(b.at,+(v.at||0))}

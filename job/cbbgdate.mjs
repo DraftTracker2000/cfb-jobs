@@ -15,9 +15,9 @@ function rows(text) { const out = []; let row = [], f = "", q = false;
   for (let i = 0; i < text.length; i++) { const c = text[i]; if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++ } else q = false } else f += c; continue }
     if (c === '"') q = true; else if (c === ",") { row.push(f); f = "" } else if (c === "\n") { row.push(f); out.push(row); row = []; f = "" } else if (c !== "\r") f += c }
   if (f || row.length) { row.push(f); out.push(row) } return out }
-export async function gdate({ getPack, putPack, log, curNba }) {
+export async function gdate({ getPack, putPack, log, curNba, recent = true, history = true }) {
   let files = 0, games = 0; const out = [];
-  for (const lg of ["n", "c"]) for (let y = curNba; y >= 2003; y--) {
+  if (history) for (const lg of ["n", "c"]) for (let y = curNba; y >= 2003; y--) {
     const raw = await getPack(`p${y}_cbb-refraw-${lg}`).catch(() => null); if (!raw || !raw.g) continue;
     const r = await fetch(SCHED(lg, y), { redirect: "follow" }).catch(() => null); files++;
     if (!r || !r.ok) { out.push(`${lg}${y}: no schedule file (${r ? r.status : "error"})`); continue }
@@ -27,5 +27,13 @@ export async function gdate({ getPack, putPack, log, curNba }) {
     const C = raw.cols ? raw.cols.indexOf("date") : 0; let mv = 0; for (const id in P.g) if (String(raw.g[id][C]).slice(0, 10) !== P.g[id]) mv++;
     P.at = Date.now(); await putPack(`p${y}_cbb-gdate-${lg}`, P); const n = Object.keys(P.g).length; games += n;
     out.push(`${lg}${y}: ${n} of ${Object.keys(raw.g).length} games dated, ${mv} a day off in the referee file`); log("gdate " + out[out.length - 1]) }
+  /* the daily referee file (p2000_cbb-refs: last season and this one, both leagues) — paired the same way into p2000_cbb-gdate-recent
+     { g: { c|n: { id: date } } }, refreshed with the referee history run each day (Sam, 11:07 am: "just match them up and pair them") */
+  if (recent) { const RF = await getPack("p2000_cbb-refs").catch(() => null), G = { c: {}, n: {} };
+    for (const lg of ["n", "c"]) { const want = new Set(Object.keys((RF && RF.g && RF.g[lg]) || {})); if (!want.size) continue;
+      for (const y of [curNba, curNba - 1]) { const r = await fetch(SCHED(lg, y), { redirect: "follow" }).catch(() => null); files++; if (!r || !r.ok) continue;
+        const R = rows(await r.text()), H = R[0], iId = H.indexOf("id"), iD = H.indexOf("date"); if (iId < 0 || iD < 0) continue;
+        for (const x of R.slice(1)) { const id = x[iId]; if (want.has(id)) { const d = etDate(x[iD]); if (d) G[lg][id] = d } } } }
+    await putPack("p2000_cbb-gdate-recent", { v: 1, at: Date.now(), g: G }); out.push(`recent: ${Object.keys(G.n).length} NBA, ${Object.keys(G.c).length} college games paired`); log("gdate " + out[out.length - 1]) }
   return { msg: `Game dates (Eastern) from the sportsdataverse schedule files: ${files} downloads, 0 ESPN reads, ${games} games dated`, out };
 }

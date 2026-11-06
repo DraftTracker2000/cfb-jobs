@@ -94,6 +94,11 @@ for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=reg
   if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
   if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
 for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
+  /* Nov 6 (read only — the owner 1:10: sides, starters first): every starter's injuries that cost games and have no side yet */
+  { name: "starterinj", page: "/", widths: [1280], settle: 9000, run: `return await (async()=>{const DP=await nflPack("depth"),IH=await nflInjHist(),PL=await nflPlayers();const S=new Set();
+for(const t in (DP&&DP.teams)||{})for(const pos in DP.teams[t])for(const x of DP.teams[t][pos])if(x[2]===1)S.add(x[0]);
+const rows=[];for(const g of S){for(const x of injStints(IH,g)){if(x.side||!(x.m>0)||!INJ_SIDED.test(x.inj||""))continue;rows.push([(PL[g]||{}).name,g,x.y,x.w0+"-"+x.w1,x.inj,x.m])}}
+rows.sort((a,b)=>b[5]-a[5]);const by=k=>rows.filter(r=>r[5]>=k).length;return {starters:S.size,rows:rows.length,m4:by(4),m2:by(2),top:rows.slice(0,60).map(r=>r.join("|"))}})()` },
   /* Nov 6 (read only): how many reported injuries name the side in their own text ("Right Wrist"), and the unmatched recalls' seasons */
   { name: "sidetext", page: "/", widths: [1280], settle: 8000, run: `return await (async()=>{const IH=await nflInjHist(),PL=await nflPlayers();const inj=IH.inj||[];const sided=inj.filter(x=>/\\b(left|right)\\b/i.test(x));
 let st=0,stS=0;for(const y in IH.d)for(const g in IH.d[y])for(const r of IH.d[y][g]){st++;if(r[1]>=0&&/\\b(left|right)\\b/i.test(inj[r[1]]||""))stS++}

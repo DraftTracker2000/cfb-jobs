@@ -41,6 +41,8 @@ if FOCUS == 'hunt5':   # pattern hunt 5 (Nov 6 — Sam: "try all pattern hunts")
     import hunt5; step('hunt5', hunt5.run, reg, log, D); print('hunt5 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'bbhunt6':   # pattern hunt 6, college basketball (Nov 6 — Sam, 10:09 am), its own notices; nothing else this run
     import bbhunt6; step('bbhunt6', bbhunt6.run, reg, log, D); print('bbhunt6 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'hunt7':   # pattern hunt 7 (Nov 6 — Sam, 5:04 pm: "exhaust these before releasing. all angles"): the batches no hunt had read
+    import hunt7; step('hunt7', hunt7.run, reg, log, D); print('hunt7 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt5b':   # pattern hunt 5 round 2 (Nov 6): the per-play player file
     import hunt5b; step('hunt5b', hunt5b.run, reg, log, D); print('hunt5b errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'cfprate':   # Thursday #5/#6 (Nov 5): the rating settings and Elo vs this season, its own notices; nothing else this run

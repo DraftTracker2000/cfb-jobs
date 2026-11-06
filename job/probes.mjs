@@ -94,6 +94,45 @@ for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=reg
   if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
   if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
 for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
+  /* Nov 6 (study only, read only — the owner 10:13 am: "just tell me after"): pattern hunt 6, NBA side, from our referee files (every game
+     2003 on: score, closing line and total, fouls, free throws, officials). Bar: BH q < .10 and the holdout seasons (2022 on) the same way. */
+  { name: "nbahunt", node: `const R=[];for(let y=2003;y<=2026;y++){const r=await fetch(SITE+"/api/pack/p"+y+"_cbb-refraw-n",{headers:{Authorization:"Bearer "+TOKEN}});if(!r.ok)continue;const P=await r.json(),C=Object.fromEntries(P.cols.map((c,i)=>[c,i]));
+ for(const [id,x] of Object.entries(P.g||{})){if(x[C.hs]==null||x[C.as]==null)continue;R.push({id,season:y,d:Date.parse(x[C.date]),h:x[C.home],a:x[C.away],hs:x[C.hs],as:x[C.as],sp:x[C.spread],tot:x[C.total],hF:x[C.hF],aF:x[C.aF],refs:x[C.refs]||[]})}}
+const sgn=(()=>{const L=R.filter(g=>g.sp!=null);const mx=L.reduce((a,g)=>a+g.sp,0)/L.length,my=L.reduce((a,g)=>a+g.hs-g.as,0)/L.length;let c=0;for(const g of L)c+=(g.sp-mx)*(g.hs-g.as-my);return c<0?-1:1})();
+const rows=[];for(const g of R){const m=g.hs-g.as,ex=g.sp==null?null:sgn*g.sp;for(const s of [1,-1]){rows.push({id:g.id,season:g.season,d:g.d,team:s>0?g.h:g.a,opp:s>0?g.a:g.h,home:s>0?1:0,margin:s*m,cover:ex==null?null:s*(m-ex),exp:ex==null?null:s*ex,tot:g.tot,pts:g.hs+g.as,g})}}
+rows.sort((a,b)=>a.team<b.team?-1:a.team>b.team?1:a.d-b.d);for(let i=0;i<rows.length;i++){const r=rows[i],p=rows[i-1];r.prev=p&&p.team===r.team&&p.season===r.season?p:null}
+for(const r of rows){let k=0,q=r.prev;while(q&&q.home===0&&k<10){k++;q=q.prev}r.roadRun=k;let c=0,z=r.prev,n=0;while(z&&n<4){if(z.cover!=null)c+=Math.sign(z.cover);n++;z=z.prev}r.c4=n===4?c:null;const p2=r.prev&&r.prev.prev;r.ov2=r.prev&&p2&&r.prev.tot!=null&&p2.tot!=null?((r.prev.pts-r.prev.tot)+(p2.pts-p2.tot))/2:null}
+const ph=z=>{const t=Math.abs(z);const b=1/(1+.2316419*t),dd=.3989423*Math.exp(-t*t/2);const p=dd*b*(.3193815+b*(-.3565638+b*(1.781478+b*(-1.821256+b*1.330274))));return 2*p};
+const T=[];const diff=(hyp,label,L,f,y=r=>r.cover)=>{const D=L.filter(r=>y(r)!=null&&f(r)!=null);const st=A=>{const n=A.length,m=A.reduce((a,r)=>a+y(r),0)/Math.max(1,n),v=A.reduce((a,r)=>a+(y(r)-m)**2,0)/Math.max(1,n-1);return{n,m,v}};
+ const one=A=>{const a=st(A.filter(f)),b=st(A.filter(r=>!f(r)));const e=a.m-b.m,se=Math.sqrt(a.v/Math.max(1,a.n)+b.v/Math.max(1,b.n));return{e,se,n1:a.n}};const all=one(D),ho=one(D.filter(r=>r.season>=2022));
+ if(all.n1<60){T.push({hyp,label,skip:"too few "+all.n1});return}T.push({hyp,label,est:all.e,p:ph(all.e/all.se),n1:all.n1,n:D.length,hold:ho.e,holdP:ho.se?ph(ho.e/ho.se)/2:1,oos:Math.sign(ho.e)===Math.sign(all.e)&&ho.se>0&&Math.abs(ho.e/ho.se)>1.28})};
+const yoy=(hyp,label,S)=>{const pairs=[];for(const k in S)for(const s in S[k]){const a=S[k][s],b=S[k][+s+1];if(a!=null&&b!=null)pairs.push([a,b,+s+1])}const r_=P=>{const n=P.length;if(n<10)return{r:null,n};const mx=P.reduce((a,x)=>a+x[0],0)/n,my=P.reduce((a,x)=>a+x[1],0)/n;let sxy=0,sxx=0,syy=0;for(const [x,y] of P){sxy+=(x-mx)*(y-my);sxx+=(x-mx)**2;syy+=(y-my)**2}const r=sxy/Math.sqrt(sxx*syy);return{r,n,p:ph(r*Math.sqrt((n-2)/(1-r*r)))}};
+ const a=r_(pairs),h=r_(pairs.filter(x=>x[2]>=2022));T.push({hyp,label:label+" — repeats season to season (r)",est:a.r,p:a.p,n:a.n,hold:h.r,holdP:h.p,oos:h.r!=null&&Math.sign(h.r)===Math.sign(a.r)&&h.p<.2})};
+const L=rows.filter(r=>r.cover!=null);
+diff("N6-01","After a loss by 20+ -> next game vs the line",L.filter(r=>r.prev),r=>r.prev.margin<=-20);
+diff("N6-02","After a win by 20+ -> next game vs the line",L.filter(r=>r.prev),r=>r.prev.margin>=20);
+diff("N6-03","Covered each of the last four -> next game vs the line",L.filter(r=>r.c4!=null),r=>r.c4>=4);
+diff("N6-04","Failed each of the last four -> next game vs the line",L.filter(r=>r.c4!=null),r=>r.c4<=-4);
+diff("N6-05","4th+ straight road game -> vs the line",L.filter(r=>r.home===0),r=>r.roadRun>=3);
+diff("N6-06","First home game after 3+ on the road -> vs the line",L.filter(r=>r.home===1),r=>r.roadRun===0&&(()=>{let k=0,q=r.prev;while(q&&q.home===0){k++;q=q.prev}return k>=3})());
+diff("N6-07","Favored by 10+ in March–April -> vs the line",L,r=>r.exp>=10&&[2,3].includes(new Date(r.d).getUTCMonth()));
+diff("N6-08","Home underdog by 7+ -> vs the line",L.filter(r=>r.home===1),r=>r.exp<=-7);
+{const G=R.filter(g=>g.tot!=null).map(g=>{const H=rows.find?null:null;return g});const byId={};for(const r of rows)byId[r.id+"|"+r.home]=r;
+ const GT=G.map(g=>{const h=byId[g.id+"|1"],a=byId[g.id+"|0"];return{season:g.season,cover:g.hs+g.as-g.tot,both:h&&a&&h.ov2!=null&&a.ov2!=null?(h.ov2>=10&&a.ov2>=10):null}});diff("N6-09","Both teams' last two games over their totals by 10+ -> this game vs its total",GT,r=>r.both)}
+/* officials: their season over rate, home cover rate and fouls a game repeat? and do last season's high-foul officials push the total? */
+const OS={},OH={},OF={};for(const g of R){if(!g.refs.length)continue;for(const o of g.refs){if(g.tot!=null&&g.hs+g.as!==g.tot){const x=(OS[o]=OS[o]||{})[g.season]=(OS[o]||{})[g.season]||[0,0];x[0]++;if(g.hs+g.as>g.tot)x[1]++}
+ if(g.sp!=null){const c=(g.hs-g.as)-sgn*g.sp;if(c){const x=(OH[o]=OH[o]||{})[g.season]=(OH[o]||{})[g.season]||[0,0];x[0]++;if(c>0)x[1]++}}if(g.hF!=null&&g.aF!=null){const x=(OF[o]=OF[o]||{})[g.season]=(OF[o]||{})[g.season]||[0,0];x[0]++;x[1]+=g.hF+g.aF}}}
+const rate=(S,min,f)=>{const o={};for(const k in S){o[k]={};for(const s in S[k]){const x=S[k][s];if(x[0]>=min)o[k][s]=f(x)}}return o};
+const lgF={};for(const g of R)if(g.hF!=null&&g.aF!=null){const x=lgF[g.season]=lgF[g.season]||[0,0];x[0]++;x[1]+=g.hF+g.aF}
+const OFr=rate(OF,25,x=>x[1]/x[0]);for(const k in OFr)for(const s in OFr[k])OFr[k][s]-=lgF[s][1]/lgF[s][0];
+yoy("N6-10","Official's over rate (25+ games with a total)",rate(OS,25,x=>x[1]/x[0]));
+yoy("N6-11","Official's home cover rate (25+ lined games)",rate(OH,25,x=>x[1]/x[0]));
+yoy("N6-12","Official's fouls a game vs the league",OFr);
+{const GT=R.filter(g=>g.tot!=null&&g.refs.length).map(g=>{const v=g.refs.map(o=>OFr[o]&&OFr[o][g.season-1]).filter(x=>x!=null);return{season:g.season,cover:g.hs+g.as-g.tot,hi:v.length>=2?v.reduce((a,b)=>a+b,0)/v.length>=2:null}});diff("N6-13","Crew whose officials called 2+ more fouls a game than the league last season -> this game vs its total",GT,r=>r.hi)}
+/* team cover rate repeats */
+{const S={};for(const r of L){if(!r.cover)continue;const x=(S[r.team]=S[r.team]||{})[r.season]=(S[r.team]||{})[r.season]||[0,0];x[0]++;if(r.cover>0)x[1]++}yoy("N6-14","Team cover rate (40+ lined games)",rate(S,40,x=>x[1]/x[0]))}
+const ok=T.filter(t=>!t.skip).sort((a,b)=>a.p-b.p);const m=ok.length;ok.forEach((t,i)=>{t.q=Math.min(1,t.p*m/(i+1))});for(let i=m-2;i>=0;i--)ok[i].q=Math.min(ok[i].q,ok[i+1].q);
+return {games:R.length,signCheck:sgn,tests:T.map(t=>({...t,survives:!t.skip&&t.q<.1&&t.oos}))}` },
   /* Nov 6 (read only): the coach card "Outplays his recruiting" and its season table, after the coaches rebuild (Lab, then live) */
   ...["/lab/","/"].map(pg=>({ name: pg==="/"?"coreclive":"coreclab", page: pg, widths: [1280], settle: 9000, run: `return await (async()=>{await coachLoad();let t=0;while(t++<30&&!coachScores())await w(1000);const St=coachScores();if(!St)return {err:"no scores"};const o={};
 for(const n of ["Curt Cignetti","Kirby Smart","Chris Petersen"]){const x=St.all.find(y=>y.c.n===n);if(!x){o[n]="none";continue}coachProfile(x.c.k);await w(1500);const md=document.getElementById("md");

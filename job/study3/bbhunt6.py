@@ -1,15 +1,15 @@
 # Pattern hunt 6 — college basketball (Nov 6, 2026 — the owner, 10:09 am: "i don't think many patterns have been explored on the basketball
 # side"; 10:13 am: "if you're just running data and pattern tests you can just tell me after"). STUDY ONLY; nothing goes on the site.
 # From the study archive: CBBD games 2008 on, closing lines 2014 on, SRS, AP polls, player season stats, rosters, the portal.
-# Same bar as hunts 3–5: Benjamini-Hochberg q < .10 over this round's tests, and the holdout seasons (HOLD on) the same way.
+# Same bar as hunts 3-5: Benjamini-Hochberg q < .10 over this round's tests, and the holdout seasons (HOLD on) the same way.
 #  B6-01 rest edge: days since each team's last game (team minus opponent, capped at 7) -> vs the line
 #  B6-02 letdown: the game right after beating an AP-ranked opponent -> vs the line
 #  B6-03 revenge: second meeting in a season, the team that lost the first -> vs the line
 #  B6-04 third game in three days (conference tournaments) -> vs the line
 #  B6-05 overreaction: last game's result against the line (beat it by 15+ / missed by 15+) -> next game vs the line
 #  B6-06 streaks: covered (or failed) the last four -> next game vs the line
-#  B6-07 returning minutes: share of last season's minutes back on the team -> November–December games vs the line
-#  B6-08 transfers in: incoming transfers' minutes at their old schools (share of the team's last-season minutes) -> Nov–Dec vs the line
+#  B6-07 returning minutes: share of last season's minutes back on the team -> November-December games vs the line
+#  B6-08 transfers in: incoming transfers' minutes at their old schools (share of the team's last-season minutes) -> Nov-Dec vs the line
 #  B6-09 team against the line repeats season to season (r)
 #  B6-10 head coach against the line repeats season to season (r, same coach any team)
 #  B6-11 road favorites in conference games -> vs the line
@@ -17,7 +17,7 @@
 #  B6-13 altitude: home games at 4,000+ ft programs -> vs the line (beyond the usual home edge in the line)
 #  B6-14 overtime last game -> next game vs the line
 #  B6-15 totals: both teams' last two games went over their totals by 10+ on average -> this game vs its total
-#  B6-16 early-season blowouts: Nov–Dec margin beyond SRS in games vs weak teams -> January–March vs the line
+#  B6-16 early-season blowouts: Nov-Dec margin beyond SRS in games vs weak teams -> January-March vs the line
 import numpy as np, pandas as pd
 from lib3 import bh, mech, yoy, reg_yoy, HOLD
 from load import frame, pick, num
@@ -44,7 +44,7 @@ def run(reg, log, D):
         if c in g.columns: per = dict(zip(pick(g, 'id').astype(str), g[c])); break
     B['ot'] = [float(isinstance(per.get(i), list) and len(per.get(i)) > 2) if per else np.nan for i in B.gid]   # college: 2 halves
     B['m'] = B.hp - B.ap
-    log(f'bbhunt6: {len(B)} games {int(B.season.min())}–{int(B.season.max())}; overtime known: {per is not None}; columns {[c for c in g.columns if "eriod" in c or "ine" in c][:6]}')
+    log(f'bbhunt6: {len(B)} games {int(B.season.min())}-{int(B.season.max())}; overtime known: {per is not None}; columns {[c for c in g.columns if "eriod" in c or "ine" in c][:6]}')
     # closing lines (spread and total), from the home side
     l2 = frame('bb_lines', flat=False); SP, TO = {}, {}
     for gid, LL in zip(pick(l2, 'gameId'), pick(l2, 'lines')):
@@ -112,10 +112,10 @@ def run(reg, log, D):
         inc = mv.groupby(['nteam', 'season']).mins.sum().rename('inmin').reset_index().rename(columns={'nteam': 'team'})
         inc = inc.merge(tot.rename('tt').reset_index(), on=['team', 'season'], how='left'); inc['xin'] = inc.inmin / inc.tt; inc['season'] += 1
         E = L[L.date.dt.month.isin([11, 12])].merge(ret, on=['team', 'season'], how='left').merge(inc[['team', 'season', 'xin']], on=['team', 'season'], how='left')
-        e7 = E.dropna(subset=['ret']); log(f'B6-07: {len(e7)} Nov–Dec team-games with returning minutes (median {e7.ret.median():.2f})')
-        M('B6-07', 'Returning share of last season\'s minutes -> November–December vs the line', e7, e7.ret - e7.ret.mean(), 'pts per 1.0 of share')
+        e7 = E.dropna(subset=['ret']); log(f'B6-07: {len(e7)} Nov-Dec team-games with returning minutes (median {e7.ret.median():.2f})')
+        M('B6-07', 'Returning share of last season\'s minutes -> November-December vs the line', e7, e7.ret - e7.ret.mean(), 'pts per 1.0 of share')
         E['xin'] = E.xin.fillna(0); e8 = E.dropna(subset=['ret'])
-        M('B6-08', 'Incoming transfers\' old-school minutes (share of the team\'s last-season minutes) -> Nov–Dec vs the line', e8, e8.xin, 'pts per 1.0 of share')
+        M('B6-08', 'Incoming transfers\' old-school minutes (share of the team\'s last-season minutes) -> Nov-Dec vs the line', e8, e8.xin, 'pts per 1.0 of share')
     # B6-09 team ATS repeats; B6-10 coach ATS repeats
     S9 = L[L.cover != 0].groupby(['team', 'season']).cover.agg(lambda s: (s > 0).mean()).rename('v').reset_index()
     S9 = S9.merge(L.groupby(['team', 'season']).size().rename('n').reset_index()); S9 = S9[S9.n >= 15].rename(columns={'team': 'key'})
@@ -151,7 +151,15 @@ def run(reg, log, D):
         ea = rows[rows.date.dt.month.isin([11, 12]) & (rows.osrs < -5)].dropna(subset=['srs'])
         ea = ea.assign(res=ea.margin - (ea.srs - ea.osrs) - (ea.home - .5) * 6).groupby(['team', 'season']).res.mean().rename('blow').reset_index()
         late = L[L.date.dt.month.isin([1, 2, 3])].merge(ea, on=['team', 'season'])
-        M('B6-16', 'Nov–Dec margin beyond SRS against weak teams (per 10 pts) -> January–March vs the line', late, late.blow / 10, 'pts per 10')
+        M('B6-16', 'Nov-Dec margin beyond end-of-season SRS against weak teams (per 10 pts; look-ahead) -> January-March vs the line', late, late.blow / 10, 'pts per 10')
+    # B6-16b the same without look-ahead: Nov-Dec results against the line (known before each game) in games vs weak teams (SRS of the
+    # opponent's previous season < -5) -> January-March vs the line. B6-16 above uses the end-of-season SRS, which already contains the
+    # January-March games it predicts, so it can't count on its own.
+    if SR:
+        rows['osrs0'] = [SR.get((o, s - 1)) for o, s in zip(rows.opp, rows.season)]
+        eb = rows[rows.date.dt.month.isin([11, 12]) & (rows.osrs0 < -5) & rows.cover.notna()].groupby(['team', 'season']).cover.mean().rename('blow0').reset_index()
+        late0 = L[L.date.dt.month.isin([1, 2, 3])].merge(eb, on=['team', 'season'])
+        M('B6-16b', 'Nov-Dec cover vs weak teams (last season\'s SRS < -5), per 10 pts -> January-March vs the line', late0, late0.blow0 / 10, 'pts per 10')
     # ---------- BH pass and notices ----------
     R = reg.df(); R = R[R.hyp.astype(str).str.startswith('B6-')].copy()
     R['q'] = bh(pd.to_numeric(R.p, errors='coerce').fillna(1).values); R['survives'] = (R.q < .10) & (R.oos_pass == True)

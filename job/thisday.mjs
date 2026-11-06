@@ -124,13 +124,13 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
      player movement log since 2015 (the Be the GM data). A trade is a moment when a player in it averaged 18+ points that season or the one
      before (the player box scores above). */
   try { const TR = await getPack("p2000_cbb-nbatrades"); if (TR && TR.r) { const by = {}; for (const r of TR.r) (by[r[1]] = by[r[1]] || []).push(r);
-    const ppgS = (nm, y) => { let b = 0, s = 0; for (const yy of [y, y - 1]) { const o = PPG[yy + "|" + nm]; if (o && o[1] >= 10 && o[0] / o[1] > b) { b = o[0] / o[1]; s = yy } } return [b, s] };
+    const ppgS = (nm, y) => { let b = 0, s = 0; for (const yy of [y - 1]) {   /* the season before the trade (a season in progress would count games after it) */ const o = PPG[yy + "|" + nm]; if (o && o[1] >= 10 && o[0] / o[1] > b) { b = o[0] / o[1]; s = yy } } return [b, s] };
     const nick = t => String(t).split(" ").pop(), lst = a => a.length <= 1 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1];
     for (const id in by) { const L = by[id], dt = L[0][0]; if (!dt) continue; const y = +dt.slice(0, 4), sy = +dt.slice(5, 7) >= 8 ? y + 1 : y;
       const P = L.filter(r => r[5]).map(r => { const [p, s] = ppgS(r[4], sy); return { r, p, s } }).sort((a, b) => b.p - a.p); if (!P.length || P[0].p < 18) continue;
       const star = P[0], to = star.r[2], from = star.r[3], teams = [...new Set(L.map(r => r[2]))];
-      const got = t => lst(L.filter(r => r[2] === t).map(r => r[4].replace(/^(\d{4}) /, "a $1 ")));
-      add(dt.slice(5, 10), "nbatrade", y, Math.round(star.p), `The ${nick(from)} trade ${star.r[4]} to the ${nick(to)}`, teams.map(t => `The ${nick(t)} received ${got(t)}`).join("; ") + `. ${star.r[4]} averaged ${star.p.toFixed(1)} points a game in ${star.s - 1}–${String(star.s).slice(2)}${star.s === sy ? " before the trade" : ""}.`, "nba") } } } catch (e) { log("this day: trades skipped — " + e.message) }
+      const got = t => { const A = [...new Set(L.filter(r => r[2] === t).map(r => r[4]))].filter(w => !/^(draft consideration|cash)/i.test(w)).map(w => w.replace(/^(\d{4}) /, "a $1 ")); return A.length ? lst(A) : "draft considerations" };
+      add(dt.slice(5, 10), "nbatrade", y, Math.round(star.p), `The ${nick(from)} trade ${star.r[4]} to the ${nick(to)}`, teams.map(t => `The ${nick(t)} received ${got(t)}`).join("; ") + `. ${star.r[4]} averaged ${star.p.toFixed(1)} points a game the season before (${star.s - 1}–${String(star.s).slice(2)}).`, "nba") } } } catch (e) { log("this day: trades skipped — " + e.message) }
   /* off days (the owner: "what about other events on those days?"): Pro Football Hall of Famers' birthdays — our Hall of Fame file (Wikipedia)
      matched to nflverse's players file (birth dates), so the summer has a card too */
   try { const HF = await getPack("p1990_nfl-hof"), r = await fetch("https://github.com/nflverse/nflverse-data/releases/download/players/players.csv", { redirect: "follow" }); files++;

@@ -94,6 +94,26 @@ for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=reg
   if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
   if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
 for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
+  /* Nov 6 (study only — Sam 11:27, basketball "when he's out"): the team side against the line. Player box scores from the open
+     sportsdataverse files (who played), our referee files for the closing line (same ESPN game ids). Out = a team game between his first
+     and last game for the team that he didn't play (coach's decisions left out); key = 24+ minutes a game, 5+ games out. */
+  { name: "nbawoline", node: `const rows=t=>{const o=[];let r=[],f="",q=false;for(let i=0;i<t.length;i++){const c=t[i];if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=false}else f+=c;continue}if(c==='"')q=true;else if(c===","){r.push(f);f=""}else if(c==="\\n"){r.push(f);o.push(r);r=[];f=""}else if(c!=="\\r")f+=c}return o};
+const res=[],pool=[];for(const y of [2022,2023,2024,2025]){const tx=await (await fetch("https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_nba_player_boxscores/player_box_"+y+".csv",{redirect:"follow"})).text();const R=rows(tx),H=R[0],I=n=>H.indexOf(n);
+ const iG=I("game_id"),iST=I("season_type"),iD=I("game_date"),iA=I("athlete_id"),iN=I("athlete_display_name"),iT=I("team_abbreviation"),iM=I("minutes"),iR=I("reason");
+ const P=await (await fetch(SITE+"/api/pack/p"+y+"_cbb-refraw-n",{headers:{Authorization:"Bearer "+TOKEN}})).json();const C=Object.fromEntries(P.cols.map((c,i)=>[c,i]));
+ const L={};for(const [id,x] of Object.entries(P.g||{}))if(x[C.spread]!=null&&x[C.hs]!=null)L[id]={sp:x[C.spread],m:x[C.hs]-x[C.as],h:x[C.home],a:x[C.away]};
+ const T={};for(const x of R.slice(1)){if(x[iST]!=="2")continue;const t=x[iT],g=x[iG];const tt=T[t]=T[t]||{g:{},p:{}};tt.g[g]=x[iD];const m=+x[iM]||0,p=tt.p[x[iA]]=tt.p[x[iA]]||{n:x[iN],pl:{},coach:{}};if(m>0)p.pl[g]=m;else if(/COACH|DECISION/i.test(x[iR]||""))p.coach[g]=1}
+ const sgn=-1;for(const t in T){const tt=T[t],gs=Object.keys(tt.g);for(const a in tt.p){const p=tt.p[a],pl=Object.keys(p.pl);if(pl.length<10)continue;const mpg=pl.reduce((s,g)=>s+p.pl[g],0)/pl.length;if(mpg<24)continue;
+  const d0=pl.map(g=>tt.g[g]).sort()[0],d1=pl.map(g=>tt.g[g]).sort().pop(),out=gs.filter(g=>tt.g[g]>=d0&&tt.g[g]<=d1&&!p.pl[g]&&!p.coach[g]);if(out.length<5)continue;
+  const cov=g=>{const l=L[g];if(!l)return null;const home=l.h===t||(l.a!==t&&null);const s=l.h===t?1:l.a===t?-1:0;if(!s)return null;return s*(l.m-sgn*l.sp)};
+  const mar=g=>{const l=L[g];if(!l)return null;const s=l.h===t?1:l.a===t?-1:0;return s?s*l.m:null};
+  const co=out.map(cov).filter(v=>v!=null),ci=pl.map(cov).filter(v=>v!=null),mo=out.map(mar).filter(v=>v!=null),mi=pl.map(mar).filter(v=>v!=null);if(co.length<4)continue;
+  const mean=A=>A.reduce((s,v)=>s+v,0)/A.length;res.push([y,t,p.n,Math.round(mpg),co.length,+(mean(mo)-mean(mi)).toFixed(1),+(mean(co)-mean(ci)).toFixed(2)]);
+  for(const v of co)pool.push([v,mpg,y]);}}}
+const m=A=>A.reduce((s,v)=>s+v,0)/A.length,sd=A=>{const u=m(A);return Math.sqrt(A.reduce((s,v)=>s+(v-u)**2,0)/(A.length-1))};const all=pool.map(x=>x[0]),hi=pool.filter(x=>x[1]>=30).map(x=>x[0]);
+const sp=res.map(r=>r[6]),mg=res.map(r=>r[5]);
+return {anchors:res.length,games:pool.length,coverWithoutAll:+m(all).toFixed(2),se:+(sd(all)/Math.sqrt(all.length)).toFixed(2),coverWithout30mpg:+m(hi).toFixed(2),se30:+(sd(hi)/Math.sqrt(hi.length)).toFixed(2),n30:hi.length,
+ marginDropAvg:+m(mg).toFixed(2),coverDiffAvg:+m(sp).toFixed(2),worst:res.sort((a,b)=>a[5]-b[5]).slice(0,10),bestCover:res.slice().sort((a,b)=>b[6]-a[6]).slice(0,5),worstCover:res.slice().sort((a,b)=>a[6]-b[6]).slice(0,5)}` },
   /* Nov 6 (read only — Sam 11:21: an injury post for a player ruled out): this week's Out players with an injury history, the readout
      numbers (career games missed, times with this injury) and the body picture as the site draws it */
   { name: "injpost", page: "/", widths: [1280], settle: 9000, run: `return await (async()=>{const DP=await nflPack("depth"),IH=await nflInjHist(),PL=await nflPlayers();const out=[];

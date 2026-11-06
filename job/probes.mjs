@@ -94,6 +94,11 @@ for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=reg
   if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
   if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
 for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
+  /* Nov 6 (read only — Sam 1:00 pm): do the conferences publish basketball availability reports where we read football's? (about 10 reads) */
+  { name: "cbbavail", node: `const o={};const UA="Mozilla/5.0 (mycfbbigboard.com data job; availability reports)";
+for(const org of ["ACC","Big 12","SEC"])for(const sport of ["Men's Basketball","Basketball","MBB"]){try{const r=await fetch("https://app.hdintelligence.com/api/get-publish-public",{method:"POST",headers:{"content-type":"application/json",accept:"application/json",referer:"https://app.hdintelligence.com/","user-agent":UA},body:JSON.stringify({sport,organization:org,conference:org})});const t=await r.text();o[org+"|"+sport]={st:r.status,len:t.length,head:t.slice(0,160)}}catch(e){o[org+"|"+sport]=String(e)}}
+for(const c of ["sunbelt","pac12"])for(const sp of ["mens-basketball","basketball"]){try{const r=await fetch("https://sbcautostorage.blob.core.windows.net/availability-reports/"+c+"-"+sp+"/prod/report.json",{headers:{"user-agent":UA}});const t=await r.text();o[c+"-"+sp]={st:r.status,len:t.length,head:t.slice(0,160)}}catch(e){o[c+"-"+sp]=String(e)}}
+return o` },
   /* Nov 6 (read only — Sam 12:59): this season's injuries — how many have a side kept, and how many past injuries have none */
   { name: "injside4", page: "/", widths: [1280], settle: 8000, run: `return await (async()=>{const IH=await nflInjHist(),SD=await nflInjSides(),PL=await nflPlayers();const ys=Object.keys(IH.d).map(Number).sort();const o={seasons:ys,bySeason:{}};
 const espn={};for(const g in PL){const e=PL[g].espn||PL[g].espnId||PL[g].espn_id;if(e)espn[g]=String(e)}o.espnIds=Object.keys(espn).length;

@@ -2,6 +2,8 @@
    async function evaluated in the page (w(ms) waits, W is the width). Return {ok, ...whatever helps}. Keep results short. */
 const res = `const R=()=>performance.getEntriesByType("resource").map(e=>decodeURIComponent(e.name));`;
 export const PROBES = [
+  /* Nov 5 (doc item 25, wip/cfb-tacklers finished): college tacklers from ESPN play participants, one pack a season 2019 on (job/cfbtklrun.mjs) */
+  { name: "cfbtkl", mod: "cfbtklrun" },
   /* Nov 5 (doc item 10: "a" — run the test and show the cut before anything changes): the loose "got more out of him" credit (best
      season under the new coach above his best before, offense, 2021 on) put through the same beyond-chance test as coTrxOff — read only */
   { name: "xfermore", page: "/lab/", widths: [1280], settle: 8000, run: `await coachLoad();const ys=[];for(let y=2020;y<=CURYEAR;y++)ys.push(y);

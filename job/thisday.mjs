@@ -20,8 +20,8 @@ const NFLN = { ARI: ["Arizona", "Cardinals"], ATL: ["Atlanta", "Falcons"], BAL: 
   IND: ["Indianapolis", "Colts"], JAX: ["Jacksonville", "Jaguars"], JAC: ["Jacksonville", "Jaguars"], KC: ["Kansas City", "Chiefs"], LA: ["Los Angeles", "Rams"], LAR: ["Los Angeles", "Rams"], STL: ["St. Louis", "Rams"],
   LAC: ["Los Angeles", "Chargers"], SD: ["San Diego", "Chargers"], LV: ["Las Vegas", "Raiders"], OAK: ["Oakland", "Raiders"], MIA: ["Miami", "Dolphins"], MIN: ["Minnesota", "Vikings"], NE: ["New England", "Patriots"],
   NO: ["New Orleans", "Saints"], NYG: ["New York", "Giants"], NYJ: ["New York", "Jets"], PHI: ["Philadelphia", "Eagles"], PIT: ["Pittsburgh", "Steelers"], SF: ["San Francisco", "49ers"], SEA: ["Seattle", "Seahawks"],
-  TB: ["Tampa Bay", "Buccaneers"], TEN: ["Tennessee", "Titans"], WAS: ["Washington", "Commanders"] };
-const nfl = (t, y) => { const n = NFLN[t] || [t, t]; return t === "WAS" && y < 2022 ? ["Washington", y >= 2020 ? "Football Team" : "Washington"] : n };
+  TB: ["Tampa Bay", "Buccaneers"], TEN: ["Tennessee", "Titans"], WAS: ["Washington", "Commanders"], WSH: ["Washington", "Commanders"] };
+const nfl = (t, y) => { const n = NFLN[t] || [t, t]; return (t === "WAS" || t === "WSH") && y < 2022 ? ["Washington", y >= 2020 ? "Football Team" : "Washington"] : n };
 const nick = (t, y) => { const n = nfl(t, y); return n[1] === "Washington" ? "Washington" : n[1] === "Football Team" ? "Washington Football Team" : "the " + n[1] };
 const Nick = (t, y) => { const s = nick(t, y); return s.replace(/^the /, "The ") };
 const full = (t, y) => { const n = nfl(t, y); return n[1] === "Washington" ? "Washington" : n[1] === "Football Team" ? "Washington Football Team" : n.join(" ") };
@@ -58,9 +58,10 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
       if (lastPost[S] === g && g.type === "SB") add(md, "sb", y, 100, `${Nick(W, S)} win Super Bowl ${SBN(y)}`, `${score}${where ? " " + where : ""}.`, "nfl");
       if (g.type === "REG") { const r1 = rec[S + g.home] = rec[S + g.home] || [0, 0, 0], r2 = rec[S + g.away] = rec[S + g.away] || [0, 0, 0]; if (m > 0) { r1[0]++; r2[1]++ } else if (m < 0) { r2[0]++; r1[1]++ } else { r1[2]++; r2[2]++ } } } }
   /* NFL player games */
+  const FPS = {};   /* season|name → fantasy points (PPR, regular season) — for the NFL trades below */
   const PP = await getPack(part("players")), PL = {}; if (PP && PP.p) { const ni = PP.cols.indexOf("name"); for (const g in PP.p) PL[g] = PP.p[g][ni] }
   for (let S = 1999; S < nowYear; S++) { const L = await getPack(part("logs-" + S)).catch(() => null); if (!L || !L.p) continue; const o = obj(L);
-    for (const gs in L.p) for (const row of L.p[gs]) { const r = o(row), g = G[r.game]; if (!g) continue; const md = String(g.gameday || g.date || "").slice(5, 10); out.nflLogs++;
+    for (const gs in L.p) for (const row of L.p[gs]) { const r = o(row), g = G[r.game]; if (!g) continue; if (g.type === "REG" && PL[gs]) FPS[S + "|" + PL[gs]] = (FPS[S + "|" + PL[gs]] || 0) + (+r.fp || 0); const md = String(g.gameday || g.date || "").slice(5, 10); out.nflLogs++;
       const nm = PL[gs] || gs, tm = r.team, home = tm === g.home, op = home ? g.away : g.home, ts = home ? g.homeScore : g.awayScore, os = home ? g.awayScore : g.homeScore, y = +String(g.gameday || g.date).slice(0, 4);
       const res = ts > os ? `in a ${ts}–${os} win over ${nick(op, S)}` : ts < os ? `in a ${os}–${ts} loss to ${nick(op, S)}` : `in a ${ts}–${os} tie with ${nick(op, S)}`, at = home ? "" : ` in ${nfl(op, S)[0]}`;
       if ((r.pyd || 0) >= 450) add(md, "pyd", y, r.pyd, `${nm} throws for ${r.pyd} yards against ${nick(op, S)}`, `${and(`${r.cmp} of ${r.att}`, r.ptd, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
@@ -120,6 +121,17 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
       else if (ast >= 20) add(md, "nbaast", yy, ast, `${nm} hands out ${ast} assists against the ${x[I.ot]}`, line, "nba");
       else if (reb >= 25) add(md, "nbareb", yy, reb, `${nm} pulls down ${reb} rebounds against the ${x[I.ot]}`, line, "nba");
       else if (tpm >= 10) add(md, "nba3", yy, tpm, `${nm} hits ${tpm} threes against the ${x[I.ot]}`, line, "nba") } }
+  /* NFL trades (Sam, 5:37 pm: "we have nfl trade data too"): the trade machine's history in p<Y>_nfl-picks (ESPN's transaction log, every
+     trade since 2016, both teams' logs merged). A trade is a moment when a player in it scored 200+ PPR fantasy points the season before,
+     or it moved two or more first-round picks. */
+  try { const PK = await getPack(part("picks")); if (PK && PK.trades) {
+    const pl = a => a.filter(x => !/^20\d\d /.test(x)), nm = x => x.replace(/^\S+\s+/, ""), firsts = a => a.filter(x => /^20\d\d 1st/.test(x)).length;
+    const say = a => { const P = pl(a).map(nm), K = a.filter(x => /^20\d\d /.test(x)).map(x => `a ${x.replace(/(\d)(st|nd|rd|th)$/, "$1$2")}-round pick`); const L = [...P, ...K]; return L.length <= 1 ? L.join("") : L.slice(0, -1).join(", ") + " and " + L[L.length - 1] };
+    for (const [d, T, o, gave, got] of PK.trades) { if (!d) continue; const y = +d.slice(0, 4), S0 = +d.slice(5, 7) >= 9 ? y : y - 1, prev = +d.slice(5, 7) >= 9 ? S0 - 1 : S0;
+      const fp = x => FPS[prev + "|" + nm(x)] || 0, all = [...pl(gave).map(x => [x, T, o]), ...pl(got).map(x => [x, o, T])].map(([x, from, to]) => ({ x, from, to, f: fp(x) })).sort((a, b) => b.f - a.f);
+      const star = all[0], f1 = firsts(gave) + firsts(got); if (!(star && star.f >= 200) && f1 < 2) continue;
+      const h = star && star.f >= 100 ? `${Nick(star.from, y)} trade ${nm(star.x)} to ${nick(star.to, y)}` : `${Nick(T, y)} and ${nick(o, y)} swap ${f1} first-round picks`;
+      add(d.slice(5, 10), "nfltrade", y, Math.round((star ? star.f : 0) / 10 + f1 * 8), h, `${Nick(T, y)} received ${say(got)}; ${nick(o, y)} received ${say(gave)}.${star && star.f >= 100 ? ` ${nm(star.x)} scored ${Math.round(star.f)} PPR fantasy points the season before.` : ""}`, "nfl") } } } catch (e) { log("this day: NFL trades skipped — " + e.message) }
   /* NBA trades (Sam, 5:16 pm: "we have GM trade data on the site already so i would look there first"): p2000_cbb-nbatrades, NBA.com's
      player movement log since 2015 (the Be the GM data). A trade is a moment when a player in it averaged 18+ points that season or the one
      before (the player box scores above). */

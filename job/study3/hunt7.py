@@ -124,3 +124,47 @@ def run(reg, log, D):
         cur = (cur + ' ‖ ' if cur else '') + l_
     if cur: pack.append(cur)
     for i, x in enumerate(pack[:10]): print(f'::notice title=hunt7 {i + 1:02d}/{len(pack):02d}::{x}')
+
+
+# ---------- round 3 (focus hunt7b): basketball transfers joined to season stats ----------
+POWER = {'ACC', 'Big 12', 'Big East', 'Big Ten', 'SEC', 'Pac-12'}
+
+
+def run_b(reg, log, D):
+    import re
+    nz = lambda s: re.sub(r'[^a-z]', '', re.sub(r'\b(jr|sr|ii|iii|iv)\b\.?', '', str(s).lower()))
+    BP = frame('bb_portal'); st = frame('bb_stats')
+    log(f'hunt7b: portal {len(BP)}, stats {len(st)}; stats columns: {sorted(c for c in st.columns if not c.startswith("_"))[:60]}')
+    if not len(BP) or not len(st): print('::notice title=hunt7b::no data'); return
+    S = pd.DataFrame({'nm': pick(st, 'name').map(nz), 'tid': num(pick(st, 'teamId')), 'season': num(pick(st, 'season', '_year')), 'min': num(pick(st, 'minutes')),
+                      'g': num(pick(st, 'games')), 'pts': num(pick(st, 'points', 'points.total')), 'conf': pick(st, 'conference').astype(str)}).dropna(subset=['nm', 'tid', 'season'])
+    B = pd.DataFrame({'nm': (pick(BP, 'firstName').astype(str) + ' ' + pick(BP, 'lastName').astype(str)).map(nz), 'year': num(pick(BP, 'year', '_year')),
+                      'o': num(pick(BP, 'origin.id')), 'd': num(pick(BP, 'destination.id')), 'oc': pick(BP, 'origin.conference').astype(str), 'dc': pick(BP, 'destination.conference').astype(str),
+                      'stars': num(pick(BP, 'stars')), 'rating': num(pick(BP, 'rating'))}).dropna(subset=['nm', 'year', 'o', 'd'])
+    # the portal year vs the stats' season label: take the offset that matches the most movers at their old school
+    best = None
+    for off in (0, 1, -1):
+        m = B.assign(season=B.year + off).merge(S, left_on=['nm', 'o', 'season'], right_on=['nm', 'tid', 'season'])
+        log(f'hunt7b: offset {off}: {len(m)} movers matched at the old school')
+        if best is None or len(m) > best[1]: best = (off, len(m))
+    off = best[0]
+    pre = B.assign(season=B.year + off).merge(S, left_on=['nm', 'o', 'season'], right_on=['nm', 'tid', 'season'])
+    post = B.assign(season=B.year + off + 1).merge(S, left_on=['nm', 'd', 'season'], right_on=['nm', 'tid', 'season'])
+    j = pre.merge(post, on=['nm', 'year', 'o', 'd'], suffixes=('', '_n'))
+    j = j[(j.g >= 10) & (j.g_n >= 10)].copy()
+    j['mpg'] = j['min'] / j.g; j['mpg_n'] = j.min_n / j.g_n; j['p40'] = 40 * j.pts / j['min'].replace(0, np.nan); j['p40_n'] = 40 * j.pts_n / j.min_n.replace(0, np.nan)
+    j['up'] = ((~j.oc.isin(POWER)) & j.dc.isin(POWER)).astype(float); j['down'] = (j.oc.isin(POWER) & ~j.dc.isin(POWER)).astype(float)
+    log(f'hunt7b: {len(j)} movers with 10+ games before and after; up {int(j.up.sum())}, down {int(j.down.sum())}; median minutes {j.mpg.median():.1f} -> {j.mpg_n.median():.1f}')
+    for col, lab, unit in (('mpg', 'minutes a game', 'min'), ('p40', 'points per 40 minutes', 'pts/40')):
+        k = j.dropna(subset=[col, col + '_n']); y = (k[col + '_n'] - k[col]).values
+        for x, nm_ in (('up', 'moving up to a power conference'), ('down', 'moving down from a power conference')):
+            r = mech(reg, f'H7-4{["mpg","p40"].index(col)}{"ud".index(x[0])}', f'Basketball transfer {nm_} -> change in {lab}', y, k[x].values, k.nm.values, k.year.values, unit=unit)
+            log(f'[{nm_} / {lab}] {r["d"]}')
+        if k.rating.notna().sum() > 300:
+            kk = k.dropna(subset=['rating']); r = mech(reg, f'H7-4{["mpg","p40"].index(col)}r', f'Portal rating -> change in {lab}', (kk[col + '_n'] - kk[col]).values, kk.rating.values, kk.nm.values, kk.year.values, unit=unit + ' per rating point')
+            log(f'[rating / {lab}] {r["d"]}')
+    R = reg.df(); R = R[R.hyp.astype(str).str.startswith('H7-4')].copy()
+    if not len(R): print('::notice title=hunt7b::no tests ran'); return
+    R['q'] = bh(pd.to_numeric(R.p, errors='coerce').fillna(1).values); R['survives'] = (R.q < .10) & (R.oos_pass == True)
+    out = ' ‖ '.join(f"{'SURVIVES' if x.survives else 'no'} · {x.hyp} {x.label}: est {x.est:+.4g} (p {x.p:.3g}, q {x.q:.3g}, n {x.n}) · {str(x.detail)[:240]}" for _, x in R.iterrows())
+    for i in range(0, min(len(out), 3800 * 4), 3800): print(f'::notice title=hunt7b {i // 3800 + 1}::{out[i:i + 3800]}')

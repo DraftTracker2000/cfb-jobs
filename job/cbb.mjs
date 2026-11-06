@@ -248,6 +248,8 @@ export async function main() {
   /* refhist: the referee history backfill and its totals (job/cbbrefhist.mjs) — ESPN reads only, no CBBD calls */
   if (MODE === "refhist") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
     const { refHist } = await import("./cbbrefhist.mjs"); const R = await refHist({ getPack, putPack, log, NEXT: UPCOMING, curNba });
+    /* Nov 6: the NBA Last Two Minute reports by official, once a day (new reports from the league's site; the compilation is re-read) */
+    try { const L = await getPack("p2000_cbb-l2m").catch(() => null); if (!L || Date.now() - (L.at || 0) > 20 * 36e5) { const { l2m } = await import("./cbbl2m.mjs"); await l2m({ getPack, putPack, log }) } } catch (e) { log("l2m: " + e.message) }
     await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `Referee history · ${R.reads} ESPN reads · ${R.mins.toFixed(0)} min · 0 CBBD calls`; log(msg);
     await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return }
   /* nbaszn: only the NBA season box scores and lineups (job/cbbnbaszn.mjs), NBA.com reads only (Oct 22) */

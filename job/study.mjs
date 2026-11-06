@@ -167,6 +167,8 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
     const doneYear = new Set(); let emptyRun = {};
     for (let i = 0; i < list.length; i += 3) {
       const chunk = list.slice(i, i + 3);
+      /* (Nov 6) a long batch says how far it's got every 300 paths — the first cf_playstats run went 5 hours without a line and hit the time limit */
+      if (i && i % 300 === 0) log(`study ${b.name}: ${i} of ${list.length} paths · ${kept} already kept · ${fresh} fresh · ${errs.length} errors`);
       const R3 = await Promise.all(chunk.map(([key, arg]) => (b.api === "cfbd" ? cfGet(arg) : bbGet(arg)).then(r => [key, r])));
       for (const [key, r] of R3) {
         if (r.j == null) { errs.push(`${key} → ${r.status} ${r.err || ""}`.slice(0, 200)); continue }

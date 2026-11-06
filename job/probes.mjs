@@ -18,7 +18,7 @@ const zB=x=>x.g/x.se,zC=x=>(x.g-base[x.pos].meanGain)/x.se;const keepC=LB.filter
 return {ok:true,A:{credited:LA.length,kept:LA.filter(x=>x.z>=OFF_Z).length},B:{moves:LB.length,up:LB.filter(x=>x.g>0).length,kept:LB.filter(x=>x.g>0&&zB(x)>=OFF_Z).length},base,C:{kept:keepC.length,thisSeason:keepC.filter(x=>x.cur).length,
  names:keepC.slice(0,40).map(x=>x.p+" "+x.pos+" → "+x.to+" "+x.y+" ("+x.coach+") +"+x.g.toFixed(2)+" z "+zC(x).toFixed(2))}}` },
   /* Nov 5 (item 9, read only): the saved college picks against the private model worked out on the Lab page — this week's games and 400 pairings */
-  { name: "cfbpickcmp", page: "/lab/", widths: [1280], settle: 8000, run: `await loadModel();if(typeof colPickCalc!=="function")return {ok:false,err:"no model"};
+  { name: "cfbpickcmp", page: "/lab/", widths: [1280], settle: 8000, run: `return await (async()=>{await loadModel();if(typeof colPickCalc!=="function")return {ok:false,err:"no model"};
 const get=k=>fetch("/api/pack/"+k,{headers:{Authorization:"Bearer "+TOKEN}}).then(r=>r.ok?r.json():null);const [A,B]=await Promise.all([get("p"+CURYEAR+"_cfb-picks"),get("p"+CURYEAR+"_cfb-pairs")]);if(!A||!B)return {ok:false,err:"no packs"};
 await coachLoad();const St=coachScores();await Promise.all([muElo(),colSrLoad(),cfbPicksLoad(),pickModelLoad(),typeof styleLoad==="function"?styleLoad():null]);
 const W=await h2hLoad();H2H=W;let n=0,d=0,mx=0;const ex=[];for(const g of W.games){const x=A.g[g.id];if(!x||x[0]==null)continue;n++;const v=1-colPickCalc(coCurrent(St,g.away),coCurrent(St,g.home),g),e=Math.abs(v-x[0]);mx=Math.max(mx,e);if(e>6e-4){d++;if(ex.length<5)ex.push(g.away+" at "+g.home+" "+v.toFixed(4)+" vs "+x[0])}}
@@ -26,7 +26,7 @@ const D=await colSimData(),RK=await colRanksNow(),T=B.t,ix={};T.forEach((t,i)=>i
 for(let k=0;k<400;k++){const i=Math.floor(Math.random()*T.length),j=Math.floor(Math.random()*T.length);if(i===j)continue;const a=T[i],b=T[j];
  const vals=[["ph",colSimCalc(a,b,false,RK)],["pn",colSimCalc(a,b,true,RK)],["sh",colSrCalc(a,b,false,CC(a),CC(b),RK)],["sn",colSrCalc(a,b,true,CC(a),CC(b),RK)]];
  for(const [m,v] of vals){const s=B[m][i][j];if(v==null&&s<0)continue;pn++;const e=Math.abs((v==null?-1:v)-(s<0?-1:s/1e4));pmx=Math.max(pmx,e);if(e>6e-4)pd++}}
-return {ok:d===0&&pd===0,season:{games:Object.keys(A.g).length,teams:T.length,epTeams:Object.keys(A.ep||{}).length,at:new Date(A.at).toISOString()},week:W.week,thisWeek:{n,differ:d,maxDiff:+mx.toFixed(5),ex},pairs:{n:pn,differ:pd,maxDiff:+pmx.toFixed(5)}}` },
+return {ok:d===0&&pd===0,season:{games:Object.keys(A.g).length,teams:T.length,epTeams:Object.keys(A.ep||{}).length,at:new Date(A.at).toISOString()},week:W.week,thisWeek:{n,differ:d,maxDiff:+mx.toFixed(5),ex},pairs:{n:pn,differ:pd,maxDiff:+pmx.toFixed(5)}}})()` },
   /* Nov 5, 10:02 pm (the owner: "b it is", item 10, read only): the Lab's new "got more out of him" offense credits, counted from the page itself */
   { name: "xfermore3", page: "/lab/", widths: [1280], settle: 8000, run: `const C=await coTrxAll();let n=0,cur=0,coaches=0,od=0,dd=0;const L=[];for(const k in C){const R=C[k].filter(x=>x.kind==="more");if(R.length)coaches++;for(const x of R){if(x.oc){od++;continue}if(x.df){dd++;continue}n++;if(x.y===CURYEAR)cur++;L.push(x.p+" "+x.pos+" → "+x.to+" "+x.y+" +"+(x.me-x.was).toFixed(2)+" z "+x.z.toFixed(2))}}
 return {ok:true,firstVsLast:n,thisSeason:cur,offRule:od,defense:dd,coaches,sample:L.slice(0,25)}` },

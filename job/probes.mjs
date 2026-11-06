@@ -2,6 +2,19 @@
    async function evaluated in the page (w(ms) waits, W is the width). Return {ok, ...whatever helps}. Keep results short. */
 const res = `const R=()=>performance.getEntriesByType("resource").map(e=>decodeURIComponent(e.name));`;
 export const PROBES = [
+  /* Nov 5 (Sam, doc item 10: "a" — run the test and show the cut before anything changes): the loose "got more out of him" credit (best
+     season under the new coach above his best before, offense, 2021 on) put through the same beyond-chance test as coTrxOff — read only */
+  { name: "xfermore", page: "/lab/", widths: [1280], settle: 8000, run: `await coachLoad();const ys=[];for(let y=2020;y<=CURYEAR;y++)ys.push(y);
+const [A,P]=await Promise.all([Promise.all(ys.map(trhPpa)),Promise.all(ys.filter(y=>y>=2021).map(trhPortal))]);const PA={};ys.forEach((y,i)=>PA[y]=A[i]);
+const CS={};for(const c of Object.values(CO.coaches))for(const s of c.s){const k=s[1]+"|"+s[0];if(!CS[k]||s[3]>CS[k].g)CS[k]={n:c.n,k:c.k,g:s[3]}}
+const H={};for(const y of ys)for(const k in PA[y].M){const o=PA[y].M[k];if(!/^(QB|RB|WR|TE)$/.test(o.pos))continue;if(o.n<(y===CURYEAR?30:60))continue;const [nm,t]=k.split("|");const c=CS[t+"|"+y];(H[nm]=H[nm]||[]).push({y,t,a:o.a,n:o.n,pos:o.pos,ck:c&&c.k,cn:c&&c.n,full:o.nm})}
+const moves=[];ys.filter(y=>y>=2021).forEach((y,i)=>{for(const r of P[i]||[])if(r.destination)moves.push({y,nm:nk((r.firstName||"")+" "+(r.lastName||"")),o:r.origin,d:r.destination,full:r.firstName+" "+r.lastName})});
+const L=[];for(const m of moves){const h=H[m.nm];if(!h)continue;const after=h.filter(s=>s.t===m.d&&s.y>=m.y),before=h.filter(s=>s.t===m.o&&s.y<m.y);if(!after.length||!before.length)continue;
+ const prev=before.reduce((a,b)=>b.a>a.a?b:a);for(const ck of new Set(after.map(s=>s.ck).filter(Boolean))){const mine=after.filter(s=>s.ck===ck),top=mine.reduce((a,b)=>b.a>a.a?b:a);if(!(top.a>prev.a))continue;
+  const se=OFF_SIG[top.pos]*Math.sqrt(1/top.n+1/prev.n),z=(top.a-prev.a)/se;L.push({p:m.full,pos:top.pos,to:m.d,y:top.y,coach:top.cn,gain:+(top.a-prev.a).toFixed(3),n:top.n,pn:prev.n,z:+z.toFixed(2),cur:top.y===CURYEAR})}}
+const at=t=>L.filter(x=>x.z>=t).length;const keep=L.filter(x=>x.z>=OFF_Z).sort((a,b)=>b.z-a.z);
+return {ok:true,total:L.length,z128:at(1.28),z1645:at(1.645),z196:at(1.96),thisSeason:L.filter(x=>x.cur).length,thisSeasonKept:keep.filter(x=>x.cur).length,
+ kept:keep.map(x=>x.p+" "+x.pos+" → "+x.to+" "+x.y+" ("+x.coach+") +"+x.gain+" z "+x.z).slice(0,60),cutSample:L.filter(x=>x.z<OFF_Z).sort((a,b)=>b.gain-a.gain).slice(0,15).map(x=>x.p+" → "+x.to+" "+x.y+" +"+x.gain+" ("+x.n+" plays vs "+x.pn+") z "+x.z)}` },
   /* Oct 28 (Sam: "who are the coaches that broke the sports reference rule"): read only — for each coach, whether a line we actually keep cites a Sports Reference site
      (college infobox: overall record, NCAA record, titles / Final Fours, stops; NBA: the head-coaching record table) — named refs resolved — or only
      somewhere else on the page. Changes nothing. */

@@ -41,6 +41,8 @@ if FOCUS == 'hunt5':   # pattern hunt 5 (Nov 6 — the owner: "try all pattern h
     import hunt5; step('hunt5', hunt5.run, reg, log, D); print('hunt5 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'bbhunt6':   # pattern hunt 6, college basketball (Nov 6 — the owner, 10:09 am), its own notices; nothing else this run
     import bbhunt6; step('bbhunt6', bbhunt6.run, reg, log, D); print('bbhunt6 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'hunt8':   # pattern hunt 8 (Nov 6 — the owner: "all angles"; "more hidden data hunts" for broadcasters): college play-by-play
+    import hunt8; step('hunt8', hunt8.run, reg, log, D); print('hunt8 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt7c':   # hunt 7 round 4: vacated usage by why the players left
     import hunt7; step('hunt7c', hunt7.run_c, reg, log, D); print('hunt7c errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt7b':   # hunt 7 round 3: basketball transfers joined to season stats

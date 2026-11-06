@@ -69,6 +69,15 @@ return {ok:true,seasons:yrs,pairs:rows.length,newQB:{all:fit(C),before2022:fit(C
 const nba=M&&M.nba&&M.nba.adopted?{T:M.nba.T,adopted:true,ver:M.nba.ver||null}:{adopted:false};const {gzipSync}=await import("node:zlib");
 const r=await fetch(SITE+"/api/pack/p2000_pickscale",{method:"PUT",body:gzipSync(Buffer.from(JSON.stringify({v:1,nba}))),headers:{Authorization:"Bearer "+J,"x-encoding":"gzip","Content-Type":"application/json"}});
 return {ok:r.ok,st:r.status,nba,cfbAdopted:!!(M.cfb&&M.cfb.adopted)}` },
+  /* Nov 6 (read only): pass-play text from CFBD in several seasons — for parsing the receiver on college plays (ideas doc #6/#7) */
+  { name: "rcvtext", page: "/lab/", widths: [1280], settle: 6000, run: `return await (async()=>{const o={};
+for(const [y,t,wk] of [[2014,"Oregon",2],[2018,"Alabama",3],[2022,"Ohio State",4],[2024,"Texas",5],[2025,"Indiana",6]]){
+ const P=await api("/plays?year="+y+"&week="+wk+"&team="+encodeURIComponent(t)).catch(e=>String(e));
+ if(!Array.isArray(P)){o[y]=P;continue}
+ const pass=P.filter(q=>q.offense===t&&/Pass|Interception|Sack/.test(q.playType||""));
+ const by={};for(const q of pass){(by[q.playType]=by[q.playType]||[]).push(String(q.playText||"").slice(0,160))}
+ o[y]={n:P.length,types:Object.fromEntries(Object.entries(by).map(([k,v])=>[k,v.slice(0,4)]))}}
+return o})()` },
   /* Nov 5, 11:45 pm (read only): live — Positional roles loads and plays a rep; college tacklers fill on a defender profile */
   { name: "livepos", page: "/", widths: [1280], settle: 5000, run: `return await (async()=>{const o={games:typeof GAMES!=="undefined"&&!!GAMES.pos};
 await XOload("/assets/xo.js?v=19");if(!window.XOC)await XO.load("/assets/xo-clock.js?v=68");for(const f of ["xo-cov.js?v=2","xo-pos.js?v=16","figs.js?v=30","xo-view.js?v=25"])await XO.load("/assets/"+f);

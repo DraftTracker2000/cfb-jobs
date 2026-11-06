@@ -114,7 +114,7 @@ diff("N6-02","After a win by 20+ -> next game vs the line",L.filter(r=>r.prev),r
 diff("N6-03","Covered each of the last four -> next game vs the line",L.filter(r=>r.c4!=null),r=>r.c4>=4);
 diff("N6-04","Failed each of the last four -> next game vs the line",L.filter(r=>r.c4!=null),r=>r.c4<=-4);
 diff("N6-05","4th+ straight road game -> vs the line",L.filter(r=>r.home===0),r=>r.roadRun>=3);
-diff("N6-06","First home game after 3+ on the road -> vs the line",L.filter(r=>r.home===1),r=>r.roadRun===0&&(()=>{let k=0,q=r.prev;while(q&&q.home===0){k++;q=q.prev}return k>=3})());
+diff("N6-06","First home game after 3+ on the road -> vs the line",L.filter(r=>r.home===1),r=>r.roadRun>=3);
 diff("N6-07","Favored by 10+ in March–April -> vs the line",L,r=>r.exp>=10&&[2,3].includes(new Date(r.d).getUTCMonth()));
 diff("N6-08","Home underdog by 7+ -> vs the line",L.filter(r=>r.home===1),r=>r.exp<=-7);
 {const G=R.filter(g=>g.tot!=null).map(g=>{const H=rows.find?null:null;return g});const byId={};for(const r of rows)byId[r.id+"|"+r.home]=r;
@@ -128,7 +128,7 @@ const OFr=rate(OF,25,x=>x[1]/x[0]);for(const k in OFr)for(const s in OFr[k])OFr[
 yoy("N6-10","Official's over rate (25+ games with a total)",rate(OS,25,x=>x[1]/x[0]));
 yoy("N6-11","Official's home cover rate (25+ lined games)",rate(OH,25,x=>x[1]/x[0]));
 yoy("N6-12","Official's fouls a game vs the league",OFr);
-{const GT=R.filter(g=>g.tot!=null&&g.refs.length).map(g=>{const v=g.refs.map(o=>OFr[o]&&OFr[o][g.season-1]).filter(x=>x!=null);return{season:g.season,cover:g.hs+g.as-g.tot,hi:v.length>=2?v.reduce((a,b)=>a+b,0)/v.length>=2:null}});diff("N6-13","Crew whose officials called 2+ more fouls a game than the league last season -> this game vs its total",GT,r=>r.hi)}
+{const GT=R.filter(g=>g.tot!=null&&g.refs.length).map(g=>{const v=g.refs.map(o=>OFr[o]&&OFr[o][g.season-1]).filter(x=>x!=null);return{season:g.season,cover:g.hs+g.as-g.tot,hi:v.length>=2?v.reduce((a,b)=>a+b,0)/v.length:null}});diff("N6-13","Crew whose officials called 1+ more fouls a game than the league last season -> this game vs its total",GT,r=>r.hi==null?null:r.hi>=1);diff("N6-13","Crew whose officials called 1+ fewer fouls a game than the league last season -> this game vs its total",GT,r=>r.hi==null?null:r.hi<=-1)}
 /* team cover rate repeats */
 {const S={};for(const r of L){if(!r.cover)continue;const x=(S[r.team]=S[r.team]||{})[r.season]=(S[r.team]||{})[r.season]||[0,0];x[0]++;if(r.cover>0)x[1]++}yoy("N6-14","Team cover rate (40+ lined games)",rate(S,40,x=>x[1]/x[0]))}
 const ok=T.filter(t=>!t.skip).sort((a,b)=>a.p-b.p);const m=ok.length;ok.forEach((t,i)=>{t.q=Math.min(1,t.p*m/(i+1))});for(let i=m-2;i>=0;i--)ok[i].q=Math.min(ok[i].q,ok[i+1].q);

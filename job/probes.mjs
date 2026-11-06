@@ -46,6 +46,12 @@ const d=f.contentDocument,nm=e=>e.tagName.toLowerCase()+(e.id?"#"+e.id:"")+(e.cl
 const L=[];for(const e of d.querySelectorAll("body *")){const r=e.getBoundingClientRect();if(r.height>=18&&r.top<140&&r.width>300&&L.length<14)L.push(nm(e).slice(0,50)+" y"+Math.round(r.top)+" h"+Math.round(r.height)+" w"+Math.round(r.width)+" "+(e.children.length?"":(e.textContent||"").trim().slice(0,30)))}
 const de=d.documentElement,tall=[];for(const e of d.querySelectorAll("body *")){const r=e.getBoundingClientRect();if(r.bottom>de.clientHeight+2&&r.height>100&&tall.length<6)tall.push(nm(e).slice(0,50)+" top"+Math.round(r.top)+" bottom"+Math.round(r.bottom))}
 return {ok:true,W,vh:de.clientHeight,sh:de.scrollHeight,L,tall,bc:(d.querySelector(".bcpb")||{}).textContent}})()` },
+  /* Nov 6 (once): seed p2000_pickscale — the basketball confidence scale only — from the pick check's p2000_pickmodel, so the basketball
+     pages keep their scale when the weights file becomes admin and data job only; afterwards job/pcheck.mjs writes it each Tuesday */
+  { name: "pickscale", node: `const J=process.env.JOB_TOKEN;const g=await fetch(SITE+"/api/pack/p2000_pickmodel",{headers:{Authorization:"Bearer "+J}});if(!g.ok)return {ok:false,st:g.status};const M=await g.json();
+const nba=M&&M.nba&&M.nba.adopted?{T:M.nba.T,adopted:true,ver:M.nba.ver||null}:{adopted:false};const {gzipSync}=await import("node:zlib");
+const r=await fetch(SITE+"/api/pack/p2000_pickscale",{method:"PUT",body:gzipSync(Buffer.from(JSON.stringify({v:1,nba}))),headers:{Authorization:"Bearer "+J,"x-encoding":"gzip","Content-Type":"application/json"}});
+return {ok:r.ok,st:r.status,nba,cfbAdopted:!!(M.cfb&&M.cfb.adopted)}` },
   /* Nov 5, 11:45 pm (read only): live — Positional roles loads and plays a rep; college tacklers fill on a defender profile */
   { name: "livepos", page: "/", widths: [1280], settle: 5000, run: `return await (async()=>{const o={games:typeof GAMES!=="undefined"&&!!GAMES.pos};
 await XOload("/assets/xo.js?v=19");if(!window.XOC)await XO.load("/assets/xo-clock.js?v=68");for(const f of ["xo-cov.js?v=2","xo-pos.js?v=16","figs.js?v=30","xo-view.js?v=25"])await XO.load("/assets/"+f);

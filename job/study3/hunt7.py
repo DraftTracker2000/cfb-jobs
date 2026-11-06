@@ -204,3 +204,34 @@ def run_c(reg, log, D):
     R = reg.df(); R = R[R.hyp.astype(str).str.startswith('H7-5')].copy()
     R['q'] = bh(pd.to_numeric(R.p, errors='coerce').fillna(1).values); R['survives'] = (R.q < .10) & (R.oos_pass == True)
     print('::notice title=hunt7c::' + ' ‖ '.join(f"{'SURVIVES' if x.survives else 'no'} · {x.hyp} {x.label}: est {x.est:+.4g} (p {x.p:.3g}, q {x.q:.3g}) · {str(x.detail)[:220]}" for _, x in R.iterrows())[:3900])
+
+
+# ---------- round 5 (focus hunt7d): football transfers — production before and after a move up or down a level ----------
+# (Sam, 6:51 pm: "is there a way for the scout portal to also use this for college top priority targets … green and red")
+FB_POWER = {'SEC', 'Big Ten', 'Big 12', 'ACC', 'Pac-12'}
+
+
+def run_d(reg, log, D):
+    s = frame('cf_pstats')
+    s = pd.DataFrame({'pid': pick(s, 'playerId', 'player_id').astype(str), 'pos': pick(s, 'position').astype(str), 'team': pick(s, 'team').astype(str), 'conf': pick(s, 'conference').astype(str),
+                      'season': num(pick(s, 'season', '_year')), 'k': pick(s, 'category').astype(str) + '.' + pick(s, 'statType', 'stat_type').astype(str), 'v': num(pick(s, 'stat'))}).dropna(subset=['v', 'season'])
+    K = {'passing.YDS': 'pass yds', 'rushing.YDS': 'rush yds', 'receiving.YDS': 'rec yds', 'defensive.TOT': 'tackles', 'defensive.SACKS': 'sacks', 'interceptions.INT': 'ints'}
+    s = s[s.k.isin(K)]
+    P = s.pivot_table(index=['pid', 'season', 'team', 'conf', 'pos'], columns='k', values='v', aggfunc='first').reset_index()
+    P = P.sort_values(['pid', 'season']); nx = P.groupby('pid').shift(-1)
+    j = P.assign(**{c + '_n': nx[c] for c in K if c in P.columns}, team_n=nx.team, conf_n=nx.conf, season_n=nx.season)
+    j = j[(j.season_n == j.season + 1) & (j.team_n.notna()) & (j.team_n != j.team)].copy()
+    j['move'] = np.where(~j.conf.isin(FB_POWER) & j.conf_n.isin(FB_POWER), 'up', np.where(j.conf.isin(FB_POWER) & ~j.conf_n.isin(FB_POWER), 'down', np.where(j.conf.isin(FB_POWER), 'power-power', 'other-other')))
+    st = P.assign(**{c + '_n': nx[c] for c in K if c in P.columns}, team_n=nx.team, season_n=nx.season)
+    st = st[(st.season_n == st.season + 1) & (st.team_n == st.team)]   # stayers, for the baseline
+    MIN = {'passing.YDS': 1000, 'rushing.YDS': 400, 'receiving.YDS': 300, 'defensive.TOT': 40, 'defensive.SACKS': 4, 'interceptions.INT': 2}
+    lines = []
+    for c, lab in K.items():
+        if c not in j.columns: continue
+        for g in ('up', 'down', 'power-power', 'other-other', 'stayed'):
+            x = (st if g == 'stayed' else j[j.move == g]); x = x[x[c] >= MIN[c]]
+            if len(x) < 15: continue
+            r = (x[c + '_n'].fillna(0) / x[c]); lines.append(f'{lab} · {g}: {len(x)} players with {MIN[c]}+ · next season median {r.median():.2f}× (mean {r.clip(upper=3).mean():.2f}×) · kept a 50%+ share {(r >= .5).mean():.2f}')
+    log('hunt7d:\n' + '\n'.join(lines))
+    out = ' ‖ '.join(lines)
+    for i in range(0, min(len(out), 3800 * 4), 3800): print(f'::notice title=hunt7d {i // 3800 + 1}::{out[i:i + 3800]}')

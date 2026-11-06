@@ -46,6 +46,14 @@ const d=f.contentDocument,nm=e=>e.tagName.toLowerCase()+(e.id?"#"+e.id:"")+(e.cl
 const L=[];for(const e of d.querySelectorAll("body *")){const r=e.getBoundingClientRect();if(r.height>=18&&r.top<140&&r.width>300&&L.length<14)L.push(nm(e).slice(0,50)+" y"+Math.round(r.top)+" h"+Math.round(r.height)+" w"+Math.round(r.width)+" "+(e.children.length?"":(e.textContent||"").trim().slice(0,30)))}
 const de=d.documentElement,tall=[];for(const e of d.querySelectorAll("body *")){const r=e.getBoundingClientRect();if(r.bottom>de.clientHeight+2&&r.height>100&&tall.length<6)tall.push(nm(e).slice(0,50)+" top"+Math.round(r.top)+" bottom"+Math.round(r.bottom))}
 return {ok:true,W,vh:de.clientHeight,sh:de.scrollHeight,L,tall,bc:(d.querySelector(".bcpb")||{}).textContent}})()` },
+  /* Nov 5, 11:45 pm (read only): live — Positional roles loads and plays a rep; college tacklers fill on a defender profile */
+  { name: "livepos", page: "/", widths: [1280], settle: 5000, run: `return await (async()=>{const o={games:typeof GAMES!=="undefined"&&!!GAMES.pos};
+await XOload("/assets/xo.js?v=19");if(!window.XOC)await XO.load("/assets/xo-clock.js?v=68");for(const f of ["xo-cov.js?v=2","xo-pos.js?v=16","figs.js?v=30","xo-view.js?v=25"])await XO.load("/assets/"+f);
+o.XOPR=typeof XOPR;const el=document.createElement("div");el.style.cssText="width:1000px;height:600px";document.body.appendChild(el);XOPR.start(el,{});await w(1000);
+const b=[...el.querySelectorAll("button")].find(x=>/Safety/.test(x.textContent));if(b)b.click();await w(1200);o.rep=(el.textContent||"").slice(0,80);
+const md=document.createElement("div");md.innerHTML='<div id="dfTkl"></div>';document.body.appendChild(md);const r=await fetch("/api/pack/p2025_cfbtkl",{headers:{Authorization:"Bearer "+TOKEN}});const P=r.ok?(await r.json()).cfbtkl:null;
+if(P){const C={};P.cols.forEach((c,i)=>C[c]=i);const id=Object.keys(P.p).find(k=>P.p[k][C.tot]>=40);await tklFill(md,id,2025);o.tkl=md.textContent.slice(0,160)}else o.tkl="no pack";
+o.ok=o.games&&o.XOPR==="object"&&/Safety/.test(o.rep)&&/tackles/.test(o.tkl);return o})()` },
   /* Nov 5 (item 9, read only): the saved college picks against the private model worked out on the Lab page — this week's games and 400 pairings */
   { name: "cfbpickcmp", page: "/lab/", widths: [1280], settle: 8000, run: `return await (async()=>{await loadModel();if(typeof colPickCalc!=="function")return {ok:false,err:"no model"};
 const get=k=>fetch("/api/pack/"+k,{headers:{Authorization:"Bearer "+TOKEN}}).then(r=>r.ok?r.json():null);const [A,B]=await Promise.all([get("p"+CURYEAR+"_cfb-picks"),get("p"+CURYEAR+"_cfb-pairs")]);if(!A||!B)return {ok:false,err:"no packs"};

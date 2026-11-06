@@ -109,9 +109,10 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
       if (N.st === 2) { const a = rec[W.id] = rec[W.id] || [0, 0], b = rec[L.id] = rec[L.id] || [0, 0]; a[0]++; b[1]++ } } }
   /* NBA player feats (Sam: "i like player feats"): the open sportsdataverse player box scores, 2003 on — 50+ points, 20+ assists, 25+
      rebounds, 10+ threes, a 30-point triple-double */
+  const PPG = {};   /* season|name → [points, games], regular season — for the trades below */
   for (let y = 2003; y <= nowYear; y++) { let R = null; try { const r = await fetch(`https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_nba_player_boxscores/player_box_${y}.csv`, { redirect: "follow" }); files++; if (r.ok) R = csv(await r.text()) } catch (e) { } if (!R) continue;
     const Hh = R[0], c = n => Hh.indexOf(n), I = { d: c("game_date"), nm: c("athlete_display_name"), tm: c("team_name"), tl: c("team_location"), ot: c("opponent_team_name"), ol: c("opponent_team_location"), ts: c("team_score"), os: c("opponent_team_score"), ha: c("home_away"), pts: c("points"), reb: c("rebounds"), ast: c("assists"), fgm: c("field_goals_made"), fga: c("field_goals_attempted"), tpm: c("three_point_field_goals_made"), st: c("season_type") };
-    for (const x of R.slice(1)) { const pts = +x[I.pts] || 0, reb = +x[I.reb] || 0, ast = +x[I.ast] || 0, tpm = +x[I.tpm] || 0; if (pts < 50 && ast < 20 && reb < 25 && tpm < 10 && !(pts >= 30 && reb >= 10 && ast >= 10)) continue;
+    for (const x of R.slice(1)) { const pts = +x[I.pts] || 0, reb = +x[I.reb] || 0, ast = +x[I.ast] || 0, tpm = +x[I.tpm] || 0; if (+x[I.st] === 2 && x[I.nm]) { const k = y + '|' + x[I.nm], o = PPG[k] = PPG[k] || [0, 0]; if (x[I.fga] !== '' || pts) { o[0] += pts; o[1]++ } } if (pts < 50 && ast < 20 && reb < 25 && tpm < 10 && !(pts >= 30 && reb >= 10 && ast >= 10)) continue;
       const dt = String(x[I.d] || "").slice(0, 10); if (!dt) continue; const md = dt.slice(5, 10), yy = dt.slice(0, 4), ts = +x[I.ts], os = +x[I.os], home = x[I.ha] === "home", po = +x[I.st] === 3 ? " in the playoffs" : "";
       const res = ts > os ? `in a ${ts}–${os} win over the ${x[I.ot]}` : `in a ${os}–${ts} loss to the ${x[I.ot]}`, at = home ? "" : ` in ${x[I.ol]}`, line = `${pts} points (${x[I.fgm]} of ${x[I.fga]}${tpm ? `, ${tpm} three${tpm === 1 ? "" : "s"}` : ""}), ${reb} rebounds, ${ast} assists for the ${x[I.tm]} ${res}${at}${po}.`, nm = x[I.nm];
       if (pts >= 50) add(md, "nbapts", yy, pts, `${nm} scores ${pts} points against the ${x[I.ot]}`, line, "nba");
@@ -119,6 +120,17 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
       else if (ast >= 20) add(md, "nbaast", yy, ast, `${nm} hands out ${ast} assists against the ${x[I.ot]}`, line, "nba");
       else if (reb >= 25) add(md, "nbareb", yy, reb, `${nm} pulls down ${reb} rebounds against the ${x[I.ot]}`, line, "nba");
       else if (tpm >= 10) add(md, "nba3", yy, tpm, `${nm} hits ${tpm} threes against the ${x[I.ot]}`, line, "nba") } }
+  /* NBA trades (Sam, 5:16 pm: "we have GM trade data on the site already so i would look there first"): p2000_cbb-nbatrades, NBA.com's
+     player movement log since 2015 (the Be the GM data). A trade is a moment when a player in it averaged 18+ points that season or the one
+     before (the player box scores above). */
+  try { const TR = await getPack("p2000_cbb-nbatrades"); if (TR && TR.r) { const by = {}; for (const r of TR.r) (by[r[1]] = by[r[1]] || []).push(r);
+    const ppgS = (nm, y) => { let b = 0, s = 0; for (const yy of [y, y - 1]) { const o = PPG[yy + "|" + nm]; if (o && o[1] >= 10 && o[0] / o[1] > b) { b = o[0] / o[1]; s = yy } } return [b, s] };
+    const nick = t => String(t).split(" ").pop(), lst = a => a.length <= 1 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1];
+    for (const id in by) { const L = by[id], dt = L[0][0]; if (!dt) continue; const y = +dt.slice(0, 4), sy = +dt.slice(5, 7) >= 8 ? y + 1 : y;
+      const P = L.filter(r => r[5]).map(r => { const [p, s] = ppgS(r[4], sy); return { r, p, s } }).sort((a, b) => b.p - a.p); if (!P.length || P[0].p < 18) continue;
+      const star = P[0], to = star.r[2], from = star.r[3], teams = [...new Set(L.map(r => r[2]))];
+      const got = t => lst(L.filter(r => r[2] === t).map(r => r[4].replace(/^(\d{4}) /, "a $1 ")));
+      add(dt.slice(5, 10), "nbatrade", y, Math.round(star.p), `The ${nick(from)} trade ${star.r[4]} to the ${nick(to)}`, teams.map(t => `The ${nick(t)} received ${got(t)}`).join("; ") + `. ${star.r[4]} averaged ${star.p.toFixed(1)} points a game in ${star.s - 1}–${String(star.s).slice(2)}${star.s === sy ? " before the trade" : ""}.`, "nba") } } } catch (e) { log("this day: trades skipped — " + e.message) }
   /* off days (Sam: "what about other events on those days?"): Pro Football Hall of Famers' birthdays — our Hall of Fame file (Wikipedia)
      matched to nflverse's players file (birth dates), so the summer has a card too */
   try { const HF = await getPack("p1990_nfl-hof"), r = await fetch("https://github.com/nflverse/nflverse-data/releases/download/players/players.csv", { redirect: "follow" }); files++;

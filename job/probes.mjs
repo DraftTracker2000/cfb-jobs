@@ -41,6 +41,11 @@ for(const pg of PG){const o={};try{f.contentWindow.location.hash="#broadcast/"+p
  const nm=e=>e.tagName.toLowerCase()+(e.className&&typeof e.className==="string"?"."+e.className.trim().split(/\\s+/).slice(0,2).join("."):"");const past=[];
  for(const e of (R||id.body).querySelectorAll("*")){const b=e.getBoundingClientRect();if(b.width&&b.right>cw+1&&past.length<6)past.push(nm(e)+" →"+Math.round(b.right-cw)+" "+(e.textContent||"").trim().slice(0,30))}o.past=past}catch(e){o.err=String(e.message||e).slice(0,120)}out[pg]=o}
 return {ok:true,W,out}})()` },
+  { name: "bcportal2", page: "/lab/", widths: [1280, 1440], settle: 4000, run: `return await (async()=>{const f=document.createElement("iframe");f.style.cssText="position:fixed;left:0;top:0;width:"+innerWidth+"px;height:"+innerHeight+"px;border:0;z-index:99999";f.src="/lab/portal.html#broadcast/prep";document.body.appendChild(f);await w(12000);
+const d=f.contentDocument,nm=e=>e.tagName.toLowerCase()+(e.id?"#"+e.id:"")+(e.className&&typeof e.className==="string"?"."+e.className.trim().split(/\\s+/).join("."):"");
+const L=[];for(const e of d.querySelectorAll("body *")){const r=e.getBoundingClientRect();if(r.height>=18&&r.top<140&&r.width>300&&L.length<14)L.push(nm(e).slice(0,50)+" y"+Math.round(r.top)+" h"+Math.round(r.height)+" w"+Math.round(r.width)+" "+(e.children.length?"":(e.textContent||"").trim().slice(0,30)))}
+const de=d.documentElement,tall=[];for(const e of d.querySelectorAll("body *")){const r=e.getBoundingClientRect();if(r.bottom>de.clientHeight+2&&r.height>100&&tall.length<6)tall.push(nm(e).slice(0,50)+" top"+Math.round(r.top)+" bottom"+Math.round(r.bottom))}
+return {ok:true,W,vh:de.clientHeight,sh:de.scrollHeight,L,tall,bc:(d.querySelector(".bcpb")||{}).textContent}})()` },
   /* Nov 5 (item 9, read only): the saved college picks against the private model worked out on the Lab page — this week's games and 400 pairings */
   { name: "cfbpickcmp", page: "/lab/", widths: [1280], settle: 8000, run: `return await (async()=>{await loadModel();if(typeof colPickCalc!=="function")return {ok:false,err:"no model"};
 const get=k=>fetch("/api/pack/"+k,{headers:{Authorization:"Bearer "+TOKEN}}).then(r=>r.ok?r.json():null);const [A,B]=await Promise.all([get("p"+CURYEAR+"_cfb-picks"),get("p"+CURYEAR+"_cfb-pairs")]);if(!A||!B)return {ok:false,err:"no packs"};

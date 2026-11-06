@@ -95,6 +95,26 @@ def run(reg, log, D):
     if X9.backup.sum() > 100:
         r = mech(reg, 'H5-10', 'Game started by someone other than the season\'s main passer -> vs the line', X9.cover.values, X9.backup.values, X9.g.values, X9.season.values, unit='pts')
 
+    # H5-10b, only what was known before kickoff: this game's main passer is not the main passer of the team's previous game, and that
+    # previous passer had been the team's main passer in most of its games so far (an established starter replaced); a passer change
+    # that happened inside the previous game also counts as known by this one
+    X9 = X9.sort_values(['team', 'season', 'date']); X9['prevQB'] = X9.groupby(['team', 'season']).athleteId.shift(1)
+    so_far = []
+    for (t, s_), grp in X9.groupby(['team', 'season']):
+        cnt = {}
+        for _, r in grp.iterrows():
+            top = max(cnt, key=cnt.get) if cnt else None; so_far.append((r.name, top, sum(cnt.values())))
+            cnt[r.athleteId] = cnt.get(r.athleteId, 0) + 1
+    sf = pd.DataFrame(so_far, columns=['i', 'topSoFar', 'gSoFar']).set_index('i'); X9 = X9.join(sf)
+    K = X9[(X9.gSoFar >= 2) & X9.prevQB.notna()].copy()
+    K['change'] = ((K.athleteId != K.prevQB) & (K.prevQB == K.topSoFar)).astype(float)
+    log(f'H5-10b: {len(K)} team-games after game 2; {int(K.change.sum())} where an established starter (main passer so far and last game) was replaced')
+    if K.change.sum() > 100:
+        r = mech(reg, 'H5-10b', 'New main passer replacing the established starter (known before kickoff) -> vs the line', K.cover.values, K.change.values, K.g.values, K.season.values, unit='pts')
+        K2 = K.copy(); K2['back'] = ((K2.athleteId != K2.prevQB) & (K2.prevQB != K2.topSoFar) & (K2.athleteId == K2.topSoFar)).astype(float)
+        if K2.back.sum() > 60:
+            r = mech(reg, 'H5-10b', 'The established starter back after missing time -> vs the line', K2.cover.values, K2.back.values, K2.g.values, K2.season.values, unit='pts')
+
     # ---------- this round's BH pass ----------
     R = reg.df(); R = R[R.hyp.astype(str).str.match(r'H5-(07|08|09|10)')].copy()
     R['q'] = bh(pd.to_numeric(R.p, errors='coerce').fillna(1).values); R['survives'] = (R.q < .10) & (R.oos_pass == True)

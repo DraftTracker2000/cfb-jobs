@@ -2,6 +2,11 @@
    async function evaluated in the page (w(ms) waits, W is the width). Return {ok, ...whatever helps}. Keep results short. */
 const res = `const R=()=>performance.getEntriesByType("resource").map(e=>decodeURIComponent(e.name));`;
 export const PROBES = [
+  /* Nov 5 (item 9, read only): the live page's own NFL picks (worked out on the page) against the saved picks file the Lab now reads */
+  { name: "pickcmp", page: "/", widths: [1280], settle: 6000, run: `const G=await nflGames();await nflQbOutLoad().catch(()=>{});const r=await fetch("/api/pack/p"+CURYEAR+"_nfl-picks",{headers:{Authorization:"Bearer "+TOKEN}});if(!r.ok)return {ok:false,st:r.status};const P=await r.json();
+let n=0,d=0,mx=0,ex=[];for(const g of G){if(P.g[g.id]==null)continue;n++;const v=nflPickP(G,g),e=Math.abs(v-P.g[g.id]);if(e>0.0006){d++;if(ex.length<6)ex.push(g.id+" "+v.toFixed(4)+" vs "+P.g[g.id])}mx=Math.max(mx,e)}
+let pn=0,pd=0;const T=Object.keys(P.h);for(const a of T)for(const b of T)if(a!==b){pn++;const v=nflPickP(G,{home:a,away:b,neutral:false,date:null,season:CURYEAR});if(Math.abs(v-P.h[a][b])>0.0006)pd++}
+return {ok:d===0&&pd===0,games:n,differ:d,maxDiff:+mx.toFixed(5),pairs:pn,pairsDiffer:pd,ex,at:new Date(P.at).toISOString()}` },
   /* Nov 5 (doc item 25, wip/cfb-tacklers finished): college tacklers from ESPN play participants, one pack a season 2019 on (job/cfbtklrun.mjs) */
   { name: "cfbtkl", mod: "cfbtklrun" },
   /* Nov 5 (Sam, doc item 10: "a" — run the test and show the cut before anything changes): the loose "got more out of him" credit (best

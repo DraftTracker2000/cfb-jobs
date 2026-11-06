@@ -242,6 +242,9 @@ export async function main() {
   const full = MODE === "cbbhistory";
   /* nbastats: only the NBA.com tables (play types, hustle, matchups, tracking) from the open sportsdataverse files — no CBBD or ESPN
      calls at all (Oct 12: to fill new NBA profile pieces without spending the day's calls) */
+  /* l2m (Nov 6): the NBA's Last Two Minute reports by official (job/cbbl2m.mjs) — no CBBD calls */
+  if (MODE === "l2m") { const { l2m } = await import("./cbbl2m.mjs"); const R = await l2m({ getPack, putPack, log });
+    await site("PUT", "/api/pack-index", { body: INDEX }); await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: R.msg, started } }).catch(e => log("report failed: " + e.message)); return }
   /* refhist: the referee history backfill and its totals (job/cbbrefhist.mjs) — ESPN reads only, no CBBD calls */
   if (MODE === "refhist") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
     const { refHist } = await import("./cbbrefhist.mjs"); const R = await refHist({ getPack, putPack, log, NEXT: UPCOMING, curNba });

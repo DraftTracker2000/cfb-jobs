@@ -48,7 +48,7 @@ const de=d.documentElement,tall=[];for(const e of d.querySelectorAll("body *")){
 return {ok:true,W,vh:de.clientHeight,sh:de.scrollHeight,L,tall,bc:(d.querySelector(".bcpb")||{}).textContent}})()` },
   /* Nov 6 (once): seed p2000_pickscale — the basketball confidence scale only — from the pick check's p2000_pickmodel, so the basketball
      pages keep their scale when the weights file becomes admin and data job only; afterwards job/pcheck.mjs writes it each Tuesday */
-  { name: "pickscale", node: `const J=process.env.JOB_TOKEN;const g=await fetch(SITE+"/api/pack/p2000_pickmodel",{headers:{Authorization:"Bearer "+J}});if(!g.ok)return {ok:false,st:g.status};const M=await g.json();
+  { name: "pickscale", node: `const J=process.env.JOB_TOKEN;const g=await fetch(SITE+"/api/pack/p2000_pickmodel",{headers:{Authorization:"Bearer "+TOKEN}});if(!g.ok)return {ok:false,st:g.status};const M=await g.json();
 const nba=M&&M.nba&&M.nba.adopted?{T:M.nba.T,adopted:true,ver:M.nba.ver||null}:{adopted:false};const {gzipSync}=await import("node:zlib");
 const r=await fetch(SITE+"/api/pack/p2000_pickscale",{method:"PUT",body:gzipSync(Buffer.from(JSON.stringify({v:1,nba}))),headers:{Authorization:"Bearer "+J,"x-encoding":"gzip","Content-Type":"application/json"}});
 return {ok:r.ok,st:r.status,nba,cfbAdopted:!!(M.cfb&&M.cfb.adopted)}` },

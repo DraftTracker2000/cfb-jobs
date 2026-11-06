@@ -83,6 +83,8 @@ def run(reg, log, D):
     ans = d1[(d1.prev_off.notna()) & (d1.prev_off != d1.off)]
     A1 = ans[ans.prev_scored == 1].assign(x=lambda z: z.scored - z.exp).groupby(['off', 'season']).x.agg(['mean', 'size']).reset_index()
     A1 = A1[A1['size'] >= 15].rename(columns={'off': 'key', 'mean': 'v'})
+    base = d1.assign(x=d1.scored - d1.exp).groupby(['off', 'season']).x.mean().rename('b').reset_index().rename(columns={'off': 'key'})
+    A1 = A1.merge(base, on=['key', 'season']); A1['v'] = A1.v - A1.b   # over the team's own normal drives, both from their starting spots
     log(f'H8-05b: {len(A1)} team-seasons; answer drives score {A1.v.mean():+.3f} over their starting spot')
     yy('H8-05b', 'Scoring right after the opponent scores, beyond what the starting yard line gives', A1[['key', 'season', 'v']])
     # H8-06 after a takeaway: the drive right after the defense forces a turnover, beyond its starting spot

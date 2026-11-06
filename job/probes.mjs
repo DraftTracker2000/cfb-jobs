@@ -69,6 +69,10 @@ return {ok:true,seasons:yrs,pairs:rows.length,newQB:{all:fit(C),before2022:fit(C
 const nba=M&&M.nba&&M.nba.adopted?{T:M.nba.T,adopted:true,ver:M.nba.ver||null}:{adopted:false};const {gzipSync}=await import("node:zlib");
 const r=await fetch(SITE+"/api/pack/p2000_pickscale",{method:"PUT",body:gzipSync(Buffer.from(JSON.stringify({v:1,nba}))),headers:{Authorization:"Bearer "+J,"x-encoding":"gzip","Content-Type":"application/json"}});
 return {ok:r.ok,st:r.status,nba,cfbAdopted:!!(M.cfb&&M.cfb.adopted)}` },
+  /* Nov 6 (read only): sizes of the college QB packs (before → after the receiver rebuild) */
+  { name: "qbsizes", node: `const r=await fetch(SITE+"/api/pack-index",{headers:{Authorization:"Bearer "+TOKEN}});const I=await r.json(),P=I.packs||I;const by={};
+for(const [k,v] of Object.entries(P)){const m=k.match(/^p(\\d{4})_.*-qb$/);if(!m)continue;const b=by[m[1]]=by[m[1]]||{n:0,bytes:0,at:0};b.n++;b.bytes+=+(v.size||v.bytes||v.len||0);b.at=Math.max(b.at,+(v.at||0))}
+return {by,sample:Object.entries(P).find(([k])=>/-qb$/.test(k))}` },
   /* Nov 6 (read only): receiver splits check — one team-season's plays through ppFromPlays, each receiver's catches/yards/TD from the
      plays vs CFBD's season receiving stats */
   { name: "rcvcheck", page: "/lab/", widths: [1280], settle: 8000, run: `return await (async()=>{const o={};

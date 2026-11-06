@@ -17,6 +17,9 @@ const base={};for(const pos of ["QB","RB","WR","TE"]){const L=LB.filter(x=>x.pos
 const zB=x=>x.g/x.se,zC=x=>(x.g-base[x.pos].meanGain)/x.se;const keepC=LB.filter(x=>x.g>0&&zC(x)>=OFF_Z).sort((a,b)=>zC(b)-zC(a));
 return {ok:true,A:{credited:LA.length,kept:LA.filter(x=>x.z>=OFF_Z).length},B:{moves:LB.length,up:LB.filter(x=>x.g>0).length,kept:LB.filter(x=>x.g>0&&zB(x)>=OFF_Z).length},base,C:{kept:keepC.length,thisSeason:keepC.filter(x=>x.cur).length,
  names:keepC.slice(0,40).map(x=>x.p+" "+x.pos+" → "+x.to+" "+x.y+" ("+x.coach+") +"+x.g.toFixed(2)+" z "+zC(x).toFixed(2))}}` },
+  /* Nov 5, 10:02 pm (the owner: "b it is", item 10, read only): the Lab's new "got more out of him" offense credits, counted from the page itself */
+  { name: "xfermore3", page: "/lab/", widths: [1280], settle: 8000, run: `const C=await coTrxAll();let n=0,cur=0,coaches=0,od=0,dd=0;const L=[];for(const k in C){const R=C[k].filter(x=>x.kind==="more");if(R.length)coaches++;for(const x of R){if(x.oc){od++;continue}if(x.df){dd++;continue}n++;if(x.y===CURYEAR)cur++;L.push(x.p+" "+x.pos+" → "+x.to+" "+x.y+" +"+(x.me-x.was).toFixed(2)+" z "+x.z.toFixed(2))}}
+return {ok:true,firstVsLast:n,thisSeason:cur,offRule:od,defense:dd,coaches,sample:L.slice(0,25)}` },
   /* Nov 5 (item 9, read only): the live page's own NFL picks (worked out on the page) against the saved picks file the Lab now reads */
   { name: "pickcmp", page: "/", widths: [1280], settle: 6000, run: `const G=await nflGames();await nflQbOutLoad().catch(()=>{});const r=await fetch("/api/pack/p"+CURYEAR+"_nfl-picks",{headers:{Authorization:"Bearer "+TOKEN}});if(!r.ok)return {ok:false,st:r.status};const P=await r.json();
 let n=0,d=0,mx=0,ex=[];for(const g of G){if(P.g[g.id]==null)continue;n++;const v=nflPickP(G,g),e=Math.abs(v-P.g[g.id]);if(e>0.0006){d++;if(ex.length<6)ex.push(g.id+" "+v.toFixed(4)+" vs "+P.g[g.id])}mx=Math.max(mx,e)}

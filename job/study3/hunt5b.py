@@ -115,6 +115,18 @@ def run(reg, log, D):
         if K2.back.sum() > 60:
             r = mech(reg, 'H5-10b', 'The established starter back after missing time -> vs the line', K2.cover.values, K2.back.values, K2.g.values, K2.season.values, unit='pts')
 
+        # H5-10c (Nov 6): H5-10b still picks "this game's passer" as whoever threw most, so a starter hurt early in this game counts as a
+        # change. Here the game's passer is the one on its FIRST pass play (the starter who took the field), so an in-game injury can't count.
+        Q2 = Q.copy(); Q2['pid'] = pd.to_numeric(Q2.get('playId'), errors='coerce')
+        if Q2.pid.notna().mean() > .9:
+            fp = Q2.sort_values('pid').groupby(['g', 'team']).head(1)[['g', 'team', 'athleteId']].rename(columns={'athleteId': 'firstQB'})
+            K3 = K.merge(fp, on=['g', 'team'], how='inner')
+            K3['change1'] = ((K3.firstQB != K3.prevQB) & (K3.prevQB == K3.topSoFar)).astype(float)
+            log(f'H5-10c: {len(K3)} team-games; {int(K3.change1.sum())} where the first passer of the game was not the established starter')
+            if K3.change1.sum() > 100:
+                r = mech(reg, 'H5-10c', 'First passer of the game is not the established starter -> vs the line', K3.cover.values, K3.change1.values, K3.g.values, K3.season.values, unit='pts')
+        else: log('H5-10c: no play ids in the file')
+
     # ---------- this round's BH pass ----------
     R = reg.df(); R = R[R.hyp.astype(str).str.match(r'H5-(07|08|09|10)')].copy()
     R['q'] = bh(pd.to_numeric(R.p, errors='coerce').fillna(1).values); R['survives'] = (R.q < .10) & (R.oos_pass == True)

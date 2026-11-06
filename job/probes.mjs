@@ -30,6 +30,17 @@ for(const pg of PG){const f=document.createElement("iframe");f.style.cssText="po
   o.past=past.map(x=>x.s);o.spill=spill;o.title=(d.querySelector("#bcRoot h2,#bcRoot h1")||{}).textContent||""}catch(e){o.err=String(e.message||e).slice(0,120)}
  out[pg]=o;f.remove();await w(300)}
 const bad=Object.entries(out).filter(([k,v])=>v.sideScroll||v.rootScroll||(v.past||[]).length).map(([k])=>k);return {ok:true,W,bad,out}})()` },
+  /* Nov 5, 11:30 pm (item 85, read only): the broadcast workspace inside the real portal shell (/lab/portal.html#broadcast/<page>) — the
+     portal's own sideways and up-down overflow, and the frame's, at desktop sizes */
+  { name: "bcportal", page: "/lab/", widths: [1280, 1440, 1920], settle: 4000, run: `return await (async()=>{const PG=["week","prep","live","search","season","pins","settings","more"],out={};
+const f=document.createElement("iframe");f.style.cssText="position:fixed;left:0;top:0;width:"+innerWidth+"px;height:"+innerHeight+"px;border:0;z-index:99999;background:#000";f.src="/lab/portal.html#broadcast/week";document.body.appendChild(f);
+await w(9000);
+for(const pg of PG){const o={};try{f.contentWindow.location.hash="#broadcast/"+pg;await w(7000);const d=f.contentDocument,de=d.documentElement;o.portalSide=Math.max(0,de.scrollWidth-de.clientWidth);o.portalDown=Math.max(0,de.scrollHeight-de.clientHeight);
+ const fr=d.getElementById("bcFrame");if(!fr){o.err="no frame";out[pg]=o;continue}const r=fr.getBoundingClientRect();o.frame=[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height)];const nav=d.querySelector(".nav");o.nav=nav?Math.round(nav.getBoundingClientRect().width):null;
+ const id=fr.contentDocument,ie=id.documentElement,cw=ie.clientWidth;o.innerSide=Math.max(0,ie.scrollWidth-cw);const R=id.getElementById("bcRoot");o.title=R?((R.querySelector("h1,h2")||{}).textContent||"").slice(0,40):"";
+ const nm=e=>e.tagName.toLowerCase()+(e.className&&typeof e.className==="string"?"."+e.className.trim().split(/\\s+/).slice(0,2).join("."):"");const past=[];
+ for(const e of (R||id.body).querySelectorAll("*")){const b=e.getBoundingClientRect();if(b.width&&b.right>cw+1&&past.length<6)past.push(nm(e)+" →"+Math.round(b.right-cw)+" "+(e.textContent||"").trim().slice(0,30))}o.past=past}catch(e){o.err=String(e.message||e).slice(0,120)}out[pg]=o}
+return {ok:true,W,out}})()` },
   /* Nov 5 (item 9, read only): the saved college picks against the private model worked out on the Lab page — this week's games and 400 pairings */
   { name: "cfbpickcmp", page: "/lab/", widths: [1280], settle: 8000, run: `return await (async()=>{await loadModel();if(typeof colPickCalc!=="function")return {ok:false,err:"no model"};
 const get=k=>fetch("/api/pack/"+k,{headers:{Authorization:"Bearer "+TOKEN}}).then(r=>r.ok?r.json():null);const [A,B]=await Promise.all([get("p"+CURYEAR+"_cfb-picks"),get("p"+CURYEAR+"_cfb-pairs")]);if(!A||!B)return {ok:false,err:"no packs"};

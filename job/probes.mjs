@@ -94,6 +94,12 @@ for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=reg
   if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
   if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
 for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
+  /* Nov 6 (read only): how often ESPN's game summaries name the side, by season — week 6, 4 games a season, 2016–2025 (about 50 reads) */
+  { name: "injside3", node: `const o={};const get=async u=>{try{const r=await fetch(u,{headers:{"User-Agent":"Mozilla/5.0"}});return r.ok?await r.json():null}catch(e){return null}};
+for(let y=2016;y<=2025;y++){const sb=await get("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates="+y+"&seasontype=2&week=6");const ids=((sb&&sb.events)||[]).slice(0,4).map(e=>e.id);let n=0,lr=0,ns=0;const ex=[];
+ for(const id of ids){const s=await get("https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event="+id);for(const t of (s&&s.injuries)||[])for(const i of t.injuries||[]){n++;const sd=(i.details||{}).side||"";if(/^(left|right)$/i.test(sd)){lr++;if(ex.length<2)ex.push(((i.athlete||{}).displayName||"")+": "+(i.details||{}).type+" "+sd)}else ns++}}
+ o[y]={games:ids.length,listed:n,withSide:lr,pct:n?Math.round(100*lr/n):null,ex}}
+return o` },
   /* Nov 6 (read only — the owner 12:39: past injury sides): a few other ESPN places that might still carry left/right for past injuries — about 8 reads */
   { name: "injside2", node: `const o={};const get=async u=>{try{const r=await fetch(u,{headers:{"User-Agent":"Mozilla/5.0"}});const t=await r.text();return {st:r.status,t}}catch(e){return {st:0,t:String(e)}}};
 const side=t=>{const m=t.match(/"side"\s*:\s*"[^"]*"/g)||[];const d=t.match(/"(location|type|detail)"\s*:\s*"[^"]*"/g)||[];return {sides:m.slice(0,6),det:d.slice(0,6),hasInj:/"injuries"/.test(t)}};

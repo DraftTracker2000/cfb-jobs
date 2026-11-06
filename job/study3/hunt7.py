@@ -44,7 +44,6 @@ def run(reg, log, D):
                 S = S[np.isfinite(S.v)]
                 if len(S) < 200: continue
                 yy(f'H7-{k:02d}', f'{side} {m} (CFBD advanced, season)', S); k += 1
-                if k > 19: break
 
     # ---------- records: win luck ----------
     R = frame('cf_records')
@@ -60,7 +59,7 @@ def run(reg, log, D):
             yy('H7-20a', 'Win luck (wins beyond CFBD expected wins) repeats', L[['key', 'season', 'v']])
             nx = WS[['key', 'season', 'ws']].copy(); nx['season'] -= 1
             j = L.merge(nx, on=['key', 'season'], suffixes=('', '_n')).dropna(subset=['ws_n'])
-            j['dws'] = j.ws_n - j.ws
+            j['dws'] = j.ws_n - j.ws; j['dws'] = j.dws - np.polyval(np.polyfit(j.ws, j.dws, 1), j.ws)   # round 2: this season's win share held fixed
             r = mech(reg, 'H7-20', 'Win luck this season -> change in win share next season', j.dws.values, j.v.values, j.key.values, j.season.values, unit='win share per win of luck')
             TESTS.append('H7-20'); log(f'[H7-20] win luck -> next season: {r["d"]}')
 
@@ -79,7 +78,7 @@ def run(reg, log, D):
             if WS is not None:
                 nx = WS[['key', 'season', 'ws']].copy(); nx['season'] -= 1
                 j = S.merge(WS[['key', 'season', 'ws']], on=['key', 'season']).merge(nx, on=['key', 'season'], suffixes=('', '_n')).dropna()
-                j['dws'] = j.ws_n - j.ws
+                j['dws'] = j.ws_n - j.ws; j['dws'] = j.dws - np.polyval(np.polyfit(j.ws, j.dws, 1), j.ws)   # round 2: win share held fixed
                 r = mech(reg, 'H7-21', 'Turnover margin per game -> change in win share next season', j.dws.values, j.v.values, j.key.values, j.season.values, unit='win share per turnover a game')
                 TESTS.append('H7-21'); log(f'[H7-21] turnover margin -> next season: {r["d"]}')
         if 'penaltyYards' in P.columns:
@@ -101,11 +100,16 @@ def run(reg, log, D):
         on = O.copy(); on['season'] -= 1
         j = V.merge(O, on=['team', 'season']).merge(on, on=['team', 'season'], suffixes=('', '_n')).dropna(subset=['vac', 'ppa', 'ppa_n'])
         j = j[j.season < j.season.max()]
-        j['d'] = j.ppa_n - j.ppa
+        j['d'] = j.ppa_n - j.ppa; j['d'] = j.d - np.polyval(np.polyfit(j.ppa, j.d, 1), j.ppa)   # round 2: this season's PPA held fixed
         log(f'H7-23: {len(j)} team-seasons; median vacated usage {j.vac.median():.2f}')
         if len(j) > 200:
             r = mech(reg, 'H7-23', 'Share of offensive usage that left -> next season change in offensive PPA', j.d.values, j.vac.values, j.team.values, j.season.values, unit='PPA per play, all usage gone')
             TESTS.append('H7-23'); log(f'[H7-23] vacated usage: {r["d"]}')
+
+    # ---------- basketball transfers: look at the fields first (round 2) ----------
+    BP = frame('bb_portal')
+    log(f'hunt7: bb_portal {len(BP)} rows, columns: {list(BP.columns)[:30]}')
+    if len(BP): log('hunt7: bb_portal sample: ' + BP.head(3).to_json(orient='records')[:1500])
 
     # ---------- this round's BH pass and what goes out ----------
     R = reg.df(); R = R[R.hyp.astype(str).str.startswith('H7-')].copy()

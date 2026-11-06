@@ -46,6 +46,23 @@ const d=f.contentDocument,nm=e=>e.tagName.toLowerCase()+(e.id?"#"+e.id:"")+(e.cl
 const L=[];for(const e of d.querySelectorAll("body *")){const r=e.getBoundingClientRect();if(r.height>=18&&r.top<140&&r.width>300&&L.length<14)L.push(nm(e).slice(0,50)+" y"+Math.round(r.top)+" h"+Math.round(r.height)+" w"+Math.round(r.width)+" "+(e.children.length?"":(e.textContent||"").trim().slice(0,30)))}
 const de=d.documentElement,tall=[];for(const e of d.querySelectorAll("body *")){const r=e.getBoundingClientRect();if(r.bottom>de.clientHeight+2&&r.height>100&&tall.length<6)tall.push(nm(e).slice(0,50)+" top"+Math.round(r.top)+" bottom"+Math.round(r.bottom))}
 return {ok:true,W,vh:de.clientHeight,sh:de.scrollHeight,L,tall,bc:(d.querySelector(".bcpb")||{}).textContent}})()` },
+  /* Nov 6 (Thursday #41, pattern hunt 4 round 2, topic 3 "college kingmakers", read only): from the play-by-play QB→receiver pairs
+     (p<Y>_pbp duo, 2014 on): a receiver with 30+ targets in back-to-back seasons whose main passer changed — does his yards a target move
+     with the new passer's quality (the passer's yards a target to his OTHER receivers)? Slope 1 = the receiver is all QB, 0 = none of it.
+     Baseline: receivers who kept their passer. Holdout: moves into 2022 on. Same bar as hunt 3. */
+  { name: "kingmaker", node: `const get=async n=>{const r=await fetch(SITE+"/api/pack/"+n,{headers:{Authorization:"Bearer "+TOKEN}});return r.ok?r.json():null};
+const DU={};for(let y=2014;y<=2026;y++){const p=await get("p"+y+"_pbp");const d=p&&p.pbp&&p.pbp.duo;if(d)DU[y]=d}
+const yrs=Object.keys(DU).map(Number).sort();const R={},Q={};
+for(const y of yrs){const r=R[y]={},q=Q[y]={};for(const s of ["reg","post"])for(const qb in DU[y][s]||{})for(const rc in DU[y][s][qb]){const x=DU[y][s][qb][rc];const o=r[rc]=r[rc]||{t:0,yd:0,by:{}};o.t+=x[0];o.yd+=x[2];o.by[qb]=(o.by[qb]||0)+x[0];const z=q[qb]=q[qb]||{t:0,yd:0,rc:{}};z.t+=x[0];z.yd+=x[2];z.rc[rc]=(z.rc[rc]||[0,0]);z.rc[rc][0]+=x[0];z.rc[rc][1]+=x[2]}}
+const main=o=>Object.entries(o.by).sort((a,b)=>b[1]-a[1])[0];
+const qOther=(y,qb,rc)=>{const z=Q[y][qb];if(!z)return null;const m=z.rc[rc]||[0,0],t=z.t-m[0];return t>=60?(z.yd-m[1])/t:null};
+const rows=[];for(const y of yrs){if(!R[y-1])continue;for(const rc in R[y]){const a=R[y-1][rc],b=R[y][rc];if(!a||a.t<30||b.t<30)continue;const [qa,ta]=main(a),[qb,tb]=main(b);if(ta<0.6*a.t||tb<0.6*b.t)continue;
+ const xa=qOther(y-1,qa,rc),xb=qOther(y,qb,rc);if(xa==null||xb==null)continue;const wr1=Object.entries(Q[y][qb].rc).sort((p,q)=>q[1][0]-p[1][0])[0][0]===rc;
+ rows.push({y,chg:qa!==qb,dq:xb-xa,dr:b.yd/b.t-a.yd/a.t,w:1/(1/a.t+1/b.t),wr1})}}
+const fit=L=>{const W=L.reduce((s,r)=>s+r.w,0);if(L.length<20)return null;const mx=L.reduce((s,r)=>s+r.w*r.dq,0)/W,my=L.reduce((s,r)=>s+r.w*r.dr,0)/W;let sxy=0,sxx=0;for(const r of L){sxy+=r.w*(r.dq-mx)*(r.dr-my);sxx+=r.w*(r.dq-mx)**2}const b=sxy/sxx;
+ let rss=0;for(const r of L){const e=r.dr-my-b*(r.dq-mx);rss+=r.w*e*e}const se=Math.sqrt(rss/(L.length-2)/sxx);const z=b/se,p=Math.exp(-0.717*Math.abs(z)-0.416*z*z);return {n:L.length,slope:+b.toFixed(3),se:+se.toFixed(3),p:+p.toFixed(4)}};
+const C=rows.filter(r=>r.chg),K=rows.filter(r=>!r.chg);
+return {ok:true,seasons:yrs,pairs:rows.length,newQB:{all:fit(C),before2022:fit(C.filter(r=>r.y<2022)),holdout2022on:fit(C.filter(r=>r.y>=2022)),wr1:fit(C.filter(r=>r.wr1)),others:fit(C.filter(r=>!r.wr1))},sameQB:fit(K)}` },
   /* Nov 6 (once): seed p2000_pickscale — the basketball confidence scale only — from the pick check's p2000_pickmodel, so the basketball
      pages keep their scale when the weights file becomes admin and data job only; afterwards job/pcheck.mjs writes it each Tuesday */
   { name: "pickscale", node: `const J=process.env.JOB_TOKEN;const g=await fetch(SITE+"/api/pack/p2000_pickmodel",{headers:{Authorization:"Bearer "+TOKEN}});if(!g.ok)return {ok:false,st:g.status};const M=await g.json();

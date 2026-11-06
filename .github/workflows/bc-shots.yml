@@ -1,0 +1,40 @@
+# Broadcast workspace pictures (job/bcshots.mjs, Nov 6): every page of the Lab's broadcast workspace and the portal around it, read-only.
+# Pictures come back as the run's artifact. Published from the site's private repo by tools/sync-jobs.mjs — edit it there.
+name: Broadcast pictures
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        default: "before"
+        type: string
+      pages:
+        default: ""
+        type: string
+      width:
+        default: "1440"
+        type: string
+permissions:
+  contents: read
+jobs:
+  shots:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: |
+          npm install --no-save "playwright@>=1.0 <1.65"
+          npx playwright install --with-deps chromium
+      - env:
+          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag }}
+          PAGES: ${{ github.event.inputs.pages }}
+          WIDTH: ${{ github.event.inputs.width }}
+        run: mkdir -p bcshots && (node job/bcshots.mjs | tee bcshots/run.txt || true)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bc-shots
+          path: bcshots/
+          retention-days: 7

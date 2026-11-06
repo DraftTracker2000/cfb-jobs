@@ -39,6 +39,8 @@ if FOCUS == 'hunt4':   # pattern hunt 4 (Thursday #41, Nov 5): the game-level to
     import hunt4; step('hunt4', hunt4.run, reg, log, D); print('hunt4 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt5':   # pattern hunt 5 (Nov 6 — Sam: "try all pattern hunts"), its own notices; nothing else this run
     import hunt5; step('hunt5', hunt5.run, reg, log, D); print('hunt5 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'hunt5b':   # pattern hunt 5 round 2 (Nov 6): the per-play player file
+    import hunt5b; step('hunt5b', hunt5b.run, reg, log, D); print('hunt5b errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'cfprate':   # Thursday #5/#6 (Nov 5): the rating settings and Elo vs this season, its own notices; nothing else this run
     import cfprate; step('cfprate', cfprate.run, reg, log, D); print('cfprate errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'coachdev':

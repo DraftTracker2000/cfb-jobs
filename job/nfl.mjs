@@ -188,6 +188,15 @@ const snapKey = (n, p) => String(n || "").toLowerCase().replace(/\b(jr|sr|ii|iii
    (pYYYY_slpsnaps); the latest week is read again only on Monday, Tuesday and Friday (after Sunday, Monday and Thursday games); on the other
    days a run reads nothing from Sleeper and uses the kept weeks */
 let SNAP_GET = null, SNAP_PUT = null;
+export function actRows(SN, out, D) {
+  const act = {}; if (!SN) return act; const TW = {}, mine = {};
+  for (const P of [out, D]) for (const id in P) for (const r of P[id]) { if (r[1] !== "R" || !r[3]) continue; if (r[2]) TW[r[3] + "|" + r[0]] = [r[2], r[4]]; (mine[id] = mine[id] || []).push([r[0], r[3]]) }
+  for (const id in SN) { const M = mine[id]; if (!M) continue;
+    for (const [w0, x] of Object.entries(SN[id])) { const w = +w0, on = (x[0] || 0) > 0 || (x[2] || 0) > 0; if (!on || M.some(m => m[0] === w)) continue;
+      const t = M.slice().sort((a, b) => Math.abs(a[0] - w) - Math.abs(b[0] - w))[0][1], g = TW[t + "|" + w]; if (!g) continue;
+      (act[id] = act[id] || []).push([w, g[0], t, g[1], x[0] || 0, x[2] || 0]) } }
+  return act;
+}
 async function sleeperSnaps(S, log) {
   if (S < 2020) return null;
   try {
@@ -208,7 +217,7 @@ async function sleeperSnaps(S, log) {
     if (!quiet) for (let w = 1; w <= 18; w++) {
       if (prev.fin[w] && prev.wk[w]) { last = w; continue }
       const r = await fetch(`https://api.sleeper.app/v1/stats/nfl/regular/${S}/${w}`); reads++; if (!r.ok) break; const J = await r.json(); const M = {}; let n = 0;
-      for (const k in J) { const x = J[k], g = SLP_IDS[k]; if (!g || x.off_snp == null) continue; M[g] = [x.off_snp, x.tm_off_snp ?? null]; n++ }
+      for (const k in J) { const x = J[k], g = SLP_IDS[k]; if (!g || (x.off_snp == null && x.def_snp == null)) continue; M[g] = [x.off_snp ?? null, x.tm_off_snp ?? null, x.def_snp ?? null, x.tm_def_snp ?? null]; n++ }
       if (!n) break; prev.wk[w] = M; last = w;
       await new Promise(z => setTimeout(z, 250));   // gentle on Sleeper's API
     }
@@ -243,7 +252,12 @@ async function logs(S, log) {
   });
   /* snaps from Sleeper, regular season (2020 on) */
   const SN = await sleeperSnaps(S, log); if (SN) for (const id in out) { const m = SN[id]; if (!m) continue; for (const row of out[id]) { if (row[1] !== "R") continue; const x = m[row[0]]; if (x) { row[23] = x[0]; row[24] = x[1] } } }
-  return { cols: LOG_COLS, s: S, p: out, def: { cols: DEF_COLS, s: S, p: D } };
+  /* Nov 5 (5:27 pm on the clubs, #73: "some players just do 0's. unfortunate we don't have snap counts" · 5:31 pm: "sleeper. no scraping.
+     just one read or if not then don't do it"): games he played with no stat line — snaps in the Sleeper week we already read (offense 2020 on;
+     defense from the weeks read after Nov 5, the same read) and no row in this file. Kept as act { week, game, team, opp, off snaps, def
+     snaps }; the team is his team in his nearest game that season, the game and opponent that team's game that week. */
+  const act = actRows(SN, out, D); log(`nfl: played with no stat line ${S}: ${Object.values(act).reduce((a, x) => a + x.length, 0)} player-games`);
+  return { cols: LOG_COLS, s: S, p: out, act: { cols: ["week", "game", "team", "opp", "offSnp", "defSnp"], p: act }, def: { cols: DEF_COLS, s: S, p: D } };
 }
 
 /* ── one season of play-by-play, boiled down ── */

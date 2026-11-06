@@ -130,7 +130,8 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
     for (const [d, T, o, gave, got] of PK.trades) { if (!d) continue; const y = +d.slice(0, 4), S0 = +d.slice(5, 7) >= 9 ? y : y - 1, prev = +d.slice(5, 7) >= 9 ? S0 - 1 : S0;
       const fp = x => FPS[prev + "|" + nm(x)] || 0, all = [...pl(gave).map(x => [x, T, o]), ...pl(got).map(x => [x, o, T])].map(([x, from, to]) => ({ x, from, to, f: fp(x) })).sort((a, b) => b.f - a.f);
       const star = all[0], f1 = firsts(gave) + firsts(got); if (!(star && star.f >= 200) && f1 < 2) continue;
-      const h = star && star.f >= 100 ? `${Nick(star.from, y)} trade ${nm(star.x)} to ${nick(star.to, y)}` : `${Nick(T, y)} and ${nick(o, y)} swap ${f1} first-round picks`;
+      const pFor = firsts(gave) >= 2 ? pl(got).map(x => [x, o, T]) : firsts(got) >= 2 ? pl(gave).map(x => [x, T, o]) : [], who = star && star.f >= 100 ? star : pFor.length ? { x: pFor[0][0], from: pFor[0][1], to: pFor[0][2], f: 0 } : null;
+      const h = who ? `${Nick(who.from, y)} trade ${nm(who.x)} to ${nick(who.to, y)}${who.f < 100 && f1 >= 2 ? ` for ${f1 === 2 ? "two" : f1 === 3 ? "three" : f1} first-round picks` : ""}` : `${Nick(T, y)} and ${nick(o, y)} swap ${f1} first-round picks`;
       add(d.slice(5, 10), "nfltrade", y, Math.round((star ? star.f : 0) / 10 + f1 * 8), h, `${Nick(T, y)} received ${say(got)}; ${nick(o, y)} received ${say(gave)}.${star && star.f >= 100 ? ` ${nm(star.x)} scored ${Math.round(star.f)} PPR fantasy points the season before.` : ""}`, "nfl") } } } catch (e) { log("this day: NFL trades skipped — " + e.message) }
   /* NBA trades (5:16 pm: "we have GM trade data on the site already so i would look there first"): p2000_cbb-nbatrades, NBA.com's
      player movement log since 2015 (the Be the GM data). A trade is a moment when a player in it averaged 18+ points that season or the one
@@ -142,7 +143,7 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
       const P = L.filter(r => r[5]).map(r => { const [p, s] = ppgS(r[4], sy); return { r, p, s } }).sort((a, b) => b.p - a.p); if (!P.length || P[0].p < 18) continue;
       const star = P[0], to = star.r[2], from = star.r[3], teams = [...new Set(L.map(r => r[2]))];
       const got = t => { const A = [...new Set(L.filter(r => r[2] === t).map(r => r[4]))].filter(w => !/^(draft consideration|cash)/i.test(w)).map(w => w.replace(/^(\d{4}) /, "a $1 ")); return A.length ? lst(A) : "draft considerations" };
-      add(dt.slice(5, 10), "nbatrade", y, Math.round(star.p), `The ${nick(from)} trade ${star.r[4]} to the ${nick(to)}`, teams.map(t => `The ${nick(t)} received ${got(t)}`).join("; ") + `. ${star.r[4]} averaged ${star.p.toFixed(1)} points a game the season before (${star.s - 1}–${String(star.s).slice(2)}).`, "nba") } } } catch (e) { log("this day: trades skipped — " + e.message) }
+      add(dt.slice(5, 10), "nbatrade", y, Math.round(star.p), `The ${nick(from)} trade ${star.r[4]} to the ${nick(to)}`, teams.map(t => `The ${nick(t)} received ${got(t)}`).join("; ").replace(/\.$/, "") + `. ${star.r[4]} averaged ${star.p.toFixed(1)} points a game the season before (${star.s - 1}–${String(star.s).slice(2)}).`, "nba") } } } catch (e) { log("this day: trades skipped — " + e.message) }
   /* off days (the owner: "what about other events on those days?"): Pro Football Hall of Famers' birthdays — our Hall of Fame file (Wikipedia)
      matched to nflverse's players file (birth dates), so the summer has a card too */
   try { const HF = await getPack("p1990_nfl-hof"), r = await fetch("https://github.com/nflverse/nflverse-data/releases/download/players/players.csv", { redirect: "follow" }); files++;

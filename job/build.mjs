@@ -224,6 +224,14 @@ async function main() {
     const d = await runStudy({ site: SITE, token: sess.token, job: JOB, log: x => console.log(x) });
     await report(true, `study · ${d.batches} batches · ${d.calls} calls (CFBD + CBBD) · ${d.keptMB} MB of finished-season answers newly kept by the proxy`); return }
   /* MODE=punt: college punts and returns from CFBD, 2015 on (job/cfbpunt.mjs, Oct 28 — the owner: yes); finished seasons are kept and never fetched again */
+  /* MODE=thisday: every day's "This day in history" moments (job/thisday.mjs, Nov 6 — the owner: "might as well just run it now"); no ESPN reads */
+  if (MODE === "thisday") { const { buildThisDay } = await import("./thisday.mjs"); const { gzipSync } = await import("node:zlib");
+    const getPack = async n => { if (!n) return null; const r = await fetch(SITE + "/api/pack/" + n, { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? r.json() : null };
+    const getIndex = async () => { try { const r = await fetch(SITE + "/api/pack-index", { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? (await r.json()).packs : null } catch { return null } };
+    const putPack = async (n, obj) => { const r = await api("PUT", `/api/pack/${n}`, { raw: true, body: gzipSync(Buffer.from(JSON.stringify(obj))), headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+      await api("PUT", "/api/pack-index", { body: { [n]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } }); return r };
+    const d = await buildThisDay({ site: SITE, token: sess.token, getPack, getIndex, putPack, log: x => console.log(x) });
+    console.log(`::notice title=this day::${d.msg}`); await report(true, d.msg); return }
   if (MODE === "punt") { const { buildPunts } = await import("./cfbpunt.mjs");
     const getIndex = async () => { try { const r = await fetch(SITE + "/api/pack-index", { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? (await r.json()).packs : null } catch { return null } };
     const d = await buildPunts({ site: SITE, token: sess.token, api, getIndex, log: x => console.log(x) });

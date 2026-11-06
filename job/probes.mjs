@@ -94,6 +94,14 @@ for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=reg
   if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
   if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
 for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
+  /* Nov 6 (read only — the owner 12:39: past injury sides): a few other ESPN places that might still carry left/right for past injuries — about 8 reads */
+  { name: "injside2", node: `const o={};const get=async u=>{try{const r=await fetch(u,{headers:{"User-Agent":"Mozilla/5.0"}});const t=await r.text();return {st:r.status,t}}catch(e){return {st:0,t:String(e)}}};
+const side=t=>{const m=t.match(/"side"\s*:\s*"[^"]*"/g)||[];const d=t.match(/"(location|type|detail)"\s*:\s*"[^"]*"/g)||[];return {sides:m.slice(0,6),det:d.slice(0,6),hasInj:/"injuries"/.test(t)}};
+for(const [k,u] of [["coreSeason2024","https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2024/athletes/3916387/injuries"],["coreAth","https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/athletes/3916387/injuries"],
+ ["siteAth","https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/3916387"],["siteAthOverview","https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/3916387/overview"],
+ ["summary2022","https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401437904"],["summary2019","https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401127998"],
+ ["teamInj2023","https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/teams/33/injuries"],["coreAthNoId","https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2023/types/2/athletes/3916387/injuries"]]){const r=await get(u);o[k]={st:r.st,len:r.t.length,...side(r.t)}}
+return o` },
   /* Nov 6 (read only — the owner 11:36: injury sides): what we keep for Lamar Jackson's side, how many players have a side on file, and whether
      ESPN's per-player injury history (core API) carries left/right for past injuries — 3 reads */
   { name: "injside", node: `const o={};const r=await fetch(SITE+"/api/inj",{headers:{Authorization:"Bearer "+TOKEN}});const j=r.ok?await r.json():{};const sd=j.sd||{};o.sidesKept=Object.keys(sd).length;o.lamar=sd["3916387"]||null;

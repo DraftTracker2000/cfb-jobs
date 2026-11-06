@@ -99,9 +99,9 @@ for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);
   { name: "injpost", page: "/", widths: [1280], settle: 9000, run: `return await (async()=>{const DP=await nflPack("depth"),IH=await nflInjHist(),PL=await nflPlayers();const out=[];
 for(const g in (DP&&DP.inj)||{}){const i=DP.inj[g];if(!nflInjCur(DP,i)||!/^out$/i.test(i[1]||""))continue;const St=injStints(IH,g);if(St.length<3)continue;const p=PL[g]||{};
  const missed=St.reduce((a,x)=>a+(x.m||0),0),cur=String(i[2]||""),sp=INJ_SPOT.find(([re])=>re.test(cur)),same=sp?St.filter(x=>sp[0].test(x.inj||"")):[];
- out.push({g,name:p.name,pos:p.pos,team:i[4],week:i[0],injury:cur,missed,same:same.length,stints:St.slice(0,10).map(x=>({y:x.y,w0:x.w0,w1:x.w1,inj:x.inj,side:x.side||"",m:x.m})),n:St.length})}
-const named=out.filter(x=>x.injury);named.sort((a,b)=>b.same-a.same||b.missed-a.missed);const top=named.slice(0,6);const ys=Object.keys((IH&&IH.d)||{}).sort();
-return {n:out.length,named:named.length,ihSeasons:ys.slice(-3),top,others:named.slice(6,20).map(x=>x.name+" ("+x.team+", "+x.injury+", "+x.missed+" missed, same "+x.same+")")}})()` },
+ out.push({g,name:p.name,pos:p.pos,team:i[4],week:i[0],injury:cur,missed,same:same.length,st:St.slice(0,8).map(x=>[x.y,x.w0,x.w1,x.inj,x.side||"",x.m].join("|")),n:St.length})}
+const named=out.filter(x=>x.injury);named.sort((a,b)=>b.same-a.same||b.missed-a.missed);const top=named.slice(0,5);const ys=Object.keys((IH&&IH.d)||{}).sort();
+return {n:out.length,named:named.length,ihSeasons:ys.slice(-3),top,others:named.slice(5,14).map(x=>x.name+"|"+x.team+"|"+x.injury+"|"+x.missed+"|"+x.same)}})()` },
   /* Nov 6 (study only, read only — Sam 10:13 am: "just tell me after"): pattern hunt 6, NBA side, from our referee files (every game
      2003 on: score, closing line and total, fouls, free throws, officials). Bar: BH q < .10 and the holdout seasons (2022 on) the same way. */
   { name: "nbahunt", node: `const R=[];for(let y=2003;y<=2026;y++){const r=await fetch(SITE+"/api/pack/p"+y+"_cbb-refraw-n",{headers:{Authorization:"Bearer "+TOKEN}});if(!r.ok)continue;const P=await r.json(),C=Object.fromEntries(P.cols.map((c,i)=>[c,i]));

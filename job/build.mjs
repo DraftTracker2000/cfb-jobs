@@ -298,7 +298,10 @@ async function main() {
     if (/^\[builder\]/.test(t)) { console.log(t); if (BLOG.length < 400) BLOG.push(t) } });
   await page.goto(SITE + "/404");                                     // any page on the site, to set storage
   await page.evaluate(t => { localStorage.clear(); localStorage.setItem("cfbTok", t) }, sess.token);
-  await page.goto(`${SITE}${PAGE}?builder=${MODE}${SUNDAY_CATCHUP ? "&catchup=1" : ""}`, { waitUntil: "domcontentloaded" });
+  /* MODE=qb with seasons in the probe box (Nov 5 — Sam, 8:23 pm: "ok" to building past college seasons' play-by-play packs): those seasons'
+     p<Y>_pbp only, e.g. "2021,2022,2023" (?pbpy=) */
+  const PBPY = MODE === "qb" && /^\d{4}(,\d{4})*$/.test(process.env.PROBE || "") ? process.env.PROBE : "";
+  await page.goto(`${SITE}${PAGE}?builder=${MODE}${SUNDAY_CATCHUP ? "&catchup=1" : ""}${PBPY ? "&pbpy=" + PBPY : ""}`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => typeof window.__BUILDER_SEED === "function" || window.__BUILDER, null, { timeout: 120000 });
   /* a page without the prefetch hook would take "prefetch" for an ordinary build — stop before it starts */
   if (MODE === "prefetch" && !(await page.evaluate(() => window.__PREFETCH_V === 1))) { await browser.close(); throw new Error(`prefetch: ${PAGE} has no prefetch hook (window.__PREFETCH_V) — is the Lab change live?`) }

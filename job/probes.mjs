@@ -108,6 +108,15 @@ rows.sort((a,b)=>a[0].localeCompare(b[0])||a[1]-b[1]);return rows.slice(${k*90},
 for(const t in (DP&&DP.teams)||{})for(const pos in DP.teams[t])for(const x of DP.teams[t][pos])if(x[2]===1)S.add(x[0]);
 const rows=[];for(const g of S){for(const x of injStints(IH,g)){if(x.side||!(x.m>=4)||!INJ_SIDED.test(x.inj||""))continue;rows.push([g.slice(3),x.y,x.w0+"-"+x.w1,x.inj,x.m])}}
 rows.sort((a,b)=>b[4]-a[4]||a[0].localeCompare(b[0]));return rows.slice(${k*80},${k*80+80}).map(r=>r.join("|")).join(";")})()` })),
+  /* Nov 6 (read only — Sam 3:13: "how many OL and Defensive active players have injuries without a side and how many are currently starters"):
+     everyone on a depth chart, by unit, with injuries at a part that has sides and no side kept */
+  { name: "oldefinj", page: "/", widths: [1280], settle: 9000, run: `return await (async()=>{const DP=await nflPack("depth"),IH=await nflInjHist();const P={},keys=new Set();
+for(const t in (DP&&DP.teams)||{})for(const pos in DP.teams[t]){keys.add(pos);for(const x of DP.teams[t][pos]){const o=P[x[0]]=P[x[0]]||{pos,st:false};if(x[2]===1)o.st=true}}
+const OL=/^(LT|RT|LG|RG|C|T|G|OT|OG|OL)$/,DF=/^(DE|DT|NT|LDE|RDE|LDT|RDT|EDGE|DL|LB|OLB|ILB|MLB|WLB|SLB|LOLB|ROLB|LILB|RILB|CB|LCB|RCB|NB|S|FS|SS|DB|SAF)$/;
+const R={};for(const g in P){const u=OL.test(P[g].pos)?"OL":DF.test(P[g].pos)?"DEF":null;if(!u)continue;const r=R[u]=R[u]||{players:0,starters:0,pAny:0,sAny:0,pMiss:0,sMiss:0,stAny:0,stMiss:0,stMissStart:0};r.players++;if(P[g].st)r.starters++;
+let a=0,m=0;for(const x of injStints(IH,g)){if(x.side||x.unk||!INJ_SIDED.test(x.inj||""))continue;a++;if(x.m>0){m++;if(P[g].st)r.stMissStart++}}
+r.stAny+=a;r.stMiss+=m;if(a){r.pAny++;if(P[g].st)r.sAny++}if(m){r.pMiss++;if(P[g].st)r.sMiss++}}
+return {R,keys:[...keys].sort().join(",")}})()` },
   /* Nov 6 (read only): how many reported injuries name the side in their own text ("Right Wrist"), and the unmatched recalls' seasons */
   { name: "sidetext", page: "/", widths: [1280], settle: 8000, run: `return await (async()=>{const IH=await nflInjHist(),PL=await nflPlayers();const inj=IH.inj||[];const sided=inj.filter(x=>/\\b(left|right)\\b/i.test(x));
 let st=0,stS=0;for(const y in IH.d)for(const g in IH.d[y])for(const r of IH.d[y][g]){st++;if(r[1]>=0&&/\\b(left|right)\\b/i.test(inj[r[1]]||""))stS++}

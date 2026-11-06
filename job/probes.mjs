@@ -71,7 +71,7 @@ const r=await fetch(SITE+"/api/pack/p2000_pickscale",{method:"PUT",body:gzipSync
 return {ok:r.ok,st:r.status,nba,cfbAdopted:!!(M.cfb&&M.cfb.adopted)}` },
   /* Nov 6 (read only): "outplays his recruiting" on the real coach data before the coaches rebuild — fetch team recruiting, run the
      model's coachCtx/coachStats, report the fit and the top and bottom coaches */
-  { name: "corec", page: "/lab/?model=1", widths: [1280], settle: 9000, run: `return await (async()=>{const o={};const CO0=await coachLoad();if(!CO0)return {err:"no coaches"};
+  { name: "corec", page: "/lab/", widths: [1280], settle: 9000, run: `return await (async()=>{const o={};await loadModel();if(typeof coachCtx!=="function")return {err:"no model"};const CO0=await coachLoad();if(!CO0)return {err:"no coaches"};
 const RP={},rec4={};for(let y=2000;y<=CURYEAR;y++){const R=(await api("/recruiting/teams?year="+y).catch(()=>[]))||[];o["n"+y]=R.length;for(const r of R)if(r.team&&r.points!=null)RP[r.team+"|"+y]=+r.points}
 const tms=new Set(Object.keys(RP).map(k=>k.slice(0,k.lastIndexOf("|"))));for(const t of tms)for(let y=1990;y<=CURYEAR;y++){const v=[0,1,2,3].map(i=>RP[t+"|"+(y-i)]).filter(x=>x!=null);if(v.length>=3)rec4[t+"|"+y]=+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1)}
 CO0.rec4=rec4;const ctx=coachCtx(CO0);o.fit=ctx.recFit;o.rec4n=Object.keys(rec4).length;

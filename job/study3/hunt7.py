@@ -196,7 +196,7 @@ def run_c(reg, log, D):
     A['season'] = _season(A); O = pd.DataFrame({'team': pick(A, 'team').astype(str), 'season': A.season, 'ppa': num(A['offense.ppa'])})
     on = O.copy(); on['season'] -= 1
     j = V.merge(O, on=['team', 'season']).merge(on, on=['team', 'season'], suffixes=('', '_n')).dropna(subset=['ppa', 'ppa_n'])
-    j = j[j.season < j.season.max()].copy(); j['d'] = j.ppa_n - j.ppa; j['d'] = j.d - np.polyval(np.polyfit(j.ppa, j.d, 1), j.ppa)
+    j = j[(j.season < j.season.max()) & (j.season >= 2020)].copy(); j['d'] = j.ppa_n - j.ppa; j['d'] = j.d - np.polyval(np.polyfit(j.ppa, j.d, 1), j.ppa)   # the portal file starts in 2021: earlier transfers would count as 'other'
     log(f'hunt7c: {len(j)} team-seasons; mean shares gone — transfer {j.transfer.mean():.3f}, draft {j.draft.mean():.3f}, other {j.other.mean():.3f}')
     for c, lab in (('transfer', 'transferred out'), ('draft', 'drafted'), ('other', 'left otherwise (graduated, quit, injured)')):
         r = mech(reg, f'H7-5{"tdo".index(c[0])}', f'Share of offensive usage {lab} -> next season change in offensive PPA (this season held fixed)', j.d.values, j[c].values, j.team.values, j.season.values, unit='PPA per play, all usage')

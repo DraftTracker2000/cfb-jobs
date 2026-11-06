@@ -2,6 +2,21 @@
    async function evaluated in the page (w(ms) waits, W is the width). Return {ok, ...whatever helps}. Keep results short. */
 const res = `const R=()=>performance.getEntriesByType("resource").map(e=>decodeURIComponent(e.name));`;
 export const PROBES = [
+  /* Nov 5, 9:46 pm (the owner: "is the beyond chance bar real or can we dig more out of it?"), read only: the "got more out of him" credit three
+     ways — A as tested (best season after vs best before, z ≥ 1.645), B his FIRST season after vs his LAST before (no picking the best of
+     several), C B measured against what transfers at his position usually gain (the baseline every mover gets, e.g. a bigger role) */
+  { name: "xfermore2", page: "/lab/", widths: [1280], settle: 8000, run: `await coachLoad();const ys=[];for(let y=2020;y<=CURYEAR;y++)ys.push(y);
+const [A,P]=await Promise.all([Promise.all(ys.map(trhPpa)),Promise.all(ys.filter(y=>y>=2021).map(trhPortal))]);const PA={};ys.forEach((y,i)=>PA[y]=A[i]);
+const CS={};for(const c of Object.values(CO.coaches))for(const s of c.s){const k=s[1]+"|"+s[0];if(!CS[k]||s[3]>CS[k].g)CS[k]={n:c.n,k:c.k,g:s[3]}}
+const H={};for(const y of ys)for(const k in PA[y].M){const o=PA[y].M[k];if(!/^(QB|RB|WR|TE)$/.test(o.pos))continue;if(o.n<(y===CURYEAR?30:60))continue;const [nm,t]=k.split("|");const c=CS[t+"|"+y];(H[nm]=H[nm]||[]).push({y,t,a:o.a,n:o.n,pos:o.pos,ck:c&&c.k,cn:c&&c.n,full:o.nm})}
+const moves=[];ys.filter(y=>y>=2021).forEach((y,i)=>{for(const r of P[i]||[])if(r.destination)moves.push({y,nm:nk((r.firstName||"")+" "+(r.lastName||"")),o:r.origin,d:r.destination,full:r.firstName+" "+r.lastName})});
+const LA=[],LB=[];for(const m of moves){const h=H[m.nm];if(!h)continue;const after=h.filter(s=>s.t===m.d&&s.y>=m.y).sort((a,b)=>a.y-b.y),before=h.filter(s=>s.t===m.o&&s.y<m.y).sort((a,b)=>a.y-b.y);if(!after.length||!before.length)continue;
+ const best=a=>a.reduce((x,y)=>y.a>x.a?y:x),pb=best(before),pa=best(after),f=after[0],l=before[before.length-1],sA=OFF_SIG[pa.pos]*Math.sqrt(1/pa.n+1/pb.n),sB=OFF_SIG[f.pos]*Math.sqrt(1/f.n+1/l.n);
+ if(pa.a>pb.a)LA.push({z:(pa.a-pb.a)/sA});LB.push({p:m.full,pos:f.pos,to:m.d,y:f.y,coach:f.cn,g:f.a-l.a,se:sB,n:f.n,ln:l.n,cur:f.y===CURYEAR})}
+const base={};for(const pos of ["QB","RB","WR","TE"]){const L=LB.filter(x=>x.pos===pos&&!x.cur),m=L.reduce((a,x)=>a+x.g,0)/(L.length||1);base[pos]={n:L.length,meanGain:+m.toFixed(3),up:L.filter(x=>x.g>0).length}}
+const zB=x=>x.g/x.se,zC=x=>(x.g-base[x.pos].meanGain)/x.se;const keepC=LB.filter(x=>x.g>0&&zC(x)>=OFF_Z).sort((a,b)=>zC(b)-zC(a));
+return {ok:true,A:{credited:LA.length,kept:LA.filter(x=>x.z>=OFF_Z).length},B:{moves:LB.length,up:LB.filter(x=>x.g>0).length,kept:LB.filter(x=>x.g>0&&zB(x)>=OFF_Z).length},base,C:{kept:keepC.length,thisSeason:keepC.filter(x=>x.cur).length,
+ names:keepC.slice(0,40).map(x=>x.p+" "+x.pos+" → "+x.to+" "+x.y+" ("+x.coach+") +"+x.g.toFixed(2)+" z "+zC(x).toFixed(2))}}` },
   /* Nov 5 (item 9, read only): the live page's own NFL picks (worked out on the page) against the saved picks file the Lab now reads */
   { name: "pickcmp", page: "/", widths: [1280], settle: 6000, run: `const G=await nflGames();await nflQbOutLoad().catch(()=>{});const r=await fetch("/api/pack/p"+CURYEAR+"_nfl-picks",{headers:{Authorization:"Bearer "+TOKEN}});if(!r.ok)return {ok:false,st:r.status};const P=await r.json();
 let n=0,d=0,mx=0,ex=[];for(const g of G){if(P.g[g.id]==null)continue;n++;const v=nflPickP(G,g),e=Math.abs(v-P.g[g.id]);if(e>0.0006){d++;if(ex.length<6)ex.push(g.id+" "+v.toFixed(4)+" vs "+P.g[g.id])}mx=Math.max(mx,e)}

@@ -69,6 +69,15 @@ return {ok:true,seasons:yrs,pairs:rows.length,newQB:{all:fit(C),before2022:fit(C
 const nba=M&&M.nba&&M.nba.adopted?{T:M.nba.T,adopted:true,ver:M.nba.ver||null}:{adopted:false};const {gzipSync}=await import("node:zlib");
 const r=await fetch(SITE+"/api/pack/p2000_pickscale",{method:"PUT",body:gzipSync(Buffer.from(JSON.stringify({v:1,nba}))),headers:{Authorization:"Bearer "+J,"x-encoding":"gzip","Content-Type":"application/json"}});
 return {ok:r.ok,st:r.status,nba,cfbAdopted:!!(M.cfb&&M.cfb.adopted)}` },
+  /* Nov 6 (read only): receiver splits check — one team-season's plays through ppFromPlays, each receiver's catches/yards/TD from the
+     plays vs CFBD's season receiving stats */
+  { name: "rcvcheck", page: "/lab/", widths: [1280], settle: 8000, run: `return await (async()=>{const o={};
+for(const [y,t] of [[2025,"Ohio State"],[2019,"LSU"]]){const P=[];for(let wk=1;wk<=16;wk++){const a=await api("/plays?year="+y+"&week="+wk+"&team="+encodeURIComponent(t)).catch(()=>[]);if(Array.isArray(a))P.push(...a)}
+ const A=ppFromPlays(t,P);const R={};let pass=0,named=0;for(const k in A)for(const r of A[k])if(r[7]==="C"||r[7]==="I"||r[7]==="X"){pass++;if(r[12]){named++;const x=R[r[12]]=R[r[12]]||{tgt:0,rec:0,yds:0,td:0,d3:0,rz:0};x.tgt++;if(r[7]==="C"){x.rec++;x.yds+=r[8];if(r[9])x.td++}if(r[3]===3)x.d3++;if(r[5]>0&&r[5]<=20)x.rz++}}
+ const st=await api("/stats/player/season?year="+y+"&team="+encodeURIComponent(t)+"&category=receiving").catch(()=>[]);const B={};for(const s of st||[]){const b=B[s.player]=B[s.player]||{};b[s.statType]=+s.stat}
+ const top=Object.entries(R).sort((a,b)=>b[1].tgt-a[1].tgt).slice(0,6).map(([n,x])=>{const k=Object.keys(B).find(b=>ppSame(n,b));return {n,...x,box:k?{n:k,rec:B[k].REC,yds:B[k].YDS,td:B[k].TD}:null}});
+ o[y+" "+t]={plays:P.length,pass,named,top}}
+return o})()` },
   /* Nov 6 (read only): pass-play text from CFBD in several seasons — for parsing the receiver on college plays (ideas doc #6/#7) */
   { name: "rcvtext", page: "/lab/", widths: [1280], settle: 6000, run: `return await (async()=>{const o={};
 for(const [y,t,wk] of [[2014,"Oregon",2],[2018,"Alabama",3],[2022,"Ohio State",4],[2024,"Texas",5],[2025,"Indiana",6]]){

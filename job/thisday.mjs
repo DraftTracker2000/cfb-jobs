@@ -5,7 +5,7 @@
      college  football (CFBD games + AP poll, 2014 on, via the site's kept CFBD answers): unranked over a top-10 team, top-10 meetings
      NBA and college basketball (our referee files, 2003 on, Eastern dates from p<Y>_cbb-gdate-<lg>): big upsets by the line, huge totals
    Bars lowered after the first run (236 of 366 days had a moment) so spring and summer days get one too: NFL upsets 7+, 75+ points;
-   NBA upsets 8+, 260+ points; college basketball upsets 12+, 185+ points. Still the best 14 of each kind a day.
+   NBA upsets 8+, 260+ points; college basketball upsets 12+, 185+ points. Still the best 14 of each kind a day. A shootout needs both teams scoring (NBA 120+, college 85+ — no 147–39 blowouts).
    Writes p2000_thisday { v, at, cols, d: { "MM-DD": [[kind, year, score, text, sport], …] } } — the 14 best of each kind a day is plenty.
    No reads at ESPN; CFBD's finished seasons come from the proxy's kept answers (x-kept), so a rerun costs next to nothing. The Lab's
    Posts page (/lab/posts.html) picks from it each morning. MODE=thisday (job/build.mjs). */
@@ -22,7 +22,7 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
   const GP = await getPack(part("games")); const G = {}, FR = { STL: "LA", SD: "LAC", OAK: "LV" };
   if (GP) { const o = obj(GP); for (const r of GP.g) { const g = o(r); G[g.id] = g; const md = String(g.gameday || g.date || "").slice(5, 10); if (!md || g.homeScore == null) continue; out.nflGames++;
     const y = String(g.gameday || g.date).slice(0, 4), m = g.homeScore - g.awayScore, sp = g.spread, ln = `${g.away} ${g.awayScore} at ${g.home} ${g.homeScore}`;
-    if (sp != null) { const dogHome = sp < 0, won = dogHome ? m > 0 : m < 0; if (won && Math.abs(sp) >= 7) add(md, "nflupset", y, Math.abs(sp), ln + " · line " + sp, "nfl") }
+    if (sp != null) { const dogHome = sp < 0, won = dogHome ? m > 0 : m < 0; if (won && Math.abs(sp) >= 7) add(md, "nflupset", y, Math.abs(sp), `${ln} · ${dogHome ? g.home : g.away} were ${Math.abs(sp)}-point underdogs`, "nfl") }
     if (g.homeScore + g.awayScore >= 75) add(md, "nflpts", y, g.homeScore + g.awayScore, ln, "nfl") } }
   /* NFL player games */
   const PP = await getPack(part("players")), PL = {}; if (PP && PP.p) { const ni = PP.cols.indexOf("name"); for (const g in PP.p) PL[g] = PP.p[g][ni] }
@@ -48,8 +48,8 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
     const GD = (await getPack(`p${y}_cbb-gdate-${lg}`).catch(() => null)) || { g: {} }, o = obj(P);
     for (const [id, row] of Object.entries(P.g)) { const x = o(row); if (x.hs == null || x.as == null) continue; const dt = GD.g[id] || String(x.date || "").slice(0, 10), md = dt.slice(5, 10), yy = dt.slice(0, 4); if (!md) continue; out.bb[lg]++;
       const m = x.hs - x.as, sp = lg === "n" ? "nba" : "cbb";
-      if (x.spread != null) { const dogHome = x.spread > 0, won = dogHome ? m > 0 : m < 0; if (won && Math.abs(x.spread) >= (lg === "n" ? 8 : 12)) add(md, lg + "bbupset", yy, Math.abs(x.spread), `${x.away} ${x.as} at ${x.home} ${x.hs} · line ${x.spread}`, sp) }
-      if (x.hs + x.as >= (lg === "n" ? 260 : 185)) add(md, lg + "bbpts", yy, x.hs + x.as, `${x.away} ${x.as} at ${x.home} ${x.hs}`, sp) } }
+      if (x.spread != null) { const dogHome = x.spread > 0, won = dogHome ? m > 0 : m < 0; if (won && Math.abs(x.spread) >= (lg === "n" ? 8 : 12)) add(md, lg + "bbupset", yy, Math.abs(x.spread), `${x.away} ${x.as} at ${x.home} ${x.hs} · ${dogHome ? x.home : x.away} were ${Math.abs(x.spread)}-point underdogs`, sp) }
+      if (x.hs + x.as >= (lg === "n" ? 260 : 185) && Math.min(x.hs, x.as) >= (lg === "n" ? 120 : 85)) add(md, lg + "bbpts", yy, x.hs + x.as, `${x.away} ${x.as} at ${x.home} ${x.hs}`, sp) } }
   /* the best of each kind a day */
   let n = 0; for (const md in D) { const by = {}; for (const r of D[md]) (by[r[0]] = by[r[0]] || []).push(r);
     D[md] = Object.values(by).flatMap(L => L.sort((a, b) => b[2] - a[2]).slice(0, KEEP)); n += D[md].length }

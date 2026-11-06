@@ -41,6 +41,8 @@ if FOCUS == 'hunt5':   # pattern hunt 5 (Nov 6 — the owner: "try all pattern h
     import hunt5; step('hunt5', hunt5.run, reg, log, D); print('hunt5 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'bbhunt6':   # pattern hunt 6, college basketball (Nov 6 — the owner, 10:09 am), its own notices; nothing else this run
     import bbhunt6; step('bbhunt6', bbhunt6.run, reg, log, D); print('bbhunt6 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'hunt7c':   # hunt 7 round 4: vacated usage by why the players left
+    import hunt7; step('hunt7c', hunt7.run_c, reg, log, D); print('hunt7c errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt7b':   # hunt 7 round 3: basketball transfers joined to season stats
     import hunt7; step('hunt7b', hunt7.run_b, reg, log, D); print('hunt7b errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt7':   # pattern hunt 7 (Nov 6 — the owner, 5:04 pm: "exhaust these before releasing. all angles"): the batches no hunt had read

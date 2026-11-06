@@ -173,3 +173,34 @@ def run_b(reg, log, D):
     print('::notice title=hunt7b groups::' + ' ‖ '.join(f"{g}: {len(x)} · min {x.mpg.mean():.1f}->{x.mpg_n.mean():.1f} · p40 {x.p40.mean():.1f}->{x.p40_n.mean():.1f}" for g, x in j.groupby('grp')))
     out = ' ‖ '.join(f"{'SURVIVES' if x.survives else 'no'} · {x.hyp} {x.label}: est {x.est:+.4g} (p {x.p:.3g}, q {x.q:.3g}, n {x.n}) · {str(x.detail)[:240]}" for _, x in R.iterrows())
     for i in range(0, min(len(out), 3800 * 4), 3800): print(f'::notice title=hunt7b {i // 3800 + 1}::{out[i:i + 3800]}')
+
+
+# ---------- round 4 (focus hunt7c): vacated usage split by why the players left ----------
+def run_c(reg, log, D):
+    import os
+    from load import norm_name, school
+    A = frame('cf_adv'); U = frame('cf_usage'); po = frame('cf_portal')
+    dr = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nfl_draft.csv'), comment='#')
+    U['season'] = _season(U); U['team'] = pick(U, 'team').astype(str); U['pid'] = pick(U, 'id', 'playerId').astype(str); U['u'] = num(pick(U, 'usage.overall')); U['nm'] = pick(U, 'name').map(norm_name)
+    U = U[np.isfinite(U.u)]
+    nxt = set(zip(U.team, U.season - 1, U.pid))
+    U['left'] = [(t, s, p) not in nxt for t, s, p in zip(U.team, U.season, U.pid)]
+    T = set(zip((pick(po, 'firstName').astype(str) + pick(po, 'lastName').astype(str)).map(norm_name), pick(po, 'origin').astype(str), num(pick(po, 'season', '_year'))))
+    DR = set(zip(dr.name.map(norm_name), dr.college.map(school), dr.draft_year))
+    U['why'] = np.where(~U.left, 'stay', np.where([(n, t, s + 1) in T for n, t, s in zip(U.nm, U.team, U.season)], 'transfer',
+                np.where([(n, t, s + 1) in DR for n, t, s in zip(U.nm, U.team, U.season)], 'draft', 'other')))
+    log('hunt7c: usage that left, by why: ' + str(U[U.left].groupby('why').u.sum().round(1).to_dict()) + f' · seasons {int(U.season.min())}-{int(U.season.max())}')
+    tot = U.groupby(['team', 'season']).u.sum().rename('tot')
+    V = U[U.left].pivot_table(index=['team', 'season'], columns='why', values='u', aggfunc='sum').reindex(columns=['transfer', 'draft', 'other']).fillna(0).join(tot, how='right').fillna(0).reset_index()
+    for c in ('transfer', 'draft', 'other'): V[c] = V[c] / V.tot.replace(0, np.nan)
+    A['season'] = _season(A); O = pd.DataFrame({'team': pick(A, 'team').astype(str), 'season': A.season, 'ppa': num(A['offense.ppa'])})
+    on = O.copy(); on['season'] -= 1
+    j = V.merge(O, on=['team', 'season']).merge(on, on=['team', 'season'], suffixes=('', '_n')).dropna(subset=['ppa', 'ppa_n'])
+    j = j[j.season < j.season.max()].copy(); j['d'] = j.ppa_n - j.ppa; j['d'] = j.d - np.polyval(np.polyfit(j.ppa, j.d, 1), j.ppa)
+    log(f'hunt7c: {len(j)} team-seasons; mean shares gone — transfer {j.transfer.mean():.3f}, draft {j.draft.mean():.3f}, other {j.other.mean():.3f}')
+    for c, lab in (('transfer', 'transferred out'), ('draft', 'drafted'), ('other', 'left otherwise (graduated, quit, injured)')):
+        r = mech(reg, f'H7-5{"tdo".index(c[0])}', f'Share of offensive usage {lab} -> next season change in offensive PPA (this season held fixed)', j.d.values, j[c].values, j.team.values, j.season.values, unit='PPA per play, all usage')
+        log(f'[{c}] {r["d"]}')
+    R = reg.df(); R = R[R.hyp.astype(str).str.startswith('H7-5')].copy()
+    R['q'] = bh(pd.to_numeric(R.p, errors='coerce').fillna(1).values); R['survives'] = (R.q < .10) & (R.oos_pass == True)
+    print('::notice title=hunt7c::' + ' ‖ '.join(f"{'SURVIVES' if x.survives else 'no'} · {x.hyp} {x.label}: est {x.est:+.4g} (p {x.p:.3g}, q {x.q:.3g}) · {str(x.detail)[:220]}" for _, x in R.iterrows())[:3900])

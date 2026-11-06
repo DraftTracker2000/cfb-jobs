@@ -94,6 +94,10 @@ for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=reg
   if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
   if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
 for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
+  /* Nov 6 (read only): the NBA referee table's Last 2 min column on the basketball Lab */
+  { name: "l2mcol", page: "/cbb/lab/", widths: [1280], settle: 8000, run: `return await (async()=>{await renderRefs(true);await w(4000);const t=document.getElementById("tbl");if(!t)return {err:"no table",panel:(document.getElementById("panel")||{}).innerText?.slice(0,300)};
+const H=[...t.querySelectorAll("th")].map(x=>x.textContent),R=[...t.querySelectorAll("tbody tr")].slice(0,6).map(r=>[...r.cells].map(c=>c.textContent).join(" | "));
+const notes=[...document.querySelectorAll("#panel .note")].map(n=>n.textContent.slice(0,400));return {H,R,n:t.querySelectorAll("tbody tr").length,withL2:[...t.querySelectorAll("tbody tr")].filter(r=>r.cells[r.cells.length-1].textContent!=="—").length,notes}})()` },
   /* Nov 6 (read only): after the QB rebuild — how much of each season's pass plays carry a receiver (r[12]) and a field position (r[5]) */
   { name: "rsitcheck", page: "/lab/", widths: [1280], settle: 8000, run: `return await (async()=>{const o={};for(const [y,t] of [[2014,"Oregon"],[2016,"Clemson"],[2019,"LSU"],[2023,"Washington"],[2026,"Ohio State"]]){
  try{await ensureQbPack(y,t);const ctx=(await gameCtx(t,y)).G,A=await passPlays(t,y,ctx);let n=0,rc=0,f=0,yt=0;const R={};for(const k in A)for(const r of A[k])if(r[7]==="C"||r[7]==="I"||r[7]==="X"){n++;if(r.length>12)f++;if(r[12]){rc++;R[r[12]]=(R[r[12]]||0)+1}if(r[5]>0)yt++}

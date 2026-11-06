@@ -108,6 +108,14 @@ rows.sort((a,b)=>a[0].localeCompare(b[0])||a[1]-b[1]);return rows.slice(${k*90},
 for(const t in (DP&&DP.teams)||{})for(const pos in DP.teams[t])for(const x of DP.teams[t][pos])if(x[2]===1)S.add(x[0]);
 const rows=[];for(const g of S){for(const x of injStints(IH,g)){if(x.side||!(x.m>=4)||!INJ_SIDED.test(x.inj||""))continue;rows.push([g.slice(3),x.y,x.w0+"-"+x.w1,x.inj,x.m])}}
 rows.sort((a,b)=>b[4]-a[4]||a[0].localeCompare(b[0]));return rows.slice(${k*80},${k*80+80}).map(r=>r.join("|")).join(";")})()` })),
+  /* Nov 6 (read only — #77): what raw injury reports we keep and how big, before recording them into players' histories and releasing them */
+  { name: "injkept", node: `const H={headers:{Authorization:"Bearer "+TOKEN}},o={};const ix=(await (await fetch(SITE+"/api/pack-index",H)).json()).packs||{};
+o.packs=Object.fromEntries(Object.entries(ix).filter(([n])=>/cavail|cbbavail|injhist|nfl-inj|cbb-inj|nbainj/.test(n)).map(([n,v])=>[n,v.bytes]));
+for(const n of ["p2026_cavail-arc","p2027_cbbavail-arc"]){try{const r=await fetch(SITE+"/api/pack/"+n,H);if(!r.ok){o[n]="status "+r.status;continue}const t=await r.text(),A=JSON.parse(t);let ver=0,rows=0;const pl=new Set(),te=new Set(),last=[];for(const k in A.g){const G=A.g[k];ver+=G.r.length;te.add(k.split("|")[1]);const L=G.r[G.r.length-1];for(const v of G.r)rows+=v[3].length;for(const p of L[3]){pl.add(k.split("|")[1]+"|"+p[0]);last.push([k,p[0],p[3]])}}
+o[n]={bytes:t.length,games:Object.keys(A.g).length,versions:ver,rows,players:pl.size,teams:te.size,lastRows:last.length,lastBytes:JSON.stringify(last).length,first:Object.keys(A.g).sort()[0],sample:JSON.stringify(last.slice(0,3))}}catch(e){o[n]="err "+e.message}}
+try{const L=await (await fetch(SITE+"/api/admin/injlog",H)).json();o.injlogDays=(L.days||[]).length;o.injlogFirst=(L.days||[])[0];o.injlogLast=(L.days||[]).slice(-1)[0];if(o.injlogLast){const t=await (await fetch(SITE+"/api/admin/injlog?day="+o.injlogLast,H)).text();o.injlogDayBytes=t.length}}catch(e){o.injlogErr=e.message}
+try{const t=await (await fetch(SITE+"/api/inj",H)).text(),j=JSON.parse(t);o.injsideIds=Object.keys(j.sd||{}).length;o.injsideBytes=JSON.stringify(j.sd||{}).length}catch(e){o.injErr=e.message}
+return o` },
   /* Nov 6 (read only — the owner 3:13: "how many OL and Defensive active players have injuries without a side and how many are currently starters"):
      everyone on a depth chart, by unit, with injuries at a part that has sides and no side kept */
   { name: "oldefinj", page: "/", widths: [1280], settle: 9000, run: `return await (async()=>{const DP=await nflPack("depth"),IH=await nflInjHist();const P={},keys=new Set();

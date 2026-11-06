@@ -26,6 +26,7 @@ const nick = (t, y) => { const n = nfl(t, y); return n[1] === "Washington" ? "Wa
 const Nick = (t, y) => { const s = nick(t, y); return s.replace(/^the /, "The ") };
 const full = (t, y) => { const n = nfl(t, y); return n[1] === "Washington" ? "Washington" : n[1] === "Football Team" ? "Washington Football Team" : n.join(" ") };
 const plur = (n, a, b) => `${n} ${n === 1 ? a : b}`;
+const and = (a, n, w1, w2) => n ? `${a}, ${plur(n, w1, w2)}` : a;   /* "17 catches" — no "0 touchdowns" */
 const SCHED = (lg, y) => lg === "n" ? `https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_nba_schedules/nba_schedule_${y}.csv`
   : `https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_mens_college_basketball_schedules/mbb_schedule_${y}.csv`;
 function csv(text) { const out = []; let row = [], f = "", q = false;
@@ -45,18 +46,18 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
   if (GP) { const o = obj(GP); for (const r of GP.g) { const g = o(r); G[g.id] = g; const md = String(g.gameday || g.date || "").slice(5, 10); if (!md || g.homeScore == null) continue; out.nflGames++;
     const y = +String(g.gameday || g.date).slice(0, 4), S = g.season || y, m = g.homeScore - g.awayScore, sp = g.spread, hw = m > 0, W = hw ? g.home : g.away, L = hw ? g.away : g.home, ws = Math.max(g.homeScore, g.awayScore), ls = Math.min(g.homeScore, g.awayScore);
     const score = `${full(W, S)} ${ws}, ${full(L, S)} ${ls}`, where = hw ? `at home` : `in ${nfl(g.home, S)[0]}`;
-    if (sp != null && m !== 0) { const dogHome = sp < 0, won = dogHome ? m > 0 : m < 0; if (won && Math.abs(sp) >= 7) add(md, "nflupset", y, Math.abs(sp), `${Nick(W, S)} stun ${nick(L, S)} as ${Math.abs(sp)}-point underdogs`, `${score}, ${where}.`, "nfl") }
-    if (g.homeScore + g.awayScore >= 75 && m !== 0) add(md, "nflpts", y, g.homeScore + g.awayScore, `${Nick(W, S)} outlast ${nick(L, S)} in a ${g.homeScore + g.awayScore}-point shootout`, `${score}, ${where}.`, "nfl") } }
+    if (sp != null && m !== 0) { const dogHome = sp < 0, won = dogHome ? m > 0 : m < 0; if (won && Math.abs(sp) >= 7) add(md, "nflupset", y, Math.abs(sp), `${Nick(W, S)} stun ${nick(L, S)} as ${Math.abs(sp)}-point underdogs`, `${score} ${where}.`, "nfl") }
+    if (g.homeScore + g.awayScore >= 75 && m !== 0) add(md, "nflpts", y, g.homeScore + g.awayScore, `${Nick(W, S)} outlast ${nick(L, S)} in a ${g.homeScore + g.awayScore}-point shootout`, `${score} ${where}.`, "nfl") } }
   /* NFL player games */
   const PP = await getPack(part("players")), PL = {}; if (PP && PP.p) { const ni = PP.cols.indexOf("name"); for (const g in PP.p) PL[g] = PP.p[g][ni] }
   for (let S = 1999; S < nowYear; S++) { const L = await getPack(part("logs-" + S)).catch(() => null); if (!L || !L.p) continue; const o = obj(L);
     for (const gs in L.p) for (const row of L.p[gs]) { const r = o(row), g = G[r.game]; if (!g) continue; const md = String(g.gameday || g.date || "").slice(5, 10); out.nflLogs++;
       const nm = PL[gs] || gs, tm = r.team, home = tm === g.home, op = home ? g.away : g.home, ts = home ? g.homeScore : g.awayScore, os = home ? g.awayScore : g.homeScore, y = +String(g.gameday || g.date).slice(0, 4);
       const res = ts > os ? `in a ${ts}–${os} win over ${nick(op, S)}` : ts < os ? `in a ${os}–${ts} loss to ${nick(op, S)}` : `in a ${ts}–${os} tie with ${nick(op, S)}`, at = home ? "" : ` in ${nfl(op, S)[0]}`;
-      if ((r.pyd || 0) >= 450) add(md, "pyd", y, r.pyd, `${nm} throws for ${r.pyd} yards`, `${r.cmp} of ${r.att}, ${plur(r.ptd, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
+      if ((r.pyd || 0) >= 450) add(md, "pyd", y, r.pyd, `${nm} throws for ${r.pyd} yards`, `${and(`${r.cmp} of ${r.att}`, r.ptd, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
       if ((r.ptd || 0) >= 5) add(md, "ptd", y, r.ptd, `${nm} throws ${r.ptd} touchdown passes`, `${r.pyd} yards for ${nick(tm, S)} ${res}${at}.`, "nfl");
-      if ((r.ryd || 0) >= 200) add(md, "ryd", y, r.ryd, `${nm} runs for ${r.ryd} yards`, `${r.car} carries, ${plur(r.rtd, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
-      if ((r.yds || 0) >= 200) add(md, "recyd", y, r.yds, `${nm} piles up ${r.yds} receiving yards`, `${r.rec} catches, ${plur(r.td, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
+      if ((r.ryd || 0) >= 200) add(md, "ryd", y, r.ryd, `${nm} runs for ${r.ryd} yards`, `${and(`${r.car} carries`, r.rtd, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
+      if ((r.yds || 0) >= 200) add(md, "recyd", y, r.yds, `${nm} piles up ${r.yds} receiving yards`, `${and(`${r.rec} catches`, r.td, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
       if (((r.rtd || 0) + (r.td || 0)) >= 4) add(md, "td", y, r.rtd + r.td, `${nm} scores ${r.rtd + r.td} touchdowns`, `For ${nick(tm, S)} ${res}${at}.`, "nfl") } }
   /* college football: games + AP poll + mascots, Eastern dates */
   const ET = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", month: "2-digit", day: "2-digit" });
@@ -78,7 +79,7 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
       for (const x of R.slice(1)) if (x[I.id] && P.g[x[I.id]]) NM[x[I.id]] = { hl: x[I.hl], hn: x[I.hn], al: x[I.al], an: x[I.an], city: x[I.city], hr: +x[I.hr] || 0, ar: +x[I.ar] || 0, note: x[I.note] || "", ot: +x[I.per] > (+x[I.reg] || (lg === "n" ? 4 : 2)), neu: /true/i.test(x[I.neu] || "") } } } catch (e) { }
     for (const [id, row] of Object.entries(P.g)) { const x = o(row); if (x.hs == null || x.as == null || x.hs === x.as) continue; const dt = GD.g[id] || String(x.date || "").slice(0, 10), md = dt.slice(5, 10), yy = dt.slice(0, 4); if (!md) continue; out.bb[lg]++;
       const N = NM[id]; if (!N || !N.hl) continue; out.named++;   /* no names, no card: we don't feature abbreviations */
-      const sp = lg === "n" ? "nba" : "cbb", hw = x.hs > x.as, rk = r => r > 0 && r <= 25 && lg === "c" ? `No. ${r} ` : "";
+      const sp = lg === "n" ? "nba" : "cbb", hw = x.hs > x.as, rk = r => r > 0 && r <= 25 && lg === "c" ? (/Championship/.test(N.note) && r <= 16 ? `No. ${r} seed ` : `No. ${r} `) : "";   /* NCAA tournament: seeds */
       const T = h => h ? { loc: N.hl, nm: N.hn, r: N.hr, s: x.hs } : { loc: N.al, nm: N.an, r: N.ar, s: x.as }, W = T(hw), L = T(!hw);
       const short = t => lg === "n" ? "the " + t.nm : t.loc, Short = t => lg === "n" ? "The " + t.nm : t.loc;
       const tail = `${N.ot ? " in overtime" : ""}${N.neu ? (N.city ? ` in ${N.city}` : "") : hw ? " at home" : N.city ? ` in ${N.city}` : " on the road"}${N.note ? ` · ${N.note}` : ""}`;

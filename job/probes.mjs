@@ -94,6 +94,11 @@ for(let y=2014;y<=2025;y++){const Gc=await api("/games?year="+y+"&seasonType=reg
   if(Lr&&Lr<=10&&!Wr)add(d,{k:"cfbupset",y,s:11-Lr,t:"Unranked "+W+" beat #"+Lr+" "+(hw?g.awayTeam:g.homeTeam)+" "+Math.max(g.homePoints,g.awayPoints)+"-"+Math.min(g.homePoints,g.awayPoints)});
   if(hr&&ar&&hr<=10&&ar<=10)add(d,{k:"cfbtop10",y,s:20-hr-ar,t:"#"+ar+" "+g.awayTeam+" "+g.awayPoints+" at #"+hr+" "+g.homeTeam+" "+g.homePoints})}}
 for(const d of DAYS)o.d[d].sort((a,b)=>String(a.k).localeCompare(b.k)||b.s-a.s);return o})()` },
+  /* Nov 6 (read only — Sam 12:59): this season's injuries — how many have a side kept, and how many past injuries have none */
+  { name: "injside4", page: "/", widths: [1280], settle: 8000, run: `return await (async()=>{const IH=await nflInjHist(),SD=await nflInjSides(),PL=await nflPlayers();const ys=Object.keys(IH.d).map(Number).sort();const o={seasons:ys,bySeason:{}};
+const espn={};for(const g in PL){const e=PL[g].espn||PL[g].espnId||PL[g].espn_id;if(e)espn[g]=String(e)}o.espnIds=Object.keys(espn).length;
+for(const y of ys){let n=0,sided=0;const P=new Set();for(const g in IH.d[y]){const St=injStints(IH,g).filter(x=>x.y===y&&INJ_SIDED.test(x.inj||""));for(const x of St){n++;P.add(g);const e=espn[g],L=e&&SD[e];if(L&&L.length)sided++}}o.bySeason[y]={sidedParts:n,players:P.size,withSideKept:sided}}
+const t=Object.values(PL).find(p=>/jordyn tyson/i.test(p.name||""));o.tyson=t?{g:t.gsis,espn:espn[t.gsis],sides:SD[espn[t.gsis]]||null}:null;o.keptPlayers=Object.keys(SD).length;return o})()` },
   /* Nov 6 (read only): how often ESPN's game summaries name the side, by season — week 6, 4 games a season, 2016–2025 (about 50 reads) */
   { name: "injside3", node: `const o={};const get=async u=>{try{const r=await fetch(u,{headers:{"User-Agent":"Mozilla/5.0"}});return r.ok?await r.json():null}catch(e){return null}};
 for(let y=2016;y<=2025;y++){const sb=await get("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates="+y+"&seasontype=2&week=6");const ids=((sb&&sb.events)||[]).slice(0,4).map(e=>e.id);let n=0,lr=0,ns=0;const ex=[];

@@ -63,11 +63,11 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
     for (const gs in L.p) for (const row of L.p[gs]) { const r = o(row), g = G[r.game]; if (!g) continue; const md = String(g.gameday || g.date || "").slice(5, 10); out.nflLogs++;
       const nm = PL[gs] || gs, tm = r.team, home = tm === g.home, op = home ? g.away : g.home, ts = home ? g.homeScore : g.awayScore, os = home ? g.awayScore : g.homeScore, y = +String(g.gameday || g.date).slice(0, 4);
       const res = ts > os ? `in a ${ts}–${os} win over ${nick(op, S)}` : ts < os ? `in a ${os}–${ts} loss to ${nick(op, S)}` : `in a ${ts}–${os} tie with ${nick(op, S)}`, at = home ? "" : ` in ${nfl(op, S)[0]}`;
-      if ((r.pyd || 0) >= 450) add(md, "pyd", y, r.pyd, `${nm} throws for ${r.pyd} yards`, `${and(`${r.cmp} of ${r.att}`, r.ptd, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
-      if ((r.ptd || 0) >= 5) add(md, "ptd", y, r.ptd, `${nm} throws ${r.ptd} touchdown passes`, `${r.pyd} yards for ${nick(tm, S)} ${res}${at}.`, "nfl");
-      if ((r.ryd || 0) >= 200) add(md, "ryd", y, r.ryd, `${nm} runs for ${r.ryd} yards`, `${and(`${r.car} carries`, r.rtd, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
-      if ((r.yds || 0) >= 200) add(md, "recyd", y, r.yds, `${nm} piles up ${r.yds} receiving yards`, `${and(`${r.rec} catches`, r.td, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
-      if (((r.rtd || 0) + (r.td || 0)) >= 4) add(md, "td", y, r.rtd + r.td, `${nm} scores ${r.rtd + r.td} touchdowns`, `For ${nick(tm, S)} ${res}${at}.`, "nfl") } }
+      if ((r.pyd || 0) >= 450) add(md, "pyd", y, r.pyd, `${nm} throws for ${r.pyd} yards against ${nick(op, S)}`, `${and(`${r.cmp} of ${r.att}`, r.ptd, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
+      if ((r.ptd || 0) >= 5) add(md, "ptd", y, r.ptd, `${nm} throws ${r.ptd} touchdown passes against ${nick(op, S)}`, `${r.pyd} yards for ${nick(tm, S)} ${res}${at}.`, "nfl");
+      if ((r.ryd || 0) >= 200) add(md, "ryd", y, r.ryd, `${nm} runs for ${r.ryd} yards against ${nick(op, S)}`, `${and(`${r.car} carries`, r.rtd, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
+      if ((r.yds || 0) >= 200) add(md, "recyd", y, r.yds, `${nm} piles up ${r.yds} receiving yards against ${nick(op, S)}`, `${and(`${r.rec} catches`, r.td, "touchdown", "touchdowns")} for ${nick(tm, S)} ${res}${at}.`, "nfl");
+      if (((r.rtd || 0) + (r.td || 0)) >= 4) add(md, "td", y, r.rtd + r.td, `${nm} scores ${r.rtd + r.td} touchdowns against ${nick(op, S)}`, `For ${nick(tm, S)} ${res}${at}.`, "nfl") } }
   /* college football: games + AP poll + mascots, Eastern dates */
   const ET = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", month: "2-digit", day: "2-digit" });
   const masc = {}; for (const t of (await cf("/teams")) || []) masc[t.school] = t.mascot;
@@ -114,11 +114,11 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
     for (const x of R.slice(1)) { const pts = +x[I.pts] || 0, reb = +x[I.reb] || 0, ast = +x[I.ast] || 0, tpm = +x[I.tpm] || 0; if (pts < 50 && ast < 20 && reb < 25 && tpm < 10 && !(pts >= 30 && reb >= 10 && ast >= 10)) continue;
       const dt = String(x[I.d] || "").slice(0, 10); if (!dt) continue; const md = dt.slice(5, 10), yy = dt.slice(0, 4), ts = +x[I.ts], os = +x[I.os], home = x[I.ha] === "home", po = +x[I.st] === 3 ? " in the playoffs" : "";
       const res = ts > os ? `in a ${ts}–${os} win over the ${x[I.ot]}` : `in a ${os}–${ts} loss to the ${x[I.ot]}`, at = home ? "" : ` in ${x[I.ol]}`, line = `${pts} points (${x[I.fgm]} of ${x[I.fga]}${tpm ? `, ${tpm} three${tpm === 1 ? "" : "s"}` : ""}), ${reb} rebounds, ${ast} assists for the ${x[I.tm]} ${res}${at}${po}.`, nm = x[I.nm];
-      if (pts >= 50) add(md, "nbapts", yy, pts, `${nm} scores ${pts} points`, line, "nba");
-      else if (pts >= 30 && reb >= 10 && ast >= 10) add(md, "nbatd", yy, pts + reb + ast - 40, `${nm}: ${pts} points, ${reb} rebounds, ${ast} assists`, line, "nba");
-      else if (ast >= 20) add(md, "nbaast", yy, ast, `${nm} hands out ${ast} assists`, line, "nba");
-      else if (reb >= 25) add(md, "nbareb", yy, reb, `${nm} pulls down ${reb} rebounds`, line, "nba");
-      else if (tpm >= 10) add(md, "nba3", yy, tpm, `${nm} hits ${tpm} threes`, line, "nba") } }
+      if (pts >= 50) add(md, "nbapts", yy, pts, `${nm} scores ${pts} points against the ${x[I.ot]}`, line, "nba");
+      else if (pts >= 30 && reb >= 10 && ast >= 10) add(md, "nbatd", yy, pts + reb + ast - 40, `${nm}: ${pts} points, ${reb} rebounds, ${ast} assists against the ${x[I.ot]}`, line, "nba");
+      else if (ast >= 20) add(md, "nbaast", yy, ast, `${nm} hands out ${ast} assists against the ${x[I.ot]}`, line, "nba");
+      else if (reb >= 25) add(md, "nbareb", yy, reb, `${nm} pulls down ${reb} rebounds against the ${x[I.ot]}`, line, "nba");
+      else if (tpm >= 10) add(md, "nba3", yy, tpm, `${nm} hits ${tpm} threes against the ${x[I.ot]}`, line, "nba") } }
   /* off days (the owner: "what about other events on those days?"): Pro Football Hall of Famers' birthdays — our Hall of Fame file (Wikipedia)
      matched to nflverse's players file (birth dates), so the summer has a card too */
   try { const HF = await getPack("p1990_nfl-hof"), r = await fetch("https://github.com/nflverse/nflverse-data/releases/download/players/players.csv", { redirect: "follow" }); files++;

@@ -34,6 +34,7 @@ def run(reg, log, D):
         now['first_hc'] = [c is not None and not any(y < s for y in yrs.get(c, set())) for c in now.coach]
         rows.append(now)
     X = pd.concat(rows)
+    for c in ('uc', 'ut', 'bc', 'bt', 'changed', 'old_u', 'old_b', 'first_hc', 'dog', 'big'): X[c] = X[c].fillna(False).astype(bool)
     def score(lab, a, b):
         if len(a) < 20: OUT.append(f'{lab}: too few ({len(a)})'); return
         t, p = stats.ttest_ind(a.cover.dropna(), b.cover.dropna(), equal_var=False)

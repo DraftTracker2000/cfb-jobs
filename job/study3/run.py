@@ -45,6 +45,8 @@ if FOCUS == 'hunt15b':   # hunt 15 round 2: defenders from the season stat lines
     import hunt15; step('hunt15b', hunt15.run_b, reg, log, D); print('hunt15b errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt15':   # pattern hunt 15 (Nov 6, 9:54 pm — the owner: "back to hunts"): college defenders
     import hunt15; step('hunt15', hunt15.run, reg, log, D); print('hunt15 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'hunt25':   # pattern hunt 25 (Nov 7 — 1:28 pm: "i like testing that in all ways"): first-year college coaches, every cut
+    import hunt25; step('hunt25', hunt25.run, reg, log, D); print('hunt25 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt24':   # pattern hunt 24 (Nov 7 — the owner, 1:16 pm): head-coach experience, Upset Artist, Big-Game Hunter (college football)
     import hunt24; step('hunt24', hunt24.run, reg, log, D); print('hunt24 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt23':   # pattern hunt 23 (Nov 7 — the owner, 1:42 am: "do all the hunts you listed"): college football coach style follows the coach?

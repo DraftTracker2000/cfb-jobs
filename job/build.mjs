@@ -68,7 +68,7 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday"];
+const MODES = ["cavail", "look", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const NOFRESH = ["probe", "look", "study"].includes(MODE) || /test$/.test(MODE);
@@ -76,7 +76,7 @@ const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflpick: 20, cfbpick: 25, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180, study: 300, pbpfill: 300 }[MODE];
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflpick: 20, cfbpick: 25, nflstad: 15, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180, study: 300, pbpfill: 300 }[MODE];
 /* prefetch always runs on the Lab page: the hook it needs (window.__PREFETCH) is a Lab builder */
 const PAGE = MODE === "prefetch" || MODE === "pbpfill" || MODE === "cfbpick" ? "/lab/" : ["/", "/lab/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 const started = Date.now();
@@ -268,6 +268,15 @@ async function main() {
       const getIndex = async () => { try { const r = await fetch(SITE + "/api/pack-index", { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? (await r.json()).packs : null } catch { return null } };
       const d = await buildPunts({ site: SITE, token: sess.token, api, getIndex, log: x => console.log(x) }); const c = d.seasons[d.seasons.length - 1];
       console.log(`::notice title=punts::${c ? `${c.y}: ${c.plays} punts` : "nothing new"} · ${d.calls} CFBD calls`) } catch (e) { console.log(`::warning title=punts failed::${String(e && e.message || e).slice(0, 1500)}`) } }
+  /* "In their stadium" on NFL team pages (Nov 7, job/nflstad.mjs): every weekly run, or MODE=nflstad by hand → pack p2000_nflstad */
+  if (MODE === "nflstad" || MODE === "weekly") { try { const { buildStadiums } = await import("./nflstad.mjs"); const { gzipSync } = await import("node:zlib");
+      const now = new Date(), y = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, d = await buildStadiums({ to: y });
+      if (Object.keys(d.t).length < 30) throw new Error(`only ${Object.keys(d.t).length} teams — not published`);
+      const gz = gzipSync(Buffer.from(JSON.stringify({ nflstad: d }))), r = await api("PUT", "/api/pack/p2000_nflstad", { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+      await api("PUT", "/api/pack-index", { body: { p2000_nflstad: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });
+      console.log(`::notice title=stadiums::${Object.keys(d.t).length} teams through ${d.through} · ${(r.bytes / 1024).toFixed(0)} KB`) }
+    catch (e) { console.log(`::warning title=stadiums failed::${String(e && e.stack || e).slice(0, 2000)}`); if (MODE === "nflstad") throw e }
+    if (MODE === "nflstad") { await report(true, "stadiums"); return } }
   /* style matchups (Oct 25, job/stylepack.mjs): every weekly run, or MODE=style by hand → pack p2000_cfbstyle */
   if (MODE === "style" || MODE === "weekly") { try { const { buildStyle } = await import("./stylepack.mjs"); const { gzipSync } = await import("node:zlib");
       const now = new Date(), y = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, d = await buildStyle({ site: SITE, token: sess.token, year: y });

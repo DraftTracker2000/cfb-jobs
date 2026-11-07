@@ -30,7 +30,10 @@ def run(reg, log, D):
         x = lsqr(A, g.pf.values.astype(float))[0]; dd = x[k:2 * k] - x[k:2 * k].mean()
         DR.update({(s, t): dd[i] for t, i in ix.items()})
     T['odef'] = [DR.get((s, o)) for s, o in zip(T.season, T.opp)]
-    T['orank'] = T.groupby('season').odef.rank()          # opponent defense rank that season (1 = best)
+    RK = {}
+    for s_ in set(k[0] for k in DR):
+        L = sorted((v, t) for (ss, t), v in DR.items() if ss == s_); RK.update({(s_, t): i + 1 for i, (v, t) in enumerate(L)})
+    T['orank'] = [RK.get((s, o)) for s, o in zip(T.season, T.opp)]   # opponent's defense rank among FBS teams that season (1 = best)
     T = T.sort_values(['team', 'season', 'week'])
     T['faced'] = T.groupby(['team', 'season']).odef.transform(lambda s: s.shift().expanding().mean())
     T['gp'] = T.groupby(['team', 'season']).cumcount()
@@ -56,7 +59,7 @@ def run(reg, log, D):
         if not len(d): OUT.append(f'{tm}: no {s} games in the data'); continue
         nteams = T[T.season == s].team.nunique()
         OUT.append(f'{tm} {s}: ' + ' · '.join(f'wk{int(r.week)} {r.opp} (defense #{int(r.orank) if r.orank == r.orank else "?"} of {nteams}) {int(r.pf)}-{int(r.pa)}' for r in d.itertuples())
-                   + f' · own defense #{int(T[(T.season == s) & (T.opp == tm)].orank.iloc[0]) if len(T[(T.season == s) & (T.opp == tm)]) else "?"}'
+                   + f' · own defense #{RK.get((s, tm), "?")} of {nteams}'
                    + f' · average defense faced: rank {d.orank.mean():.0f}')
     for o in OUT: log(o)
     s_ = ' ‖ '.join(OUT); [print(f'::notice title=hunt33 {i + 1}::{s_[i * 3900:(i + 1) * 3900]}') for i in range((len(s_) + 3899) // 3900)]

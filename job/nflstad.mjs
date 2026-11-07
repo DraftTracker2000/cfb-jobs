@@ -25,7 +25,8 @@ export function injType(s) {
 
 /* text: optional { sched, inj: {year: csvText} } to run from local files (tests); otherwise fetched */
 /* fixes: the site's hand list (public/data/nfl-injuries.json) — injuries the reports never named (a player put straight on IR). Each one with the
-   game week he was hurt (hurt) and no "how" (practice, off the field, pregame) counts as a new injury in that game (Nov 7: the IR lookups). */
+   game week he was hurt (hurt), hurt in that game, in pregame warmups (12:46 pm: "pregame doesnt happen at the stadium? i feel like that
+   should count") or aggravated in it, counts as a new injury in that game (Nov 7: the IR lookups). */
 export async function buildStadiums({ from = 2009, to, text = null, fixes = null, log = console.log } = {}) {
   const get = async u => { const r = await fetch(u, { redirect: "follow" }); if (!r.ok) throw new Error(`${u.split("/").pop()}: ${r.status}`); return r.text() };
   const S = csvRows(text ? text.sched : await get(SCHED)), h = S[0], c = k => h.indexOf(k);
@@ -50,7 +51,7 @@ export async function buildStadiums({ from = 2009, to, text = null, fixes = null
   /* hand-listed injuries: his team that season from the reports, charged to that week's game */
   const teamOf = new Map(); for (const k of rep.keys()) { const [y, tm, w] = k.split("|"); for (const g of rep.get(k)) { const kk = `${y}|${g}`, cur = teamOf.get(kk); if (!cur || +w > cur.w) teamOf.set(kk, { tm, w: +w }) } }
   const extra = new Map(); let nFix = 0;
-  for (const z of fixes || []) { if (!z || !z.hurt || z.how || !z.gsis || !z.season || !z.injury || /not an injury/i.test(z.injury)) continue;
+  for (const z of fixes || []) { if (!z || !z.hurt || (z.how && !/pregame|aggravated in a game/.test(z.how)) || !z.gsis || !z.season || !z.injury || /not an injury/i.test(z.injury)) continue;
     const t = teamOf.get(`${z.season}|${z.gsis}`); if (!t) continue; const k = `${z.season}|${t.tm}|${z.hurt}`;
     if (!extra.has(k)) extra.set(k, []); extra.get(k).push([z.gsis, injType(String(z.injury).toLowerCase())]) }
   /* team-games with a next report: new injuries by type */

@@ -14,7 +14,7 @@ function rows(text) { const out = []; let row = [], f = "", q = false;
     if (c === '"') q = true; else if (c === ",") { row.push(f); f = "" } else if (c === "\n") { row.push(f); out.push(row); row = []; f = "" } else if (c !== "\r") f += c }
   if (f || row.length) { row.push(f); out.push(row) } return out }
 const r1 = v => Math.round(v * 10) / 10;
-export function whenOut(R) {
+export function whenOut(R, minMpg = 18) {
   const H = R[0], ix = n => H.indexOf(n), I = { gid: ix("game_id"), d: ix("game_date"), st: ix("season_type"), id: ix("athlete_id"), nm: ix("athlete_display_name"), pos: ix("athlete_position_abbreviation"),
     tm: ix("team_abbreviation"), min: ix("minutes"), pts: ix("points"), reb: ix("rebounds"), ast: ix("assists"), dnp: ix("did_not_play"), why: ix("reason"), ts: ix("team_score"), os: ix("opponent_team_score") };
   const T = {}, P = {};   /* T[team] = { games: { gid: { d, mg } } } ; P[team|id] = { nm, pos, g: { gid: [min, pts, reb, ast] | null (coach's decision) } } */
@@ -25,7 +25,7 @@ export function whenOut(R) {
     p.g[gid] = [min, +x[I.pts] || 0, +x[I.reb] || 0, +x[I.ast] || 0] }
   const out = {};
   for (const k in P) { const p = P[k], t = T[p.tm], played = Object.entries(p.g).filter(([, v]) => v); if (played.length < 10) continue;
-    const mpg = played.reduce((a, [, v]) => a + v[0], 0) / played.length; if (mpg < 18) continue;
+    const mpg = played.reduce((a, [, v]) => a + v[0], 0) / played.length; if (mpg < minMpg) continue;
     const order = Object.entries(t.games).sort((a, b) => String(a[1].d).localeCompare(String(b[1].d))).map(([g]) => g), ds = played.map(([g]) => t.games[g].d).sort();
     const span = order.filter(g => t.games[g].d >= ds[0] && t.games[g].d <= ds[ds.length - 1]), outG = span.filter(g => !(g in p.g)), inG = span.filter(g => p.g[g]);
     if (outG.length < 5) continue;
@@ -43,5 +43,11 @@ export async function buildNbaWo({ putPack, log, curNba }) {
     const W = whenOut(rows(await r.text())); s[y] = W; n += Object.keys(W).length; log(`nbawo ${y}: ${Object.keys(W).length} key players with 5+ games out`) }
   const P = { v: 1, at: Date.now(), cols: ["id", "name", "pos", "gIn", "gOut", "minIn", "minOut", "ptsIn", "ptsOut", "rebIn", "rebOut", "astIn", "astOut"], s };
   await putPack("p2000_cbb-nbawo", P);
-  return { msg: `When he's out: ${n} key players across ${Object.keys(s).join(", ")}` };
+  /* college (Nov 6, 7:38 pm — the study's college run: split-half r .56, stronger than the NBA's): the men's college box scores, the same
+     shape; a key player plays 22+ minutes; the college files give no reason for a missed game, so every missed game counts */
+  const c = {}; let nc = 0;
+  for (const y of [curNba, curNba - 1]) { const r = await fetch(`https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_mens_college_basketball_player_boxscores/player_box_${y}.csv`, { redirect: "follow" }).catch(() => null);
+    if (!r || !r.ok) { log(`colwo ${y}: no file (${r ? r.status : "error"})`); continue } const W = whenOut(rows(await r.text()), 22); c[y] = W; nc += Object.keys(W).length; log(`colwo ${y}: ${Object.keys(W).length} key players with 5+ games out`) }
+  await putPack("p2000_cbb-colwo", { ...P, s: c });
+  return { msg: `When he's out: ${n} NBA and ${nc} college key players across ${Object.keys(s).join(", ")}` };
 }

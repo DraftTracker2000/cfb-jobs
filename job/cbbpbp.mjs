@@ -14,7 +14,7 @@
 
    Pack: p{S}_cbb-pbp (plus the season's p{S}_cbb-shots, written alongside). */
 
-export const PBP_V = 15;   /* 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment · 8: defense on/off and opponents' shots by zone while on the floor · 9: inferred matchups and a zone clue · 10: zone clue from links off the size matchup · 11: possession context (transition, putbacks, shot clock), fatigue, blocks and assists by range, foul trouble, timeouts · 12: rotation patterns, who subs for whom, real game length · 13: ESPN turnover locations, officials, attendance · 14: ESPN official paint / fast-break / off-turnover points · 15: free throws valued against half a possession (getting to the line counts) */
+export const PBP_V = 16;   /* 16: assisted dunks by pair (Nov 7) · 2: player names and teams kept · 3: win probability while on the floor · 4: on-court shares, competition and teammates (Oct 9) · 5: full-period minutes, misses charged, true go-ahead tries (Oct 10 audit) · 6: blocked misses charged too (Oct 10, second audit) · 7: play value = points above an average shot, weighted by the moment · 8: defense on/off and opponents' shots by zone while on the floor · 9: inferred matchups and a zone clue · 10: zone clue from links off the size matchup · 11: possession context (transition, putbacks, shot clock), fatigue, blocks and assists by range, foul trouble, timeouts · 12: rotation patterns, who subs for whom, real game length · 13: ESPN turnover locations, officials, attendance · 14: ESPN official paint / fast-break / off-turnover points · 15: free throws valued against half a possession (getting to the line counts) */
 const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
 const PERIOD = p => p <= 2 ? 1200 : 300;
 const elapsedAt = (period, secLeft) => { let t = 0; for (let p = 1; p < period; p++) t += PERIOD(p); return t + PERIOD(period) - secLeft };
@@ -29,7 +29,7 @@ const blankP = () => ({ min: 0, gp: 0, pm: 0, onF: 0, onA: 0, teamMin: 0, teamF:
      minutes into his stint [0–4, 4–8, 8+] as [fga, fgm]; his blocks and the baskets he assisted by range [rim, mid, three]; points
      allowed by phase while he was on the floor; first-half foul trouble [games, his seconds on after the 2nd foul, window seconds,
      team margin over the window] */
-  ph: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]], st: [[0, 0], [0, 0], [0, 0]], tz: [0, 0, 0, 0, 0], sz: [0, 0, 0, 0, 0], dtz: [0, 0, 0, 0, 0], rot: [0, 0, 0, 0, 0, 0], subBy: {}, blkR: [0, 0, 0], azR: [0, 0, 0], dph: [0, 0, 0, 0, 0], ft2: [0, 0, 0, 0], h1: 0, h2: 0, ast: {}, fed: {} });
+  ph: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]], st: [[0, 0], [0, 0], [0, 0]], tz: [0, 0, 0, 0, 0], sz: [0, 0, 0, 0, 0], dtz: [0, 0, 0, 0, 0], rot: [0, 0, 0, 0, 0, 0], subBy: {}, blkR: [0, 0, 0], azR: [0, 0, 0], dph: [0, 0, 0, 0, 0], ft2: [0, 0, 0, 0], h1: 0, h2: 0, ast: {}, fed: {}, astD: {}, fedD: {} });
 const blankT = () => ({ games: [], c: { pm: 0, min: 0 }, units: {}, mins: {}, pairs: {}, dE: blankE(), wall: [0, 0], tz: { o: [0, 0, 0, 0, 0], d: [0, 0, 0, 0, 0] }, ph: { o: [0, 0, 0, 0, 0], d: [0, 0, 0, 0, 0] }, pot: [0, 0], sc: [0, 0], to: [0, 0], ftw: [0, 0] });
 const blankE = () => ({ pts: 0, fgm: 0, fga: 0, fga2: 0, tpa: 0, tpm: 0, ftm: 0, fta: 0, tov: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, pf: 0 });
 const OREB = /Offensive Rebound/i, DREB = /Defensive Rebound/i;
@@ -159,7 +159,9 @@ export function processGame(plays, P, T, opts = {}) {
       const val = made ? (ft ? 1 : three ? 3 : 2) : 0;
       if (made) { if (p.period <= 1) Q.h1 += val; else Q.h2 += val }
       if (clutchNow) { if (ft) { Q.c.fta++; Q.c.ftm += made } else { Q.c.fga++; Q.c.fgm += made; if (three) { Q.c.tpa++; Q.c.tpm += made } } Q.c.pts += val }
-      if (made && si.assisted && si.assistedBy && si.assistedBy.id != null) { const A = pl(si.assistedBy.id); A.ast[si.shooter.id] = (A.ast[si.shooter.id] || 0) + 1; Q.fed[si.assistedBy.id] = (Q.fed[si.assistedBy.id] || 0) + 1; if (clutchNow) A.c.ast++ }
+      if (made && si.assisted && si.assistedBy && si.assistedBy.id != null) { const A = pl(si.assistedBy.id); A.ast[si.shooter.id] = (A.ast[si.shooter.id] || 0) + 1; Q.fed[si.assistedBy.id] = (Q.fed[si.assistedBy.id] || 0) + 1; if (clutchNow) A.c.ast++;
+        /* assisted dunks (v16, Nov 7 — the owner, 7:59 am: "yeah i like the assisted dunks. it will pick up pick and rolls but that's ok"): college play-by-play doesn't mark alley-oops */
+        if (/Dunk/i.test(p.playType || "")) { A.astD[si.shooter.id] = (A.astD[si.shooter.id] || 0) + 1; Q.fedD[si.assistedBy.id] = (Q.fedD[si.assistedBy.id] || 0) + 1 } }
       /* late: last 2 minutes of the second half or overtime, a shot (or free throw) that would tie or take the lead if it went in */
       if (p.period >= 2 && p.secondsRemaining <= 120 && aside) { const myM = aside === "h" ? marginH : -marginH;
         if (myM <= 0 && (ft ? 1 : three ? 3 : 2) >= -myM) { Q.late.ga++;   /* a try that could tie or take the lead */ const after = aside === "h" ? (nh - na) : (na - nh); if (made && after > 0) { Q.late.gam++; goAheadLast = { id: si.shooter.id, team: atid, period: p.period, sec: p.secondsRemaining } } } }
@@ -275,7 +277,7 @@ export function finishPbp(P, T, ctx = {}) {
       return { min: r1(min), pts, fga, fgm, tpa, tpm, fta, tov, exp: r1(eP), expFga: r1(eF), expTpa: r1(e3), expTov: r1(eT), held40: r1((pts - eP) / min * 40), links: [stl, blk, pf], top: list.sort((x, y) => y[1] - x[1]).slice(0, 8) } })();
     const topMates = (mates[id] || []).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([m, mm]) => [+m, r1(mm)]);
     players[id] = { nm: Q.nm || null, tm: Q._team ?? null, min: r1(Q.min), share, def, mu, tz: Q.tz.some(x => x) ? Q.tz : null, sz: Q.sz.some(x => x) ? Q.sz : null, dtz: Q.dtz.some(x => x) ? Q.dtz : null, rot: Q.rot[0] ? Q.rot.map(Math.round) : null, subBy: Object.entries(Q.subBy).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => [+k, v]), ph: Q.ph, st: Q.st, blkR: Q.blkR, azR: Q.azR, dph: Q.dph, ft2: Q.ft2[0] ? [Q.ft2[0], Math.round(Q.ft2[1]), Math.round(Q.ft2[2]), Q.ft2[3]] : null, qoc, qot, mates: topMates, own: o, gp: Q.gp, pm: Q.pm, on40: r1(on40), off40: r1(off40), onoff: on40 != null && off40 != null ? r1(on40 - off40) : null, offMin: r1(offMin),
-      c: { ...Q.c, min: r1(Q.c.min) }, late: Q.late, wpa: Math.round(Q.wpa * 1000) / 10, cwpa: Math.round(Q.cwpa * 1000) / 10, fwpa: Math.round(Q.fwpa * 100) / 100, cfwpa: Math.round(Q.cfwpa * 100) / 100, h1: Q.h1, h2: Q.h2, ast: topN(Q.ast, 6), fed: topN(Q.fed, 6) };
+      c: { ...Q.c, min: r1(Q.c.min) }, late: Q.late, wpa: Math.round(Q.wpa * 1000) / 10, cwpa: Math.round(Q.cwpa * 1000) / 10, fwpa: Math.round(Q.fwpa * 100) / 100, cfwpa: Math.round(Q.cfwpa * 100) / 100, h1: Q.h1, h2: Q.h2, ast: topN(Q.ast, 6), fed: topN(Q.fed, 6), astD: topN(Q.astD || {}, 5), fedD: topN(Q.fedD || {}, 5) };
   }
   const teams = {};
   for (const [id, X] of Object.entries(T)) {
@@ -339,7 +341,7 @@ export async function runPbp({ cb, getPack, putPack, log, S, G, D1, full, shots,
        p{S}_cbb-pbpg-<group> — one player detail group each (matchups, defense, own shots, minute shares, teammates, play types, feeds,
                         assists, subs, rotations, starts), keyed by player id
      The full pack stays exactly as it is; a page that still asks for everything gets everything. */
-  { const GROUPS = { mu: ["mu"], def: ["def"], own: ["own"], share: ["share"], mates: ["mates"], ph: ["ph"], fed: ["fed"], ast: ["ast"], sub: ["subBy", "rot", "st"] };
+  { const GROUPS = { mu: ["mu"], def: ["def"], own: ["own"], share: ["share"], mates: ["mates"], ph: ["ph"], fed: ["fed", "fedD"], ast: ["ast", "astD"], sub: ["subBy", "rot", "st"] };
     const inG = new Set(Object.values(GROUPS).flat()), core = {}, parts = Object.fromEntries(Object.keys(GROUPS).map(g => [g, {}]));
     for (const [id, x] of Object.entries(out.players)) { const c = {}; for (const [k, v] of Object.entries(x)) if (!inG.has(k)) c[k] = v; core[id] = c;
       for (const [g, ks] of Object.entries(GROUPS)) { const o = {}; let any = 0; for (const k of ks) if (x[k] !== undefined) { o[k] = x[k]; any = 1 } if (any) parts[g][id] = o } }

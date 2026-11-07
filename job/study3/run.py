@@ -45,6 +45,8 @@ if FOCUS == 'hunt15b':   # hunt 15 round 2: defenders from the season stat lines
     import hunt15; step('hunt15b', hunt15.run_b, reg, log, D); print('hunt15b errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt15':   # pattern hunt 15 (Nov 6, 9:54 pm — the owner: "back to hunts"): college defenders
     import hunt15; step('hunt15', hunt15.run, reg, log, D); print('hunt15 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'hunt31':   # retest series part 5 (Nov 7, rule 12): college teams and coaches vs the line, prediction first
+    import hunt31; step('hunt31', hunt31.run, reg, log, D); print('hunt31 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt26':   # pattern hunt 26 (Nov 7 — rule 12): the coach tags, prediction first, then the same ilk
     import hunt26; step('hunt26', hunt26.run, reg, log, D); print('hunt26 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt25':   # pattern hunt 25 (Nov 7 — 1:28 pm: "i like testing that in all ways"): first-year college coaches, every cut

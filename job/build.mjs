@@ -268,10 +268,10 @@ async function main() {
       const getIndex = async () => { try { const r = await fetch(SITE + "/api/pack-index", { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? (await r.json()).packs : null } catch { return null } };
       const d = await buildPunts({ site: SITE, token: sess.token, api, getIndex, log: x => console.log(x) }); const c = d.seasons[d.seasons.length - 1];
       console.log(`::notice title=punts::${c ? `${c.y}: ${c.plays} punts` : "nothing new"} · ${d.calls} CFBD calls`) } catch (e) { console.log(`::warning title=punts failed::${String(e && e.message || e).slice(0, 1500)}`) } }
-  /* "In their stadium" on NFL team pages (Nov 7, job/nflstad.mjs) → pack p2000_nflstad. By hand only (MODE=nflstad) for now — Nov 7 11:27 am:
-     "don't redo the stadium search until ive finished your whole list" (the IR lookups); put back on the weekly run when he says */
-  if (MODE === "nflstad") { try { const { buildStadiums } = await import("./nflstad.mjs"); const { gzipSync } = await import("node:zlib");
-      const now = new Date(), y = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, d = await buildStadiums({ to: y });
+  /* "In their stadium" on NFL team pages (Nov 7, job/nflstad.mjs): every weekly run, or MODE=nflstad by hand → pack p2000_nflstad. Paused 11:27 am
+     until the IR list was done (the owner: "don't redo the stadium search until ive finished your whole list"); back on at 1 pm with his lookups counted */
+  if (MODE === "nflstad" || MODE === "weekly") { try { const { buildStadiums } = await import("./nflstad.mjs"); const { gzipSync } = await import("node:zlib");
+      const now = new Date(), y = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, fx = await fetch(SITE + "/data/nfl-injuries.json").then(r => r.ok ? r.json() : null).catch(() => null), d = await buildStadiums({ to: y, fixes: fx && fx.p });
       if (Object.keys(d.t).length < 30) throw new Error(`only ${Object.keys(d.t).length} teams — not published`);
       const gz = gzipSync(Buffer.from(JSON.stringify({ nflstad: d }))), r = await api("PUT", "/api/pack/p2000_nflstad", { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
       await api("PUT", "/api/pack-index", { body: { p2000_nflstad: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });

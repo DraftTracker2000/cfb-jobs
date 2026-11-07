@@ -24,7 +24,9 @@ export function injType(s) {
 }
 
 /* text: optional { sched, inj: {year: csvText} } to run from local files (tests); otherwise fetched */
-export async function buildStadiums({ from = 2009, to, text = null, log = console.log } = {}) {
+/* fixes: the site's hand list (public/data/nfl-injuries.json) — injuries the reports never named (a player put straight on IR). Each one with the
+   game week he was hurt (hurt) and no "how" (practice, off the field, pregame) counts as a new injury in that game (Nov 7: the IR lookups). */
+export async function buildStadiums({ from = 2009, to, text = null, fixes = null, log = console.log } = {}) {
   const get = async u => { const r = await fetch(u, { redirect: "follow" }); if (!r.ok) throw new Error(`${u.split("/").pop()}: ${r.status}`); return r.text() };
   const S = csvRows(text ? text.sched : await get(SCHED)), h = S[0], c = k => h.indexOf(k);
   const G = [];
@@ -45,6 +47,12 @@ export async function buildStadiums({ from = 2009, to, text = null, log = consol
       const inj = String(x[jR] || x[jP] || "").toLowerCase(); if (NOT_HURT.test(inj)) continue;
       if (!hurt.has(k)) hurt.set(k, new Map()); hurt.get(k).set(g, injType(inj)) }
     if (n) through = y }
+  /* hand-listed injuries: his team that season from the reports, charged to that week's game */
+  const teamOf = new Map(); for (const k of rep.keys()) { const [y, tm, w] = k.split("|"); for (const g of rep.get(k)) { const kk = `${y}|${g}`, cur = teamOf.get(kk); if (!cur || +w > cur.w) teamOf.set(kk, { tm, w: +w }) } }
+  const extra = new Map(); let nFix = 0;
+  for (const z of fixes || []) { if (!z || !z.hurt || z.how || !z.gsis || !z.season || !z.injury || /not an injury/i.test(z.injury)) continue;
+    const t = teamOf.get(`${z.season}|${z.gsis}`); if (!t) continue; const k = `${z.season}|${t.tm}|${z.hurt}`;
+    if (!extra.has(k)) extra.set(k, []); extra.get(k).push([z.gsis, injType(String(z.injury).toLowerCase())]) }
   /* team-games with a next report: new injuries by type */
   const TG = [];
   for (const g of G) for (const [team, home] of [[g.home, 1], [g.away, 0]]) {
@@ -52,7 +60,8 @@ export async function buildStadiums({ from = 2009, to, text = null, log = consol
     const nx = [...W].filter(w => w > g.w && w <= g.w + 2).sort((a, b) => a - b)[0]; if (nx == null) continue;
     const after = hurt.get(`${g.y}|${team}|${nx}`) || new Map(), b0 = rep.get(`${g.y}|${team}|${g.w}`), b1 = rep.get(`${g.y}|${team}|${g.w - 1}`);
     const o = { g, team, home }; for (const t of TYPES) o[t] = 0;
-    for (const [pid, t] of after) if (!(b0 && b0.has(pid)) && !(b1 && b1.has(pid))) o[t]++;
+    const seen = new Set(); for (const [pid, t] of after) if (!(b0 && b0.has(pid)) && !(b1 && b1.has(pid))) { o[t]++; seen.add(pid) }
+    for (const [pid, t] of extra.get(`${g.y}|${team}|${g.w}`) || []) if (!seen.has(pid)) { o[t]++; seen.add(pid); nFix++ }
     o.all = TYPES.reduce((a, t) => a + o[t], 0); TG.push(o) }
   /* each season's average a team-game, for the expected counts */
   const avg = {}; for (const o of TG) { const a = avg[o.g.y] = avg[o.g.y] || { n: 0 }; a.n++; for (const t of [...TYPES, "all"]) a[t] = (a[t] || 0) + o[t] }
@@ -72,6 +81,6 @@ export async function buildStadiums({ from = 2009, to, text = null, log = consol
     out[t] = { stad: last.stad, surface: sf, roof: rf, games: ids.size, y0: Math.min(...L.map(o => o.g.y)),
       all: rate(L, "all"), vis: rate(L.filter(o => !o.home), "all"), home: rate(L.filter(o => o.home), "all"), road: rate(TG.filter(o => o.team === t && !o.home), "all"),
       soft: rate(L, "soft"), soft19: rate(L19, "soft"), knee: rate(L, "knee"), ankle: rate(L, "ankle"), foot: rate(L, "foot"), soft19rk: rkOf.get(last.sid) || null } }
-  log(`stadiums: ${TG.length} team-games, ${Object.keys(out).length} teams, through ${through}`);
+  log(`stadiums: ${TG.length} team-games, ${nFix} hand-listed injuries added, ${Object.keys(out).length} teams, through ${through}`);
   return { v: 2, at: Date.now(), through: String(through), t: out, nStad: rk.length };
 }

@@ -49,14 +49,16 @@ export async function buildStadiums({ from = 2009, to, text = null, fixes = null
       if (!hurt.has(k)) hurt.set(k, new Map()); hurt.get(k).set(g, injType(inj)) }
     if (n) through = y }
   /* hand-listed injuries: his team that season from the reports, charged to that week's game */
-  const teamOf = new Map(); for (const k of rep.keys()) { const [y, tm, w] = k.split("|"); for (const g of rep.get(k)) { const kk = `${y}|${g}`, cur = teamOf.get(kk); if (!cur || +w > cur.w) teamOf.set(kk, { tm, w: +w }) } }
+  /* his team in a given week: the report nearest that week (before it first, then after) — a player traded or cut mid-season goes to the right team */
+  const onRep = new Map(); for (const k of rep.keys()) { const [y, tm, w] = k.split("|"); for (const g of rep.get(k)) { const kk = `${y}|${g}`; if (!onRep.has(kk)) onRep.set(kk, []); onRep.get(kk).push([+w, tm]) } }
+  const teamAt = (y, g, w) => { const L = onRep.get(`${y}|${g}`); if (!L) return null; const b = L.filter(x => x[0] <= w).sort((a, c) => c[0] - a[0])[0] || L.filter(x => x[0] > w).sort((a, c) => a[0] - c[0])[0]; return b ? { tm: b[1] } : null };
   const extra = new Map(); let nFix = 0;
   for (const z of fixes || []) { if (!z || !z.hurt || (z.how && !/pregame/.test(z.how)) || !z.gsis || !z.season || !z.injury || /not an injury/i.test(z.injury)) continue;
-    const t = teamOf.get(`${z.season}|${z.gsis}`); if (!t) continue; const k = `${z.season}|${t.tm}|${z.hurt}`;
+    const t = teamAt(z.season, z.gsis, z.hurt); if (!t) continue; const k = `${z.season}|${t.tm}|${z.hurt}`;
     if (!extra.has(k)) extra.set(k, []); extra.get(k).push([z.gsis, injType(String(z.injury).toLowerCase())]) }
   /* team facilities (12:47–12:48 pm: "if he hurt it in camp it would be against the team facilities" · "you could make a note of the
      facilities tho"): hand-listed injuries from practice or camp, noted under his team that season — kept, not on the card yet */
-  const fac = {}; for (const z of fixes || []) { if (!z || !z.how || !/practice|camp/.test(z.how) || !z.gsis) continue; const t = teamOf.get(`${z.season}|${z.gsis}`); if (!t) continue;
+  const fac = {}; for (const z of fixes || []) { if (!z || !z.how || !/practice|camp/.test(z.how) || !z.gsis) continue; const t = teamAt(z.season, z.gsis, z.hurt || (z.w && z.w[0]) || 1); if (!t) continue;
     (fac[t.tm] = fac[t.tm] || []).push([z.name, z.season, z.injury, z.how]) }
   /* team-games with a next report: new injuries by type */
   const TG = [];

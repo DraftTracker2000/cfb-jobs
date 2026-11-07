@@ -258,6 +258,8 @@ export async function main() {
     const { refHist } = await import("./cbbrefhist.mjs"); const R = await refHist({ getPack, putPack, log, NEXT: UPCOMING, curNba });
     /* Nov 6: the NBA Last Two Minute reports by official, once a day (new reports from the league's site; the compilation is re-read) */
     try { const { gdate } = await import("./cbbgdate.mjs"); await gdate({ getPack, putPack, log, curNba, history: false }) } catch (e) { log("gdate: " + e.message) }
+    /* When he's out, kept current with the referee history run each day (Nov 6) — two GitHub downloads */
+    try { const { buildNbaWo } = await import("./cbbnbawo.mjs"); log((await buildNbaWo({ putPack, log, curNba })).msg) } catch (e) { log("nbawo: " + e.message) }
     /* Nov 6 (Sam: "read and account for all the injuries from here on out"): ACC and SEC men's basketball availability reports, every version kept */
     try { const { keepCbbAvail } = await import("./cavail.mjs"); await keepCbbAvail({ api: site, readPack: async n => { const j = await getPack(n); return { status: PACK_ST[n], j } }, season: UPCOMING, log }) } catch (e) { log("basketball availability: " + e.message) }
     try { const L = await getPack("p2000_cbb-l2m").catch(() => null); if (!L || Date.now() - (L.at || 0) > 20 * 36e5) { const { l2m } = await import("./cbbl2m.mjs"); await l2m({ getPack, putPack, log }) } } catch (e) { log("l2m: " + e.message) }

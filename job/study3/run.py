@@ -45,6 +45,8 @@ if FOCUS == 'hunt15b':   # hunt 15 round 2: defenders from the season stat lines
     import hunt15; step('hunt15b', hunt15.run_b, reg, log, D); print('hunt15b errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt15':   # pattern hunt 15 (Nov 6, 9:54 pm — the owner: "back to hunts"): college defenders
     import hunt15; step('hunt15', hunt15.run, reg, log, D); print('hunt15 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'hunt43':   # coach tags: coach or program? (Nov 7)
+    import hunt43; step('hunt43', hunt43.run, reg, log, D); print('hunt43 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt42':   # backtest of the new college formula terms (Nov 7)
     import hunt42; step('hunt42', hunt42.run, reg, log, D); print('hunt42 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt36':   # retest series part 8 (Nov 7, rule 12): college player splits, prediction first

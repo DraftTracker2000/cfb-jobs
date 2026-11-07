@@ -37,6 +37,20 @@ export function whenOut(R, minMpg = 18) {
     out[p.id] = { nm: p.nm, tm: p.tm, pos: p.pos, gp: inG.length, out: outG.length, mpg: r1(mpg), mg: [mg(inG), mg(outG)], m: M.slice(0, 12) } }
   return out;
 }
+/* college missed games (Nov 6, #76 — the college basketball injury outline): each player's regular-season games missed between his first and
+   last game for a team, by date. The college box scores give no reason, so the page says "no reason given" unless a hand entry
+   (public/data/cbb-injuries.json) covers the dates. { espnId: [yyyymmdd] }, rotation players (5+ games, 10+ minutes a game) with at least one missed game */
+export function colMiss(R) {
+  const H = R[0], ix = n => H.indexOf(n), I = { gid: ix("game_id"), d: ix("game_date"), st: ix("season_type"), id: ix("athlete_id"), tm: ix("team_abbreviation"), min: ix("minutes"), dnp: ix("did_not_play") };
+  const T = {}, P = {};
+  for (const x of R.slice(1)) { if (+x[I.st] !== 2) continue; const tm = x[I.tm], gid = x[I.gid], id = x[I.id]; if (!tm || !gid || !id) continue; const d = +String(x[I.d] || "").slice(0, 10).replace(/-/g, ""); if (!d) continue;
+    (T[tm] = T[tm] || {})[gid] = d; const p = P[tm + "|" + id] = P[tm + "|" + id] || { id, tm, g: new Map() }; if (/true/i.test(x[I.dnp] || "") || !(parseFloat(x[I.min]) > 0)) continue; p.g.set(gid, parseFloat(x[I.min])) }
+  const out = {};
+  for (const k in P) { const p = P[k]; if (p.g.size < 5 || [...p.g.values()].reduce((a, m) => a + m, 0) / p.g.size < 10) continue;   /* rotation players: 5+ games, 10+ minutes a game */
+    const t = T[p.tm], ds = [...p.g.keys()].map(g => t[g]).sort((a, b) => a - b), lo = ds[0], hi = ds[ds.length - 1];
+    const miss = Object.entries(t).filter(([g, d]) => d >= lo && d <= hi && !p.g.has(g)).map(([, d]) => d).sort((a, b) => a - b); if (miss.length) out[p.id] = [...(out[p.id] || []), ...miss] }
+  return out;
+}
 export async function buildNbaWo({ putPack, log, curNba }) {
   const s = {}; let n = 0;
   for (const y of [curNba, curNba - 1]) { const r = await fetch(URL_OF(y), { redirect: "follow" }).catch(() => null); if (!r || !r.ok) { log(`nbawo ${y}: no file (${r ? r.status : "error"})`); continue }
@@ -49,5 +63,10 @@ export async function buildNbaWo({ putPack, log, curNba }) {
   for (const y of [curNba, curNba - 1]) { const r = await fetch(`https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_mens_college_basketball_player_boxscores/player_box_${y}.csv`, { redirect: "follow" }).catch(() => null);
     if (!r || !r.ok) { log(`colwo ${y}: no file (${r ? r.status : "error"})`); continue } const W = whenOut(rows(await r.text()), 22); c[y] = W; nc += Object.keys(W).length; log(`colwo ${y}: ${Object.keys(W).length} key players with 5+ games out`) }
   await putPack("p2000_cbb-colwo", { ...P, s: c });
-  return { msg: `When he's out: ${n} NBA and ${nc} college key players across ${Object.keys(s).join(", ")}` };
+  /* college missed games, 2022 on (#76): seasons already read above are parsed again from their text, the rest downloaded */
+  const cm = {}; let ncm = 0;
+  for (let y = 2022; y <= curNba; y++) { const r = await fetch(`https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_mens_college_basketball_player_boxscores/player_box_${y}.csv`, { redirect: "follow" }).catch(() => null);
+    if (!r || !r.ok) { log(`colmiss ${y}: no file (${r ? r.status : "error"})`); continue } const M = colMiss(rows(await r.text())); cm[y] = M; ncm += Object.keys(M).length; log(`colmiss ${y}: ${Object.keys(M).length} players with a missed game`) }
+  await putPack("p2000_cbb-colmiss", { v: 1, at: Date.now(), s: cm });
+  return { msg: `When he's out: ${n} NBA and ${nc} college key players across ${Object.keys(s).join(", ")} · college missed games: ${ncm} player-seasons` };
 }

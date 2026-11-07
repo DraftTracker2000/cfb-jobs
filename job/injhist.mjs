@@ -12,7 +12,7 @@
    Output: pack "pYYYY_injhist" = { injhist: { t, v: 1, from, inj: [names], d: { season: { gsis: [[w, i, s, m], …] } } } } */
 
 import { gzipSync } from "node:zlib";
-import { csvRows } from "../src/cfbd.js";
+import { csvRows } from "./lib/files.mjs";
 import { classify, notHurt } from "./avail.mjs";
 
 const NFLV = "https://github.com/nflverse/nflverse-data/releases/download/weekly_rosters/roster_weekly_";

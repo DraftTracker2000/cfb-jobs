@@ -54,6 +54,10 @@ export async function buildStadiums({ from = 2009, to, text = null, fixes = null
   for (const z of fixes || []) { if (!z || !z.hurt || (z.how && !/pregame/.test(z.how)) || !z.gsis || !z.season || !z.injury || /not an injury/i.test(z.injury)) continue;
     const t = teamOf.get(`${z.season}|${z.gsis}`); if (!t) continue; const k = `${z.season}|${t.tm}|${z.hurt}`;
     if (!extra.has(k)) extra.set(k, []); extra.get(k).push([z.gsis, injType(String(z.injury).toLowerCase())]) }
+  /* team facilities (12:47–12:48 pm: "if he hurt it in camp it would be against the team facilities" · "you could make a note of the
+     facilities tho"): hand-listed injuries from practice or camp, noted under his team that season — kept, not on the card yet */
+  const fac = {}; for (const z of fixes || []) { if (!z || !z.how || !/practice|camp/.test(z.how) || !z.gsis) continue; const t = teamOf.get(`${z.season}|${z.gsis}`); if (!t) continue;
+    (fac[t.tm] = fac[t.tm] || []).push([z.name, z.season, z.injury, z.how]) }
   /* team-games with a next report: new injuries by type */
   const TG = [];
   for (const g of G) for (const [team, home] of [[g.home, 1], [g.away, 0]]) {
@@ -83,5 +87,5 @@ export async function buildStadiums({ from = 2009, to, text = null, fixes = null
       all: rate(L, "all"), vis: rate(L.filter(o => !o.home), "all"), home: rate(L.filter(o => o.home), "all"), road: rate(TG.filter(o => o.team === t && !o.home), "all"),
       soft: rate(L, "soft"), soft19: rate(L19, "soft"), knee: rate(L, "knee"), ankle: rate(L, "ankle"), foot: rate(L, "foot"), soft19rk: rkOf.get(last.sid) || null } }
   log(`stadiums: ${TG.length} team-games, ${nFix} hand-listed injuries added, ${Object.keys(out).length} teams, through ${through}`);
-  return { v: 2, at: Date.now(), through: String(through), t: out, nStad: rk.length };
+  return { v: 2, at: Date.now(), through: String(through), t: out, nStad: rk.length, fac };
 }

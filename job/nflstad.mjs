@@ -68,7 +68,8 @@ export async function buildStadiums({ from = 2009, to, text = null, log = consol
     const last = G.filter(g => g.home === t && !g.neutral).sort((a, b) => b.y - a.y || b.w - a.w)[0]; if (!last || last.y < to - 1) continue;
     const L = bySid.get(last.sid) || []; if (!L.length) continue;
     const ids = new Set(L.map(o => o.g.id)), L19 = L.filter(o => o.g.y >= 2019);
-    out[t] = { stad: last.stad, surface: last.surface, roof: last.roof, games: ids.size, y0: Math.min(...L.map(o => o.g.y)),
+    const hs = G.filter(g => g.sid === last.sid).sort((a, b) => b.y - a.y || b.w - a.w), sf = (hs.find(g => g.surface && g.surface !== "nan") || {}).surface || "", rf = (hs.find(g => g.roof) || {}).roof || "";   /* the schedule leaves some games' surface blank */
+    out[t] = { stad: last.stad, surface: sf, roof: rf, games: ids.size, y0: Math.min(...L.map(o => o.g.y)),
       all: rate(L, "all"), vis: rate(L.filter(o => !o.home), "all"), home: rate(L.filter(o => o.home), "all"), road: rate(TG.filter(o => o.team === t && !o.home), "all"),
       soft: rate(L, "soft"), soft19: rate(L19, "soft"), knee: rate(L, "knee"), ankle: rate(L, "ankle"), foot: rate(L, "foot"), soft19rk: rkOf.get(last.sid) || null } }
   log(`stadiums: ${TG.length} team-games, ${Object.keys(out).length} teams, through ${through}`);

@@ -49,14 +49,35 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
   if (GP) { const o = obj(GP), all = GP.g.map(o).sort((a, b) => String(a.date).localeCompare(String(b.date))), rec = {};
     const rs = (S, t) => { const r = rec[S + t] || [0, 0, 0]; return r }, fmt = r => r[2] ? `${r[0]}–${r[1]}–${r[2]}` : `${r[0]}–${r[1]}`, pct = r => (r[0] + r[2] / 2) / Math.max(1, r[0] + r[1] + r[2]);
     const lastPost = {}; for (const g of all) if (g.type !== "REG" && g.homeScore != null && (!lastPost[g.season] || g.date > lastPost[g.season].date)) lastPost[g.season] = g;
+    /* how it ended (Sam, 11:29 pm: "nd beat clemson then they both made and lost in the CFP semi-finals"; 11:35 pm: "a good switchup if its a
+       good storyline"): each team's playoff finish, added to a moment's line only when one of the two reached its conference title game */
+    const FIN = {}, RND = { WC: 1, DIV: 2, CON: 3, SB: 4 };
+    for (const g of all) { if (!(g.type in RND) || g.homeScore == null || g.homeScore === g.awayScore) continue; const S = g.season, hw = g.homeScore > g.awayScore, W = hw ? g.home : g.away, L = hw ? g.away : g.home;
+      FIN[S + W] = g.type === "SB" ? { r: 5, y: +String(g.date).slice(0, 4) } : (FIN[S + W] && FIN[S + W].r > RND[g.type] ? FIN[S + W] : { r: RND[g.type] }); FIN[S + L] = { r: RND[g.type], lost: 1, y: +String(g.date).slice(0, 4) } }
+    const finTxt = (S, t, both) => { const f = FIN[S + t]; if (!f) return null; return f.r === 5 ? `won Super Bowl ${SBN(f.y)}` : f.r === 4 ? `lost Super Bowl ${SBN(f.y)}` : f.r === 3 ? "lost in the conference championship" : f.r === 2 ? "lost in the divisional round" : "lost in the wild-card round" };
+    const story = (S, W, L) => { const a = FIN[S + W], b = FIN[S + L]; if (!((a && a.r >= 3) || (b && b.r >= 3))) return "";
+      const ta = finTxt(S, W), tb = finTxt(S, L); if (ta && ta === tb) return ` Both went on to ${ta.replace(/^lost/, "lose").replace(/^won/, "win")}.`;
+      const p = [ta ? `${Nick(W, S)} went on to ${ta.replace(/^lost/, "lose").replace(/^won/, "win")}` : null, tb ? `${ta ? nick(L, S) : Nick(L, S)} ${ta ? "" : "went on to "}${tb.replace(/^lost/, ta ? "lost" : "lose").replace(/^won/, ta ? "won" : "win")}` : (a && a.r >= 3 ? `${nick(L, S)} missed the playoffs` : null)].filter(Boolean);
+      return " " + p.join("; ") + "." };
     for (const g of all) { G[g.id] = g; const md = String(g.date || "").slice(5, 10); if (!md || g.homeScore == null) continue; out.nflGames++;
       const y = +String(g.date).slice(0, 4), S = g.season || y, m = g.homeScore - g.awayScore, sp = g.spread, hw = m > 0, W = hw ? g.home : g.away, L = hw ? g.away : g.home, ws = Math.max(g.homeScore, g.awayScore), ls = Math.min(g.homeScore, g.awayScore);
       const score = `${full(W, S)} ${ws}, ${full(L, S)} ${ls}`, where = g.neutral || g.type === "SB" ? (g.stadium ? `at ${g.stadium}` : "") : hw ? `at home` : `in ${nfl(g.home, S)[0]}`, rw = rs(S, W), rl = rs(S, L);
       if (g.type === "REG" && m !== 0) { const gw = rw[0] + rw[1] + rw[2], gl = rl[0] + rl[1] + rl[2], gap = pct(rl) - pct(rw);
-        if (gw >= 3 && gl >= 3 && gap >= .3 && pct(rl) >= .6) add(md, "nflupset", y, Math.round(gap * 20 + Math.abs(sp || 0)), `The ${fmt(rw)} ${nfl(W, S)[1]} beat the ${fmt(rl)} ${nfl(L, S)[1]}`.replace(/the \d+–\d+(–\d+)? Washington\b/g, m => m.replace("the ", "")), `${score}${where ? " " + where : ""}${sp != null && ((sp < 0) === hw) && Math.abs(sp) >= 3 ? `, as ${Math.abs(sp)}-point underdogs` : ""}.`, "nfl") }
-      if (g.homeScore + g.awayScore >= 75 && m !== 0) add(md, "nflpts", y, g.homeScore + g.awayScore, `${Nick(W, S)} outlast ${nick(L, S)} ${ws}–${ls}`, `${score}${where ? " " + where : ""} — ${g.homeScore + g.awayScore} points in all.`, "nfl");
+        if (gw >= 3 && gl >= 3 && gap >= .3 && pct(rl) >= .6) add(md, "nflupset", y, Math.round(gap * 20 + Math.abs(sp || 0)), `The ${fmt(rw)} ${nfl(W, S)[1]} beat the ${fmt(rl)} ${nfl(L, S)[1]}`.replace(/the \d+–\d+(–\d+)? Washington\b/g, m => m.replace("the ", "")), `${score}${where ? " " + where : ""}${sp != null && ((sp < 0) === hw) && Math.abs(sp) >= 3 ? `, as ${Math.abs(sp)}-point underdogs` : ""}.${story(S, W, L)}`, "nfl") }
+      if (g.homeScore + g.awayScore >= 75 && m !== 0) add(md, "nflpts", y, g.homeScore + g.awayScore, `${Nick(W, S)} outlast ${nick(L, S)} ${ws}–${ls}`, `${score}${where ? " " + where : ""} — ${g.homeScore + g.awayScore} points in all.${g.type === "REG" ? story(S, W, L) : ""}`, "nfl");
       if (lastPost[S] === g && g.type === "SB") add(md, "sb", y, 100, `${Nick(W, S)} win Super Bowl ${SBN(y)}`, `${score}${where ? " " + where : ""}.`, "nfl");
       if (g.type === "REG") { const r1 = rec[S + g.home] = rec[S + g.home] || [0, 0, 0], r2 = rec[S + g.away] = rec[S + g.away] || [0, 0, 0]; if (m > 0) { r1[0]++; r2[1]++ } else if (m < 0) { r2[0]++; r1[1]++ } else { r1[2]++; r2[2]++ } } } }
+  /* NFL coaches' milestones (Sam, 11:35 pm: "yes add the coaching milestone data as well"): regular-season wins from nflverse's games
+     file (head coach for each side, 1999 on). Only coaches whose whole career is in the file count — anyone on a sideline in 1999 is left
+     out, except Andy Reid (first season 1999) — so "his 200th" is never short of the earlier years. */
+  try { const r = await fetch("https://github.com/nflverse/nfldata/raw/master/data/games.csv", { redirect: "follow" }); files++;
+    if (r.ok) { const R = csv(await r.text()), Hh = R[0], c = n => Hh.indexOf(n), I = { s: c("season"), t: c("game_type"), d: c("gameday"), h: c("home_team"), a: c("away_team"), hs: c("home_score"), as: c("away_score"), hc: c("home_coach"), ac: c("away_coach") };
+      const rows = R.slice(1).filter(x => x[I.hs] !== "" && x[I.hs] != null && x[I.d]).sort((x, y) => String(x[I.d]).localeCompare(String(y[I.d])));
+      const in99 = new Set(); for (const x of rows) if (+x[I.s] === 1999) { in99.add(x[I.hc]); in99.add(x[I.ac]) } in99.delete("Andy Reid");
+      const W = {}, MS = new Set([100, 150, 200, 250, 300, 350]);
+      for (const x of rows) { if (x[I.t] !== "REG") continue; const hs = +x[I.hs], as = +x[I.as]; if (hs === as) continue; const hw = hs > as, co = hw ? x[I.hc] : x[I.ac], tm = hw ? x[I.h] : x[I.a], op = hw ? x[I.a] : x[I.h], S = +x[I.s];
+        if (!co || in99.has(co)) continue; W[co] = (W[co] || 0) + 1;
+        if (MS.has(W[co])) add(String(x[I.d]).slice(5, 10), "nflcoach", +String(x[I.d]).slice(0, 4), W[co], `${co} wins his ${W[co]}th regular-season game`, `${full(tm, S)} ${Math.max(hs, as)}, ${full(op, S)} ${Math.min(hs, as)}${hw ? " at home" : ` in ${nfl(op, S)[0]}`}.`, "nfl") } } } catch (e) { log("this day: NFL coaches — " + e.message) }
   /* NFL player games */
   const FPS = {};   /* season|name → fantasy points (PPR, regular season) — for the NFL trades below */
   const PP = await getPack(part("players")), PL = {}; if (PP && PP.p) { const ni = PP.cols.indexOf("name"); for (const g in PP.p) PL[g] = PP.p[g][ni] }
@@ -72,15 +93,37 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
   /* college football: games + AP poll + mascots, Eastern dates */
   const ET = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", month: "2-digit", day: "2-digit" });
   const masc = {}; for (const t of (await cf("/teams")) || []) masc[t.school] = t.mascot;
+  /* college coaches' milestones (Sam, 11:35 pm): every head coach's seasons from CFBD (one call), so career wins before each season are
+     known back to the start; the game that brought the 100th, 150th … win is found in that season's games (2014 on) */
+  const CO = (await cf("/coaches?minYear=1950")) || [], CSEA = {};   /* school|year → [{name, before}] */
+  for (const co of CO) { const nm = `${co.firstName || co.first_name || ""} ${co.lastName || co.last_name || ""}`.trim(); let w = 0;
+    for (const se of (co.seasons || []).slice().sort((a, b) => a.year - b.year)) { (CSEA[se.school + "|" + se.year] = CSEA[se.school + "|" + se.year] || []).push({ nm, before: w, n: se.games || 0 }); w += se.wins || 0 } }
+  const CMS = new Set([100, 150, 200, 250, 300, 350, 400]);
   for (let y = 2014; y < nowYear; y++) { const Gc = (await cf(`/games?year=${y}&seasonType=regular&classification=fbs`)) || [], R = (await cf(`/rankings?year=${y}&seasonType=regular`)) || [], rk = {};
+    /* how it ended: the College Football Playoff from the postseason games' notes */
+    const PO = (await cf(`/games?year=${y}&seasonType=postseason&classification=fbs`)) || [], CFP = {};
+    for (const g of PO) { const nt = String(g.notes || ""), hp = g.homePoints ?? g.home_points, ap = g.awayPoints ?? g.away_points, ht = g.homeTeam ?? g.home_team, at = g.awayTeam ?? g.away_team; if (hp == null || ap == null || hp === ap || !/playoff|national championship/i.test(nt)) continue;
+      const r = /national championship/i.test(nt) ? 4 : /semifinal/i.test(nt) ? 3 : /quarterfinal/i.test(nt) ? 2 : 1, W = hp > ap ? ht : at, L = hp > ap ? at : ht;
+      CFP[L] = { r, lost: 1 }; CFP[W] = r === 4 ? { r: 5 } : (CFP[W] && CFP[W].r > r ? CFP[W] : { r }) }
+    const cfpTxt = t => { const f = CFP[t]; if (!f) return null; return f.r === 5 ? "won the national championship" : f.r === 4 ? "lost in the national championship game" : f.r === 3 ? "lost in the CFP semifinals" : f.r === 2 ? "lost in the CFP quarterfinals" : "lost in the CFP first round" };
+    const cstory = (W, L) => { const ta = cfpTxt(W), tb = cfpTxt(L); if (!ta && !tb) return ""; const go = t => t.replace(/^lost/, "lose").replace(/^won/, "win");
+      if (ta && ta === tb) return ` Both went on to ${go(ta)}.`;
+      if (ta && tb) return ` ${W} went on to ${go(ta)}; ${L} ${tb}.`;
+      return ta ? ` ${W} went on to ${go(ta)}.` : ` ${L} still made the playoff and went on to ${go(tb)}.` };
+    /* coach milestones this season: every game (regular and bowls) in date order */
+    const WINS = {}; for (const g of [...Gc, ...PO].sort((a, b) => String(a.startDate ?? a.start_date).localeCompare(String(b.startDate ?? b.start_date)))) {
+      const hp = g.homePoints ?? g.home_points, ap = g.awayPoints ?? g.away_points, ht = g.homeTeam ?? g.home_team, at = g.awayTeam ?? g.away_team, st = g.startDate ?? g.start_date; if (hp == null || ap == null || hp === ap || !st) continue;
+      const W = hp > ap ? ht : at, L = hp > ap ? at : ht, C = (CSEA[W + "|" + y] || []).filter(z => z.n > 0); if (C.length !== 1) continue;   /* one head coach that season (no interim splits) */
+      const c = C[0], n = c.before + (WINS[W] = (WINS[W] || 0) + 1);
+      if (CMS.has(n)) add(ET.format(new Date(st)).replace(/(\d\d)\D(\d\d)/, "$1-$2"), "cfbcoach", y, n, `${c.nm} wins his ${n}th game as a head coach`, `${W}${masc[W] ? " " + masc[W] : ""} ${Math.max(hp, ap)}, ${L}${masc[L] ? " " + masc[L] : ""} ${Math.min(hp, ap)}.`, "cfb") }
     for (const w of R) for (const p of w.polls || []) if (/AP/i.test(p.poll)) for (const r of p.ranks || []) rk[w.week + "|" + r.school] = r.rank;
     for (const g of Gc) { const hp = g.homePoints ?? g.home_points, ap = g.awayPoints ?? g.away_points, ht = g.homeTeam ?? g.home_team, at = g.awayTeam ?? g.away_team, st = g.startDate ?? g.start_date;
       if (hp == null || ap == null || !st || hp === ap) continue; const md = ET.format(new Date(st)).replace(/(\d\d)\D(\d\d)/, "$1-$2"); out.cfb++;
       const hr = rk[g.week + "|" + ht], ar = rk[g.week + "|" + at], hw = hp > ap, W = hw ? ht : at, Lr = hw ? ar : hr, Wr = hw ? hr : ar, L = hw ? at : ht, ws = Math.max(hp, ap), ls = Math.min(hp, ap);
       const ot = ((g.homeLineScores || g.home_line_scores || []).length > 4) ? " in overtime" : "", ven = g.venue ? ` at ${g.venue}` : "", neu = g.neutralSite || g.neutral_site;
       const sub = `${W}${masc[W] ? " " + masc[W] : ""} ${ws}, ${L}${masc[L] ? " " + masc[L] : ""} ${ls}${ot}${ven}.`;
-      if (Lr && Lr <= 10 && !Wr) add(md, "cfbupset", y, 11 - Lr, `Unranked ${W} ${neu || hw ? "knocks off" : "goes on the road and beats"} No. ${Lr} ${L}`, sub, "cfb");
-      if (hr && ar && hr <= 10 && ar <= 10) add(md, "cfbtop10", y, 20 - hr - ar, `No. ${Wr} ${W} beats No. ${Lr} ${L}${ot}`, sub, "cfb") } }
+      if (Lr && Lr <= 10 && !Wr) add(md, "cfbupset", y, 11 - Lr, `Unranked ${W} ${neu || hw ? "knocks off" : "goes on the road and beats"} No. ${Lr} ${L}`, sub + cstory(W, L), "cfb");
+      if (hr && ar && hr <= 10 && ar <= 10) add(md, "cfbtop10", y, 20 - hr - ar, `No. ${Wr} ${W} beats No. ${Lr} ${L}${ot}`, sub + cstory(W, L), "cfb") } }
   /* basketball: referee files (scores, lines), Eastern dates, names from the schedule files. Sam, 5:02 pm: NBA upsets by the line are
      "a little sketch … we don't know what players rested that night" — an NBA upset now needs a bad team beating a good one (both 15+ games
      in, .350 or worse over .650 or better) with both records in the headline; shootouts carry the final score; the title clinchers (NBA

@@ -82,3 +82,41 @@ def run(reg, log, D):
     Gd['q'] = bh(pd.to_numeric(Gd.p, errors='coerce').fillna(1).values); Gd['survives'] = (Gd.q < .10) & (Gd.oos_pass == True)
     out = ' ‖ '.join(f"{'SURVIVES' if x.survives else 'no'} · {x.hyp} {x.label}: est {x.est:+.4g} (p {x.p:.3g}, q {x.q:.3g}, n {x.n}) · {str(x.detail)[:260]}" for _, x in Gd.iterrows())
     for i in range(0, min(len(out), 3800 * 4), 3800): print(f'::notice title=hunt15 {i // 3800 + 1}::{out[i:i + 3800]}')
+
+
+# ---------- round 2 (focus hunt15b): the season stat lines (cf_pstats), because the per-play file names only a few defensive plays
+# (3 breakups and 4 interceptions per team-season, against about 40 and 10 in the real counts) ----------
+def run_b(reg, log, D):
+    from load import pick, num
+    s = frame('cf_pstats')
+    s = pd.DataFrame({'pid': pick(s, 'playerId', 'player_id').astype(str), 'name': pick(s, 'player'), 'team': pick(s, 'team').astype(str), 'season': num(pick(s, 'season', '_year')),
+                      'k': pick(s, 'category').astype(str) + '.' + pick(s, 'statType', 'stat_type').astype(str), 'v': num(pick(s, 'stat'))}).dropna(subset=['v', 'season'])
+    log('hunt15b defensive stat names: ' + ', '.join(sorted(k for k in s.k.unique() if k.startswith(('defensive.', 'interceptions.', 'fumbles.')))))
+    K = {'defensive.PD': 'pd', 'interceptions.INT': 'int', 'defensive.SACKS': 'sk', 'defensive.QB HUR': 'hur', 'defensive.TFL': 'tfl', 'defensive.TOT': 'tk'}
+    P = s[s.k.isin(K)].assign(k=lambda d: d.k.map(K)).pivot_table(index=['pid', 'season', 'team'], columns='k', values='v', aggfunc='sum').fillna(0).reset_index()
+    P = P.groupby(['pid', 'season'], as_index=False).sum(numeric_only=True)   # a transfer's lines added up
+    log(f'hunt15b: {len(P)} defender-seasons; per FBS team-season about ' + ', '.join(f'{c} {P[c].sum() / max(s.drop_duplicates(["team", "season"]).shape[0], 1):.1f}' for c in ('pd', 'int', 'sk', 'hur', 'tfl') if c in P))
+    nx = P.copy(); nx['season'] -= 1; J = P.merge(nx, on=['pid', 'season'], suffixes=('', '_n')); J = J[J.season < J.season.max()]
+    TESTS = []
+    for i, c, lab in ((1, 'pd', 'Passes defended'), (2, 'int', 'Interceptions'), (3, 'sk', 'Sacks'), (4, 'hur', 'QB hurries'), (5, 'tfl', 'Tackles for loss'), (6, 'tk', 'Tackles')):
+        if c not in P: continue
+        X = P[(P.tk >= 20) if 'tk' in P else P[c] >= 0][['pid', 'season']].copy(); X['v'] = P.loc[X.index, c]
+        o = yoy(X.rename(columns={'pid': 'key'}), 'key', 'v'); d = reg_yoy(reg, f'D1{i}', f'{lab} a season (defenders with 20+ tackles)', o); TESTS.append(f'D1{i}'); log(f'[D1{i}] {d}')
+    def two(hyp, lab, y, a, b, rows, g):
+        df, n = ols_cl(rows[y].values, [rows[a].values, rows[b].values], rows[g].values, names=[a, b]); h = rows[rows.season + 1 >= HOLD]
+        dh, _ = ols_cl(h[y].values, [h[a].values, h[b].values], h[g].values, names=[a, b])
+        ra, rb = rows[[a, y]].corr().iloc[0, 1], rows[[b, y]].corr().iloc[0, 1]
+        reg.add(hyp, lab, 'mechanism', float(df.loc[b].b), float(df.loc[b].se), float(df.loc[b].p), len(rows), oos_pass=bool(dh.loc[b].b > 0 and dh.loc[b].p < .10),
+                detail=f'{len(rows)} pairs; per {b} {df.loc[b].b:+.3f} (p {df.loc[b].p:.3g}) vs per {a} {df.loc[a].b:+.3f} (p {df.loc[a].p:.3g}); r with next season: {b} {rb:.3f}, {a} {ra:.3f}; holdout {b} {dh.loc[b].b:+.3f} (p {dh.loc[b].p:.3g}), {a} {dh.loc[a].b:+.3f}')
+        TESTS.append(hyp); log(f'[{hyp}] ' + reg.df().iloc[-1].detail)
+    if {'pd', 'int'} <= set(P.columns):
+        j = J[(J.pd + J['int']) >= 3]; two('D20', "Next season's interceptions: this season's passes defended, with interceptions in the model (player)", 'int_n', 'int', 'pd', j, 'pid')
+        T = P.merge(s.drop_duplicates(['pid', 'season'])[['pid', 'season', 'team']], on=['pid', 'season']).groupby(['team', 'season'], as_index=False)[['pd', 'int']].sum()
+        tn = T.copy(); tn['season'] -= 1; TJ = T.merge(tn, on=['team', 'season'], suffixes=('', '_n')); TJ = TJ[TJ.season < TJ.season.max()]
+        two('D21', "Team: next season's interceptions — this season's passes defended, with interceptions in the model", 'int_n', 'int', 'pd', TJ, 'team')
+    if {'sk', 'hur'} <= set(P.columns):
+        j = J[(J.sk + J.hur) >= 3]; two('D22', "Next season's sacks: this season's QB hurries, with sacks in the model (player)", 'sk_n', 'sk', 'hur', j, 'pid')
+    Gd = reg.df(); Gd = Gd[Gd.hyp.astype(str).str.match(r'D[12]\d')].copy()
+    Gd['q'] = bh(pd.to_numeric(Gd.p, errors='coerce').fillna(1).values); Gd['survives'] = (Gd.q < .10) & (Gd.oos_pass == True)
+    out = ' ‖ '.join(f"{'SURVIVES' if x.survives else 'no'} · {x.hyp} {x.label}: est {x.est:+.4g} (p {x.p:.3g}, q {x.q:.3g}, n {x.n}) · {str(x.detail)[:300]}" for _, x in Gd.iterrows())
+    for i in range(0, min(len(out), 3800 * 4), 3800): print(f'::notice title=hunt15b {i // 3800 + 1}::{out[i:i + 3800]}')

@@ -12,7 +12,7 @@
    Output: pack "pYYYY_injhist" = { injhist: { t, v: 1, from, inj: [names], d: { season: { gsis: [[w, i, s, m], …] } } } } */
 
 import { gzipSync } from "node:zlib";
-import { csvRows } from "./lib/files.mjs";
+import { csvRows } from "../src/cfbd.js";
 import { classify, notHurt } from "./avail.mjs";
 
 const NFLV = "https://github.com/nflverse/nflverse-data/releases/download/weekly_rosters/roster_weekly_";
@@ -35,7 +35,7 @@ export async function buildInjHist({ from = 2016, to, prev = null, getPack = nul
   const id = n => { if (!n) return -1; if (!idx.has(n)) { idx.set(n, names.length); names.push(n) } return idx.get(n) };
   const d = {};
   for (let y = from; y <= to; y++) {
-    if (prev && prev.d && y < to && prev.d[y] && Object.keys(prev.d[y]).length > 300) { d[y] = prev.d[y]; continue }   /* finished seasons kept */
+    if (prev && prev.v >= 3 && prev.d && y < to && prev.d[y] && Object.keys(prev.d[y]).length > 300) { d[y] = prev.d[y]; continue }   /* finished seasons kept (v3, Nov 7: the IR-label rule changed, so a v2 pack is rebuilt once in full) */
     const W = {};   // gsis -> week -> [i, s, m]
     try {
       const r = await fetch(NFLI + y + ".csv", { redirect: "follow" });
@@ -64,10 +64,17 @@ export async function buildInjHist({ from = 2016, to, prev = null, getPack = nul
             if (i < 0 && !nx && lastW - w <= 1 && y === to && espnNow) { const e = espnNow[espnOf[g]]; if (e && !notHurt(e)) i = id(injName(e)) }
             if (i < 0) continue; const cur = W[g] && W[g][w];
             if (cur) { if (!cur[2]) { cur[3] = 1; if (cur[0] < 0) cur[0] = i } } else (W[g] = W[g] || {})[w] = [i, 0, 0, 1]; exits++ } } } }
-    /* a reserve week with no injury named takes the injury from the nearest listed week before it */
+    /* a reserve week with no injury named takes the injury from the last listed week only when that week is one or two weeks before
+       (straight from the report to IR). Nov 7 (11:58 pm: "mclaurin hurt his left knee and is out for the season … we had hamstring?"):
+       it used to borrow from any earlier week, so McLaurin's Week 8–9 IR (a knee) carried his Week 4–5 hamstring. Older than that, the week
+       stays "not listed" and keeps what was last listed as -(index + 2), so hand-entered sides still find it and the page can say so; the owner
+       looks those stints up by hand (public/data/nfl-injuries.json). This season's last IR stretch takes ESPN's current injury. */
     const S = {};
-    for (const g in W) { const ws = Object.keys(W[g]).map(Number).sort((a, b) => a - b); let last = -1; const rows = [];
-      for (const w of ws) { const v = W[g][w]; if (v[0] < 0 && last >= 0) v[0] = last; if (v[0] >= 0) last = v[0]; if (v[1] === 3 && !v[2]) v[2] = 1; rows.push(v[3] ? [w, v[0], v[1], v[2], 1] : [w, v[0], v[1], v[2]]) }
+    for (const g in W) { const ws = Object.keys(W[g]).map(Number).sort((a, b) => a - b); let last = -1, lastW = -99; const rows = [];
+      for (const w of ws) { const v = W[g][w]; if (v[0] < 0 && last >= 0) { if (w - lastW <= 2) v[0] = last; else v[0] = -(last + 2) }
+        if (v[0] >= 0) { last = v[0]; lastW = w } if (v[1] === 3 && !v[2]) v[2] = 1; rows.push(v[3] ? [w, v[0], v[1], v[2], 1] : [w, v[0], v[1], v[2]]) }
+      if (y === to && espnNow && espnOf[g]) { const e = espnNow[espnOf[g]]; if (e && !notHurt(e)) { const ei = id(injName(e));
+        for (let k = rows.length - 1; k >= 0 && rows[k][2] === 4; k--) if (rows[k][1] < 0) rows[k][1] = ei } }
       S[g] = rows }
     d[y] = S; log(`injury history ${y}: ${Object.keys(S).length} players${exits ? `, ${exits} left a game hurt so far` : ""}`);
   }
@@ -76,7 +83,7 @@ export async function buildInjHist({ from = 2016, to, prev = null, getPack = nul
 
 export async function uploadInjHist({ api, season, data }) {
   const name = `p${season}_injhist`;
-  const gz = gzipSync(Buffer.from(JSON.stringify({ injhist: { t: Date.now(), v: 2, from: Math.min(...Object.keys(data.d).map(Number)), inj: data.inj, d: data.d } })));
+  const gz = gzipSync(Buffer.from(JSON.stringify({ injhist: { t: Date.now(), v: 3, from: Math.min(...Object.keys(data.d).map(Number)), inj: data.inj, d: data.d } })));
   const r = await api("PUT", `/api/pack/${name}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
   await api("PUT", "/api/pack-index", { body: { [name]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });
   return { name, bytes: r.bytes };

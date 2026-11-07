@@ -259,7 +259,7 @@ async function main() {
     let up = { bytes: 0 }; try { up = await uploadColGap({ api, data: d }) } catch (e) { console.log(`::warning title=college gaps upload failed::${String(e && e.message || e).slice(0, 1500)}`) }
     const n = Object.keys(d.p).length, gaps = Object.values(d.p).reduce((a, r) => a + r[2].length, 0);
     console.log(`::notice title=college gaps::${d.players} players · ${d.teamSeasons} team-seasons · ${d.calls} CFBD calls${d.stopped ? " (stopped early, budget)" : ""} · ${n} players with a missed stretch · ${gaps} stretches · ${(up.bytes / 1024).toFixed(0)} KB`);
-    const C = d.check.map(c => `${c[0]} ${c[1]} (Sam ${c[2]}): ${c[3] ? `last played ${c[3][0]} vs ${c[3][1]}, missed ${c[3][2]}${c[3][3] ? " to season end" : ""}` : "no gap seen"}`);
+    const C = d.check.map(c => `${c[0]} ${c[1]} (by hand: ${c[2]}): ${c[3] ? `last played ${c[3][0]} vs ${c[3][1]}, missed ${c[3][2]}${c[3][3] ? " to season end" : ""}` : "no gap seen"}`);
     for (let i = 0, k = 0; i < C.length && k < 6; k++) { let s = ""; while (i < C.length && (s + C[i]).length < 5800) s += C[i++] + " | "; console.log(`::notice title=college gaps check ${k + 1}::${s}`) }
     console.log(`::notice title=college gaps unplaced::${d.miss.join(", ").slice(0, 5800)}`);
     await report(true, `college gaps · ${n} players · ${gaps} stretches · ${d.calls} calls`); return }

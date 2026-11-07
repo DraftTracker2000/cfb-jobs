@@ -77,7 +77,7 @@ export async function runArchive({ seasons, idx, cf, left, getPack, putPack, put
   const R = { seasons: [], calls: 0, stop: null, packs: 0, mb: 0 };
   let man = null; try { man = await getPack(MANIFEST) } catch { }
   man = man && man.seasons ? man : { v: V, seasons: {} };
-  man.how = "Study only (Sam, Oct 31 10:45 pm). One pack per thing per season, gzipped JSON, read with GET /api/pack/<name> as the admin or the data job (the job token's session). Names: p<Y>_study-cfb-pbp-plays-<r|p><week> (CFBD /plays, every field, as sent), p<Y>_study-cfb-pbp-box (/games/teams by week), p<Y>_study-cfb-pbp-ctx (/games, /drives, /lines, /games/weather, /games/media, /stats/game/advanced; regular and postseason). seasons[Y].packs lists each season's packs and gz bytes.";
+  man.how = "Study only (Oct 31 10:45 pm). One pack per thing per season, gzipped JSON, read with GET /api/pack/<name> as the admin or the data job (the job token's session). Names: p<Y>_study-cfb-pbp-plays-<r|p><week> (CFBD /plays, every field, as sent), p<Y>_study-cfb-pbp-box (/games/teams by week), p<Y>_study-cfb-pbp-ctx (/games, /drives, /lines, /games/weather, /games/media, /stats/game/advanced; regular and postseason). seasons[Y].packs lists each season's packs and gz bytes.";
   const IX = {};
   try {
     for (const y of seasons) {

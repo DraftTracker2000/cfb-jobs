@@ -11,7 +11,7 @@ to work freely. Read them at the start of every session.
   all" or "it's just" without numbers you've measured.
 - When the owner corrects you, check what he said before answering. He knows how the site was built.
 
-## 2. the owner decides what a rule means
+## 2. The owner decides what a rule means
 - When a source rule or a site rule seems to apply, bring the owner what you found (exact files, fields, counts) and let him decide. Don't
   stretch his rules on your own: if a rule doesn't name something, don't treat it as included.
 - Source concerns go on the flag list in `docs/HOW-THIS-SITE-WORKS.md` ("🚩 Source flags — review before charging"). Nothing gets

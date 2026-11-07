@@ -235,3 +235,38 @@ def run_d(reg, log, D):
     log('hunt7d:\n' + '\n'.join(lines))
     out = ' ‖ '.join(lines)
     for i in range(0, min(len(out), 3800 * 4), 3800): print(f'::notice title=hunt7d {i // 3800 + 1}::{out[i:i + 3800]}')
+
+
+# ---------- round 6 (focus hunt7e): every level to every level (Sam, 7:02 pm: "group of 5 schools or lower would use this more … cross fit it") ----------
+G5C = {'American Athletic', 'Mountain West', 'Sun Belt', 'Mid-American', 'Conference USA', 'FBS Independents', 'Western Athletic', 'Big West', 'Pac-12'}
+
+
+def run_e(reg, log, D):
+    s = frame('cf_pstats')
+    s = pd.DataFrame({'pid': pick(s, 'playerId', 'player_id').astype(str), 'team': pick(s, 'team').astype(str), 'conf': pick(s, 'conference').astype(str),
+                      'season': num(pick(s, 'season', '_year')), 'k': pick(s, 'category').astype(str) + '.' + pick(s, 'statType', 'stat_type').astype(str), 'v': num(pick(s, 'stat'))}).dropna(subset=['v', 'season'])
+    log('hunt7e: conferences seen: ' + ', '.join(sorted(s.conf.unique()))[:2500])
+    K = {'passing.YDS': 'pass', 'rushing.YDS': 'rush', 'receiving.YDS': 'rec', 'defensive.TOT': 'tackles', 'defensive.SACKS': 'sacks'}
+    MIN = {'passing.YDS': 1000, 'rushing.YDS': 400, 'receiving.YDS': 300, 'defensive.TOT': 40, 'defensive.SACKS': 4}
+    s = s[s.k.isin(K)]
+    lvl = lambda c, y: 'P4' if (c in FB_POWER and not (c == 'Pac-12' and y >= 2024)) else 'G5' if c in G5C else 'FCS'
+    P = s.pivot_table(index=['pid', 'season', 'team', 'conf'], columns='k', values='v', aggfunc='first').reset_index().sort_values(['pid', 'season'])
+    P['lvl'] = [lvl(c, y) for c, y in zip(P.conf, P.season)]
+    nx = P.groupby('pid').shift(-1)
+    j = P.assign(**{c + '_n': nx[c] for c in K if c in P.columns}, team_n=nx.team, lvl_n=nx.lvl, season_n=nx.season)
+    j = j[j.season_n == j.season + 1]; j['moved'] = j.team_n != j.team
+    log(f'hunt7e: level counts {P.lvl.value_counts().to_dict()}')
+    lines = []; T = {}
+    for c, lab in K.items():
+        if c not in j.columns: continue
+        for a in ('FCS', 'G5', 'P4'):
+            for b in ('FCS', 'G5', 'P4'):
+                x = j[j.moved & (j.lvl == a) & (j.lvl_n == b) & (j[c] >= MIN[c])]
+                if len(x) < 12: continue
+                r = (x[c + '_n'].fillna(0) / x[c]).median(); T[f'{a}>{b}>{lab}'] = round(float(r), 2); lines.append(f'{lab} {a}→{b}: {len(x)} · {r:.2f}')
+            x = j[~j.moved & (j.lvl == a) & (j[c] >= MIN[c])]
+            if len(x) >= 12: r = (x[c + '_n'].fillna(0) / x[c]).median(); T[f'{a}=stay>{lab}'] = round(float(r), 2); lines.append(f'{lab} {a} stayed: {len(x)} · {r:.2f}')
+    log('hunt7e:\n' + '\n'.join(lines))
+    import json as _j
+    out = _j.dumps(T) + ' ‖ ' + ' ‖ '.join(lines)
+    for i in range(0, min(len(out), 3800 * 4), 3800): print(f'::notice title=hunt7e {i // 3800 + 1}::{out[i:i + 3800]}')

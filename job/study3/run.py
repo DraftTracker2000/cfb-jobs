@@ -45,6 +45,8 @@ if FOCUS == 'hunt15b':   # hunt 15 round 2: defenders from the season stat lines
     import hunt15; step('hunt15b', hunt15.run_b, reg, log, D); print('hunt15b errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt15':   # pattern hunt 15 (Nov 6, 9:54 pm — the owner: "back to hunts"): college defenders
     import hunt15; step('hunt15', hunt15.run, reg, log, D); print('hunt15 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'hunt36':   # retest series part 8 (Nov 7, rule 12): college player splits, prediction first
+    import hunt36; step('hunt36', hunt36.run, reg, log, D); print('hunt36 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt33':   # pattern hunt 33 (Nov 7, 2:16 pm): untested offenses vs strong defenses; Utah and BYU this season
     import hunt33; step('hunt33', hunt33.run, reg, log, D); print('hunt33 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt31':   # retest series part 5 (Nov 7, rule 12): college teams and coaches vs the line, prediction first

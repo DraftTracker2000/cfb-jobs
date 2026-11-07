@@ -74,7 +74,9 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
     if (r.ok) { const R = csv(await r.text()), Hh = R[0], c = n => Hh.indexOf(n), I = { s: c("season"), t: c("game_type"), d: c("gameday"), h: c("home_team"), a: c("away_team"), hs: c("home_score"), as: c("away_score"), hc: c("home_coach"), ac: c("away_coach") };
       const rows = R.slice(1).filter(x => x[I.hs] !== "" && x[I.hs] != null && x[I.d]).sort((x, y) => String(x[I.d]).localeCompare(String(y[I.d])));
       const in99 = new Set(); for (const x of rows) if (+x[I.s] === 1999) { in99.add(x[I.hc]); in99.add(x[I.ac]) } in99.delete("Andy Reid");
-      const W = {}, MS = new Set([100, 150, 200, 250, 300, 350]);
+      /* head coaches with regular-season wins before 1999 who weren't on a sideline in 1999: their earlier wins added (Belichick, Cleveland
+         1991–95: 36; Schottenheimer, Cleveland and Kansas City 1984–98: 145) */
+      const W = { "Bill Belichick": 36, "Marty Schottenheimer": 145 }, MS = new Set([100, 150, 200, 250, 300, 350]);
       for (const x of rows) { if (x[I.t] !== "REG") continue; const hs = +x[I.hs], as = +x[I.as]; if (hs === as) continue; const hw = hs > as, co = hw ? x[I.hc] : x[I.ac], tm = hw ? x[I.h] : x[I.a], op = hw ? x[I.a] : x[I.h], S = +x[I.s];
         if (!co || in99.has(co)) continue; W[co] = (W[co] || 0) + 1;
         if (MS.has(W[co])) add(String(x[I.d]).slice(5, 10), "nflcoach", +String(x[I.d]).slice(0, 4), W[co], `${co} wins his ${W[co]}th regular-season game`, `${full(tm, S)} ${Math.max(hs, as)}, ${full(op, S)} ${Math.min(hs, as)}${hw ? " at home" : ` in ${nfl(op, S)[0]}`}.`, "nfl") } } } catch (e) { log("this day: NFL coaches — " + e.message) }
@@ -102,7 +104,7 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
   for (let y = 2014; y < nowYear; y++) { const Gc = (await cf(`/games?year=${y}&seasonType=regular&classification=fbs`)) || [], R = (await cf(`/rankings?year=${y}&seasonType=regular`)) || [], rk = {};
     /* how it ended: the College Football Playoff from the postseason games' notes */
     const PO = (await cf(`/games?year=${y}&seasonType=postseason&classification=fbs`)) || [], CFP = {};
-    for (const g of PO) { const nt = String(g.notes || ""), hp = g.homePoints ?? g.home_points, ap = g.awayPoints ?? g.away_points, ht = g.homeTeam ?? g.home_team, at = g.awayTeam ?? g.away_team; if (hp == null || ap == null || hp === ap || !/playoff|national championship/i.test(nt)) continue;
+    for (const g of PO) { const nt = String(g.notes || ""), hp = g.homePoints ?? g.home_points, ap = g.awayPoints ?? g.away_points, ht = g.homeTeam ?? g.home_team, at = g.awayTeam ?? g.away_team; if (hp == null || ap == null || hp === ap || !/playoff|\bCFP\b|national championship/i.test(nt)) continue;
       const r = /national championship/i.test(nt) ? 4 : /semifinal/i.test(nt) ? 3 : /quarterfinal/i.test(nt) ? 2 : 1, W = hp > ap ? ht : at, L = hp > ap ? at : ht;
       CFP[L] = { r, lost: 1 }; CFP[W] = r === 4 ? { r: 5 } : (CFP[W] && CFP[W].r > r ? CFP[W] : { r }) }
     const cfpTxt = t => { const f = CFP[t]; if (!f) return null; return f.r === 5 ? "won the national championship" : f.r === 4 ? "lost in the national championship game" : f.r === 3 ? "lost in the CFP semifinals" : f.r === 2 ? "lost in the CFP quarterfinals" : "lost in the CFP first round" };

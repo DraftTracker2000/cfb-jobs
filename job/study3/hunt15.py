@@ -29,9 +29,13 @@ def run(reg, log, D):
     log(f'hunt15: defensive types found: {have}')
     TESTS = []
     # games a defender appears in (any row), per season — the denominator for "a game"
-    G = P.groupby(['pid', 'season']).g.nunique().rename('gp')
+    # his team's games that season (the defender only shows up on plays he made, so his own row count can't be the denominator)
+    tg = P.groupby(['team', 'season']).g.nunique(); pt = P.groupby(['pid', 'season']).team.agg(lambda t: t.mode().iat[0])
+    G = pd.Series([tg.get((t, s), np.nan) for (p_, s), t in pt.items()], index=pt.index, name='gp')
+    # how complete the file is: plays of each kind a team-season
+    log('hunt15 per FBS team-season: ' + ', '.join(f'{v} {(P.st == v).sum() / max(len(tg), 1):.1f}' for v in KIND.values()))
     S = pd.concat([P[P.st == v].groupby(['pid', 'season']).size().rename(k) for k, v in have.items()], axis=1).fillna(0)
-    S = S.join(G, how='left').reset_index(); S = S[S.gp >= 6]
+    S = S.join(G, how='left').reset_index(); S = S[S.gp >= 8]
     nm = P.drop_duplicates('pid').set_index('pid').athleteName
     for i, (k, lab) in enumerate((('sk', 'Sacks a game'), ('pbu', 'Pass breakups a game'), ('int', 'Interceptions a game'), ('ff', 'Forced fumbles a game'))):
         if k not in S: continue

@@ -41,6 +41,8 @@ if FOCUS == 'hunt5':   # pattern hunt 5 (Nov 6 — Sam: "try all pattern hunts")
     import hunt5; step('hunt5', hunt5.run, reg, log, D); print('hunt5 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'bbhunt6':   # pattern hunt 6, college basketball (Nov 6 — Sam, 10:09 am), its own notices; nothing else this run
     import bbhunt6; step('bbhunt6', bbhunt6.run, reg, log, D); print('bbhunt6 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'hunt15':   # pattern hunt 15 (Nov 6, 9:54 pm — Sam: "back to hunts"): college defenders
+    import hunt15; step('hunt15', hunt15.run, reg, log, D); print('hunt15 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt13f':   # pattern hunt 13, college football team splits (Nov 6 — Sam: "team splits")
     import hunt13f; step('hunt13f', hunt13f.run, reg, log, D); print('hunt13f errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt11':   # pattern hunt 11 (Nov 6, 8:59 pm — Sam: "DEEP hunts … like the player studies"): college player splits, tells, receivers with new passers

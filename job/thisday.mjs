@@ -197,7 +197,7 @@ export async function buildThisDay({ site, token, getPack, getIndex, putPack, lo
       for (const [nm, h] of Object.entries(HF.p)) { if (!(h.hof > 0)) continue; const t = h.t || [], y0 = Math.min(...t.map(z => z[1]).filter(Number.isFinite)), L = by[nm] || [];
         const x = L.length === 1 ? L[0] : L.find(z => Math.abs((+z[iR] || 0) - y0) <= 1); if (!x) continue; const bd = x[iB], md = bd.slice(5, 10), age = nowYear - +bd.slice(0, 4);
         const tm = [...new Set(t.map(z => z[0]))].slice(0, 3).map(k => (NFLN[k] || [k, k])[1]).join(", ");
-        add(md, "bday", +bd.slice(0, 4), 1, `Happy birthday, ${nm}`, `Born ${new Date(bd + "T12:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })} · Pro Football Hall of Famer${x[iP] ? ` · ${x[iP]}` : ""}${tm ? ` · ${tm}` : ""}.`, "nfl") } } } catch (e) { log("this day: birthdays skipped — " + e.message) }
+        add(md, "bday", +bd.slice(0, 4), 1, `Born on this day: ${nm}`, `Born ${new Date(bd + "T12:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })} · Pro Football Hall of Famer${x[iP] ? ` · ${x[iP]}` : ""}${tm ? ` · ${tm}` : ""}.`, "nfl") } } } catch (e) { log("this day: birthdays skipped — " + e.message) }
   /* the best of each kind a day */
   let n = 0; for (const md in D) { const by = {}; for (const r of D[md]) (by[r[0]] = by[r[0]] || []).push(r);
     D[md] = Object.values(by).flatMap(L => L.sort((a, b) => b[2] - a[2]).slice(0, KEEP)); n += D[md].length }

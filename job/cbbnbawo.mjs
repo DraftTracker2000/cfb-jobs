@@ -48,7 +48,7 @@ export function colMiss(R) {
   const out = {};
   for (const k in P) { const p = P[k]; if (p.g.size < 5 || [...p.g.values()].reduce((a, m) => a + m, 0) / p.g.size < 10) continue;   /* rotation players: 5+ games, 10+ minutes a game */
     const t = T[p.tm], ds = [...p.g.keys()].map(g => t[g]).sort((a, b) => a - b), lo = ds[0], hi = ds[ds.length - 1];
-    const miss = Object.entries(t).filter(([g, d]) => d >= lo && d <= hi && !p.g.has(g)).map(([, d]) => d).sort((a, b) => a - b); if (miss.length) out[p.id] = [...(out[p.id] || []), ...miss] }
+    const miss = Object.entries(t).filter(([g, d]) => d >= lo && d <= hi && !p.g.has(g)).map(([, d]) => d).sort((a, b) => a - b); if (miss.length) out[p.id] = [...new Set([...(out[p.id] || []), ...miss])].sort((a, b) => a - b) }   /* a player on two teams the same season: each date once */
   return out;
 }
 export async function buildNbaWo({ putPack, log, curNba }) {

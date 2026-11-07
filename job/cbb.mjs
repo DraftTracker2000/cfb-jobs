@@ -243,6 +243,10 @@ export async function main() {
   /* nbastats: only the NBA.com tables (play types, hustle, matchups, tracking) from the open sportsdataverse files — no CBBD or ESPN
      calls at all (Oct 12: to fill new NBA profile pieces without spending the day's calls) */
   /* gdate (Nov 6): Eastern game dates for the basketball referee files (job/cbbgdate.mjs) — ESPN scoreboards, one read a day */
+  /* nbawo (Nov 6): NBA "When he's out" from the open player box scores (job/cbbnbawo.mjs) — no ESPN or CBBD calls */
+  if (MODE === "nbawo") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
+    const { buildNbaWo } = await import("./cbbnbawo.mjs"); const R = await buildNbaWo({ putPack, log, curNba });
+    await site("PUT", "/api/pack-index", { body: INDEX }); await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: R.msg, started } }).catch(e => log("report failed: " + e.message)); log(R.msg); return }
   if (MODE === "gdate") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
     const { gdate } = await import("./cbbgdate.mjs"); const R = await gdate({ getPack, putPack, log, curNba });
     await site("PUT", "/api/pack-index", { body: INDEX }); await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: R.msg, started } }).catch(e => log("report failed: " + e.message)); log(R.msg); return }

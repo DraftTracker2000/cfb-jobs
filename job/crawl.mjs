@@ -13,6 +13,8 @@
 
 const PAGES = [["/", "football"], ["/cbb/", "basketball"]];
 const BAD = /(?:^|[^A-Za-z])(undefined|NaN|\[object Object\])(?![A-Za-z])/;
+/* the page's words without its scripts and styles (a page's inline script mentions "undefined" in code), hidden folds included */
+const TXT = `const txt = r => { const w = document.createTreeWalker(r || document.body, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentElement && n.parentElement.closest("script,style,noscript,template") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT }); let o = "", n; while ((n = w.nextNode())) o += n.data + " "; return o };`;
 
 /* walk every level, main tab and sub-view; runs inside the page */
 const WALK = async (W) => {
@@ -38,7 +40,7 @@ const WALK = async (W) => {
 /* the deep views and the additions, football; runs inside the page */
 const DEEP_FB = async () => {
   const w = ms => new Promise(r => setTimeout(r, ms)), out = [], chk = [];
-  const md = () => (document.getElementById("md") || document.body).textContent;
+  const md = () => txt(document.getElementById("md") || document.body);
   const bad = () => { const m = md().match(/.{0,40}(?:^|[^A-Za-z])(undefined|NaN|\[object Object\])(?![A-Za-z]).{0,30}/); return m ? m[0].replace(/\s+/g, " ") : null };
   const step = async (name, f, ms) => { try { await f() } catch (e) { (window.__crawlErr = window.__crawlErr || []).push(`${name}: ${e.message}`) } await w(ms || 4000); out.push({ name, bad: bad(), errs: (window.__crawlErr || []).splice(0) }) };
   const PL = await nflPlayers().catch(() => null) || {};
@@ -61,14 +63,14 @@ const H2H_ALL = async (sport) => {
   const sel = sport === "nfl" ? "[data-nv]" : "[data-hv]", set = sport === "nfl" ? NFL_OPEN : H2H_OPEN, conv = sport === "nfl" ? x => x : x => +x;
   const ids = [...document.querySelectorAll(sel)].map(b => b.getAttribute(sport === "nfl" ? "data-nv" : "data-hv")); if (!ids.length) return { n: 0 };
   ids.forEach(i => set.add(conv(i))); set.delete(conv(ids[0])); document.querySelector(`${sel.slice(0, -1)}="${ids[0]}"]`).click(); await w(9000);
-  const t = document.body.textContent, m = t.match(/.{0,40}(?:^|[^A-Za-z])(undefined|NaN|\[object Object\])(?![A-Za-z]).{0,30}/);
+  const t = txt(document.body), m = t.match(/.{0,40}(?:^|[^A-Za-z])(undefined|NaN|\[object Object\])(?![A-Za-z]).{0,30}/);
   const emptyNotes = [...document.querySelectorAll("[data-nnw]")].filter(e => e.style.display !== "none" && /Notes:\s*$/.test(e.textContent.replace(/i\s*$/, "").trim())).length;
   return { n: ids.length, bad: m ? m[0].replace(/\s+/g, " ") : null, notes: (t.match(/Notes:/g) || []).length, emptyNotes, errs: (window.__crawlErr || []).splice(0) };
 };
 /* basketball deep views and additions; runs inside the page */
 const DEEP_BB = async () => {
   const w = ms => new Promise(r => setTimeout(r, ms)), out = [], chk = [];
-  const bad = () => { const m = document.body.textContent.match(/.{0,40}(?:^|[^A-Za-z])(undefined|NaN|\[object Object\])(?![A-Za-z]).{0,30}/); return m ? m[0].replace(/\s+/g, " ") : null };
+  const bad = () => { const m = txt(document.body).match(/.{0,40}(?:^|[^A-Za-z])(undefined|NaN|\[object Object\])(?![A-Za-z]).{0,30}/); return m ? m[0].replace(/\s+/g, " ") : null };
   const step = async (name, f, ms) => { try { await f() } catch (e) { (window.__crawlErr = window.__crawlErr || []).push(`${name}: ${e.message}`) } await w(ms || 5000); out.push({ name, bad: bad(), errs: (window.__crawlErr || []).splice(0) }) };
   const cft = await fetch("/data/nba-clutch-ft.json").then(r => r.json()).catch(() => null), cid = cft && Object.keys(cft.p)[0];
   if (cid) { await step("NBA profile (clutch FTs)", () => openPro(cid)); chk.push(["Clutch free-throw line", !!document.querySelector("#md .ncft")]); chk.push(["Guarded him best / His man", !!(document.querySelector("#ngrd") || document.querySelector("#nman"))]) }
@@ -108,19 +110,19 @@ export async function crawlCheck({ browser, site, token, log = console.log }) {
     const where = `${nm} ${W}px`; let s;
     try {
       s = await open(browser, site, token, page, W);
-      for (const r of await s.p.evaluate(`(${WALK})(${W})`)) note(where, r);
+      const walked = await s.p.evaluate(`(${WALK})(${W})`); log(`  ${where}: ${walked.length} views`); for (const r of walked) note(where, r);
       if (W > 800) {
         if (nm === "football") {
-          const d = await s.p.evaluate(`(${DEEP_FB})()`); for (const r of d.out) note(where, r); checks.push(...d.chk);
+          const d = await s.p.evaluate(`(async () => { ${TXT} return await (${DEEP_FB})() })()`); for (const r of d.out) note(where, r); checks.push(...d.chk);
           for (const [hash, sp] of [["#/pro/h2h/games", "nfl"], ["#/col/h2h/games", "col"]]) {
             await s.p.evaluate(h => { location.hash = h }, hash); await s.p.waitForTimeout(8000);
-            const h = await s.p.evaluate(`(${H2H_ALL})("${sp}")`); views++;
+            const h = await s.p.evaluate(`(async () => { ${TXT} return await (${H2H_ALL})("${sp}") })()`); views++;
             if (h.bad) problems.push(`${where} · ${sp} Head to Head (${h.n} games open): shows "${h.bad}"`);
             if (h.emptyNotes) problems.push(`${where} · NFL Head to Head: ${h.emptyNotes} empty Notes line(s)`);
             for (const e of h.errs || []) problems.push(`${where} · ${sp} Head to Head: ${e}`);
             if (sp === "nfl" && h.n) checks.push(["NFL notes line", h.notes > 0]);
           }
-        } else { const d = await s.p.evaluate(`(${DEEP_BB})()`); for (const r of d.out) note(where, r); checks.push(...d.chk) }
+        } else { const d = await s.p.evaluate(`(async () => { ${TXT} return await (${DEEP_BB})() })()`); for (const r of d.out) note(where, r); checks.push(...d.chk) }
       }
     } catch (e) { problems.push(`${where}: couldn't finish (${String(e.message || e).slice(0, 300)})`) }
     if (s) { for (const e of [...new Set(s.errs)].slice(0, 6)) problems.push(`${where} · script error: ${e.slice(0, 160)}`); await s.ctx.close() }

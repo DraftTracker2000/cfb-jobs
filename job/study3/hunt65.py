@@ -27,7 +27,7 @@ def rows_of(log):
     gi = G.set_index('gid'); B['gid'] = B.game_id
     B = B[B.gid.isin(gi.index)].copy()
     B['dt'] = B.gid.map(gi.date).astype(str); B['wk'] = B.gid.map(gi.week); B['y'] = B.season.astype(int)
-    B['home'] = (B.ha.astype(str) == 'home').astype(int); B['opp'] = B.team_o
+    B['home'] = np.where(B.gid.map(gi.neutral).astype(bool), 0, np.where(B.ha.astype(str) == 'home', 1, -1)); B['opp'] = B.team_o
     for c in ('att', 'pyds', 'car', 'ryds', 'rec', 'recyds'): B[c] = B[c].fillna(0)
     B = B[(B.att > 0) | (B.car > 0) | (B.rec > 0)]
     log(f'hunt65 box rows {len(B)}, games {B.gid.nunique()}, seasons {B.y.min()}–{B.y.max()}, with a position {B.pid.map(role).notna().mean():.2f}')
@@ -105,11 +105,14 @@ def rows_of(log):
                 homeT = l[2] == r.team; imp = l[1] / 2 + ((-l[0]) if homeT else l[0]) / 2; av = avgpts(r.team, r.y, r.dt)
                 if av: itt = imp / av - 1
             l3 = [R[j][1] for j in range(max(0, i - 3), i)]
-            rows.append(dict(pos=pos, y=r.y, wk=r.wk, m=m, B=Bv, def_=dfac, h2hm=mean(h2) or 0, h2hn=len(h2),
+            rows.append(dict(pos=pos, y=r.y, wk=r.wk, m=m, B=Bv, home=r.home, def_=dfac, h2hm=mean(h2) or 0, h2hn=len(h2),
                              sitem=(mean(same) - mean(allr)) if same and allr else 0, siten=len(same), tmm=mean(tv) or 0, tmn=len(tv),
                              com=mean(cv) or 0, con=len(cv), ccm=mean(cc) or 0, ccn=len(cc), ex=ex, itt=itt, tr3=np.mean(l3) / Bv - 1))
             rel[i] = m / Bv - 1
-    X = pd.DataFrame(rows); X['t'] = np.log((X.m.clip(lower=0) + 10) / (X.B + 10)); return X
+    X = pd.DataFrame(rows)
+    for c in X.columns:
+        if c != 'pos': X[c] = pd.to_numeric(X[c], errors='coerce')
+    X['t'] = np.log((X.m.clip(lower=0) + 10) / (X.B + 10)); return X
 
 sh = lambda m, n, K: m * n / (n + K)
 def feats(D):
@@ -141,7 +144,7 @@ def run(reg, log, D):
         old = P[P.y <= 2021]
         if len(old):
             p = np.c_[np.ones(len(old)), feats(old)] @ np.array(MU[pos]); L, S, E = grade(p, PC[pos], old.t.values, CC[pos])
-            out.append(f'{pos} (2) the page\'s weights on 2014–2021: leans {L[1]}% of {L[0]} · strong {S[1]}% of {S[0]} · every {E[1]}% of {E[2] and E[0]}')
+            out.append(f'{pos} (2) the page\'s weights on 2014–2021: leans {L[1]}% of {L[0]} · strong {S[1]}% of {S[0]} · every {E[1]}% of {E[0]}')
         # (3) one input at a time (fit ≤2021, scored 2022–), and everything
         tr, te = P[P.y <= 2021], P[P.y >= 2022]
         if len(tr) > 500 and len(te):

@@ -59,8 +59,15 @@ def run(reg, log, D):
     B['itt'] = [imp(a, b) for a, b in zip(B.gid, B.team)]; B['upts'] = [up.get((a, b), np.nan) for a, b in zip(B.gid, B.team)]
     B['lmul'] = (B.itt / B.upts).where(B.upts > 5)
     out = [f'rows {len(B)} · seasons {B.y.min()}–{B.y.max()} · with a line {B.lmul.notna().mean():.0%}']
+    # the same from team totals (every player on the other side), which the page can read from CFBD's season team stats (Nov 8: the page's version)
+    ALLS = ['pyds', 'cmp', 'ptd', 'int', 'ryds', 'car', 'rtd', 'rec', 'recyds', 'rectd']
+    TA = B.groupby(['team_o', 'y', 'gid', 'dt'])[ALLS].sum().reset_index().sort_values('dt'); gt = TA.groupby(['team_o', 'y']); TA['n0'] = gt.cumcount()
+    lastT = TA.groupby(['team_o', 'y'])[ALLS].mean(); lgT = TA.groupby('y')[ALLS].mean()
+    for s0 in ALLS:
+        cur = (gt[s0].cumsum() - TA[s0]) / TA.n0.replace(0, np.nan); prv = pd.Series([lastT[s0].get((t, y - 1), np.nan) for t, y in zip(TA.team_o, TA.y)], index=TA.index)
+        ww = TA.n0 / (TA.n0 + 3); TA['t_' + s0] = np.where(cur.notna() & prv.notna(), ww * cur + (1 - ww) * prv, cur.fillna(prv)) / TA.y.map(lgT[s0]).values
     for pos, SL in STATS.items():
-        P = B[(B.pos == pos) & QUAL[pos](B)].copy()
+        P = B[(B.pos == pos) & QUAL[pos](B)].copy().merge(TA[['gid', 'team_o'] + ['t_' + x for x in ALLS]], on=['gid', 'team_o'], how='left')
         # what each defense allowed to this position, per stat, per game (sum over his position's players)
         A = P.groupby(['team_o', 'y', 'gid', 'dt'])[[s for s, _ in SL]].sum().reset_index().sort_values('dt')
         ga = A.groupby(['team_o', 'y']); A['n0'] = ga.cumcount()
@@ -109,6 +116,12 @@ def run(reg, log, D):
                 right = ((f(d, hb, kb) > d['avg_' + s]) == (d[s] > d['avg_' + s]))[lean].mean() if lean.any() else np.nan
                 pc = lambda x: f'{100 * (e0 - x) / e0:+.1f}%'
                 e[nm] = f'{nm} (n {len(d)}): average {e0:.2f} · recent-weighted {pc(e1)} · + defense {pc(e2)} · + line {pc(e3)} · + home {pc(e4)} · + vs them {pc(e5)} · leans right {100 * right:.1f}% of {int(lean.sum())}'
+            X['dm2'] = X['t_' + s].fillna(1).clip(.3, 3); tr2, te2 = X[X.y <= 2021], X[X.y >= 2022]
+            b2 = min(((a, c) for a in grid for c in grid), key=lambda ab: mae(tr2, tr2['ew_' + s] * tr2.dm2 ** ab[0] * tr2.lm ** ab[1]))
+            g2 = lambda d: d['ew_' + s] * d.dm2 ** b2[0] * d.lm ** b2[1]
+            for nm, d in (('22+', te2), ('2026', te2[te2.y == te2.y.max()])):
+                e0 = mae(d, d['avg_' + s])
+                if e0: e[nm] += f' · TEAM-TOTALS version [defense^{b2[0]} line^{b2[1]}] {100 * (e0 - mae(d, g2(d))) / e0:+.1f}%'
             out.append(f'{pos} {lab} [defense^{best[0]} line^{best[1]} home {hb:+.2f} vs-them K {kb if kb < 1e8 else "none"}] ' + ' | '.join(e.values()))
     for o in out: log(o)
     s_ = ' ‖ '.join(out); [print(f'::notice title=hunt66 {i + 1}::{s_[i * 3900:(i + 1) * 3900]}') for i in range((len(s_) + 3899) // 3900)]

@@ -52,15 +52,18 @@ def run(reg, log, D):
         g['hm'] = [0.0 if neu.get(x) is True else (1.0 if home.get(x) == t else -1.0) for x, t in zip(g.g, g.team)]
         g['cg'] = [1.0 if conf.get(x) is True else 0.0 for x in g.g]
         # his own earlier games vs this opponent (relative to his usual then)
-        g['rel'] = np.log((g.y + 2) / (g.usual + 2)); g['h2h'] = g.groupby(['pid', 'opponent']).rel.transform(lambda s: s.shift(1).expanding().mean()).fillna(0)
+        g['rel'] = np.log((np.maximum(g.y, -1) + 2) / (np.maximum(g.usual, -1) + 2)); g['h2h'] = g.groupby(['pid', 'opponent']).rel.transform(lambda s: s.shift(1).expanding().mean()).fillna(0)
         # big plays: his share of yards on 20+ plays vs what the defense allows on 20+ plays
         g['bigme'] = g.groupby('pid').big.transform(lambda s: s.shift(1).expanding().sum()) / g.groupby('pid').n.transform(lambda s: s.shift(1).expanding().sum())
         Bd = g.groupby(['opponent', 'season', 'week']).agg(b=('big', 'sum'), nn=('n', 'sum')).reset_index().sort_values('week')
         Bd['bd'] = (Bd.groupby(['opponent', 'season']).b.cumsum() - Bd.b) / (Bd.groupby(['opponent', 'season']).nn.cumsum() - Bd.nn).replace(0, np.nan)
         g = g.merge(Bd[['opponent', 'season', 'week', 'bd']], on=['opponent', 'season', 'week'], how='left'); lb = g.bd.mean()
         g['bigx'] = ((g.bigme.fillna(lb) - lb) * (g.bd.fillna(lb) - lb) * 100).clip(-3, 3)
-        g['form'] = np.log((g.last3 + 2) / (g.usual + 2)).fillna(0); g['l3d'] = g.l3d.fillna(0); g['dall'] = g.dall.fillna(0)
+        g['form'] = np.log((np.maximum(g.last3, -1) + 2) / (np.maximum(g.usual, -1) + 2)).fillna(0); g['l3d'] = g.l3d.fillna(0); g['dall'] = g.dall.fillna(0)
         g = g[(g.usual >= (15 if kind == 'rec' else 20))].copy()
+        F_ = ['dall', 'ilk', 'hm', 'h2h', 'cg', 'bigx', 'l3d', 'form', 'rel']; out.append(f'{kind} missing before fill: ' + ', '.join(f'{c} {int(g[c].isna().sum())}' for c in F_))
+        for c in F_[:-1]: g[c] = g[c].replace([np.inf, -np.inf], np.nan).fillna(0)
+        g = g[g.rel.notna()]
         tr, te = g[g.season.between(2021, 2023)], g[g.season >= 2024]
         def score(cols, lab):
             Xtr = np.column_stack([np.ones(len(tr))] + [tr[c].values for c in cols]); Xte = np.column_stack([np.ones(len(te))] + [te[c].values for c in cols])

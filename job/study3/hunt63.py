@@ -70,7 +70,7 @@ def run(reg, log, D):
             lam = 5.0 * np.eye(Xtr.shape[1]); lam[0, 0] = 0; b = np.linalg.solve(Xtr.T @ Xtr + lam, Xtr.T @ tr.rel.values)
             pc = np.median(Xtr @ b); p = Xte @ b - pc; c = np.median(tr.rel); ln = np.abs(p) >= np.log(1.05)
             right = ((p > 0) == (te.rel.values > c))[ln]; strong = np.abs(p) >= np.log(1.10)
-            mae = np.abs(np.expm1(Xte @ b) * (te.usual + 2) - 2 - te.y).mean()
+            mae = np.abs(np.exp(Xte @ b) * (np.maximum(te.usual, -1) + 2) - 2 - te.y).mean()
             out.append(f'{kind} {lab}: leans {ln.sum()} right {right.mean():.1%} · strong {strong.sum()} right {((p > 0) == (te.rel.values > c))[strong].mean():.1%} · yards error {mae:.2f}')
             return b
         base = ['dall']; score(base, 'read (usual + defense)')

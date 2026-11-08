@@ -122,7 +122,7 @@ const finY=p=>{if(/^\\/(info|live|scoreboard)/.test(p)||/minYear|maxYear|startYe
 const CURYEAR0=CUR;const hs=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(36)};
 const bcCov=new Set();for(const p of kv){const y=finY(p);if(y)bcCov.add("p"+y+"_bc-api1-"+hs(p))}
 const BC={packs:0,MB:0,coveredPacks:0,coveredMB:0};for(const [k,v] of Object.entries(ix)){if(!/_bc-api\\d+-/.test(k))continue;BC.packs++;BC.MB+=(v.bytes||0)/1048576;if(bcCov.has(k)){BC.coveredPacks++;BC.coveredMB+=(v.bytes||0)/1048576}}
-BC.MB=Math.round(BC.MB);BC.coveredMB=Math.round(BC.coveredMB);for(const [k,v] of Object.entries(ix))if(/_bc-api\d+-/.test(k))console.log("kvbc "+k+" "+((v.bytes||0)/1048576).toFixed(3)+" "+(bcCov.has(k)?1:0));
+BC.MB=Math.round(BC.MB);BC.coveredMB=Math.round(BC.coveredMB);for(const [k,v] of Object.entries(ix))if(/_bc-api\\d+-/.test(k))console.log("kvbc "+k+" "+((v.bytes||0)/1048576).toFixed(3)+" "+(bcCov.has(k)?1:0));
 const S={},big=[];let done=0,fail=0;
 for(const [k,v] of Object.entries(ix)){if(!/_study-/.test(k))continue;const fam=k.replace(/^p\\d{4}_/,"").replace(/-\\d+$/,"").replace(/-[rp]\\d+$/,"");const o=S[fam]=S[fam]||{packs:0,MB:0,answers:0,covered:0,notKept:0,notKeptMB:0,other:0,seasons:[9999,0],eg:[]};
  o.packs++;o.MB+=(v.bytes||0)/1048576;const y=+((/^p(\\d{4})/.exec(k)||[])[1]||0);if(y>2000){o.seasons[0]=Math.min(o.seasons[0],y);o.seasons[1]=Math.max(o.seasons[1],y)}

@@ -117,6 +117,26 @@ def nfl():
         if not len(X): continue
         q = X.groupby('week')[col].rank(pct=True); lo, hi = X[q <= .15], X[q >= .85]; r = np.r_[(lo['diff'] < 0).values, (hi['diff'] > 0).values]
         parts.append(f'{lab} {100 * r.mean():.1f}% ({len(r)})'); tot[0] += r.sum(); tot[1] += len(r)
+    # the leads (hunt 64 part F), re-checked on this season: explosive RB1s (yards a carry allowed), elite TE1s and the most-fed WR2s (points allowed to the rank)
+    try:
+        W2 = W.sort_values(['player_id', 'season', 'week']).copy(); gg = W2.groupby(['player_id', 'season'])
+        W2['big'] = np.where(W2.position == 'RB', W2.get('rushing_20', 0), W2.get('receiving_20', 0)); W2['big'] = W2.big.fillna(0) if hasattr(W2.big, 'fillna') else 0
+        W2['den'] = np.where(W2.position == 'RB', W2.carries, W2.receptions); W2['bigr'] = (gg.big.cumsum() - W2.big) / (gg.den.cumsum() - W2.den).replace(0, np.nan)
+        tv = W2.groupby(['season', 'week', 'team']).agg(tt=('targets', 'sum')).reset_index().sort_values('week'); tg = tv.groupby(['season', 'team']); tv['tt0'] = tg.tt.cumsum() - tv.tt
+        W2 = W2.merge(tv[['season', 'week', 'team', 'tt0']], on=['season', 'week', 'team']); W2['share'] = W2.cum / W2.tt0.clip(lower=1)
+        lead = []
+        for lab, pos, rk, kind, read in (('explosive RB1s', 'RB', 1, 'bigr', 'ypc'), ('elite TEs', 'TE', 1, 'usual', 'ppr'), ('most-fed WR2s', 'WR', 2, 'share', 'rkppr')):
+            P = W2[(W2.position == pos) & (W2.season == CUR)]
+            if read == 'ypc': a = prior(P.groupby(['season', 'week', 'opponent_team'])[['rushing_yards', 'carries']].sum().reset_index(), ['rushing_yards', 'carries']); a['rd'] = a.rushing_yards / a.carries
+            elif read == 'ppr': a = prior(P.groupby(['season', 'week', 'opponent_team']).ppr.sum().reset_index(), ['ppr']).rename(columns={'ppr': 'rd'})
+            else: a = prior(P[P['rank'] == rk].groupby(['season', 'week', 'opponent_team']).ppr.sum().rename('rkppr').reset_index(), ['rkppr']).rename(columns={'rkppr': 'rd'})
+            X = P[(P.k >= 3) & (P.usual >= 4) & (P['rank'] == rk)].merge(a[['season', 'week', 'opponent_team', 'n', 'rd']], on=['season', 'week', 'opponent_team']); X = X[X.n >= 4].dropna(subset=['rd'])
+            if not len(X): continue
+            X = X[X.groupby('week')[kind].rank(pct=True) >= .75]; q = X.groupby('week').rd.rank(pct=True); lo, hi = X[q <= .2], X[q >= .8]
+            r = np.r_[(lo['diff'] < 0).values, (hi['diff'] > 0).values]
+            if len(r): lead.append(f'{lab} {100 * r.mean():.1f}% ({len(r)})')
+        note('nfl-fmatchup-leads', f'{CUR} so far, the leads re-checked (right when the matchup leans)', ' · '.join(lead) or '—', 0, {'season': CUR})
+    except Exception: ERR.append('leads'); print('::warning title=btcur leads::' + traceback.format_exc()[-800:])
     note('nfl-fmatchup', f'{CUR} so far, the list\'s calls right (toughest 15% under, easiest 15% over)', ' · '.join(parts) + (f' · all {100 * tot[0] / tot[1]:.1f}%' if tot[1] else ''), tot[1], {'season': CUR})
     # What to expect (QB / RB), the page's powers (NWTE)
     S = pd.concat([get_csv(f'schedules/games.csv')]) if False else None

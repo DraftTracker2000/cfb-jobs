@@ -95,14 +95,18 @@ const shape = x => { if (x == null || typeof x !== "object") return JSON.stringi
   if (Array.isArray(x)) return "[" + (x.length ? shape(x[0]) : "") + "]";
   return "{" + Object.entries(x).map(([k, v]) => k + ":" + (v && typeof v === "object" ? (Array.isArray(v) ? "[" + (v.length && typeof v[0] === "object" ? Object.keys(v[0]).join("|") : "") + "]" : "{" + Object.keys(v).join("|") + "}") : JSON.stringify(v)?.slice(0, 18))).join(",") + "}" };
 const pack = (L, max) => { const out = []; let s = ""; for (const x of L) { if ((s + x).length > 3900) { out.push(s); s = "" } s += x + " ‖ " } if (s) out.push(s); return out.slice(0, max) };
-export async function runStudy({ site, token, job, log = console.log, out = "study-data", archive = process.env.STUDY_ARCHIVE !== "0" }) {
+/* (Nov 8 — the data save, the owner 3:43 pm "go forward with how you plan to release data. i just don't want the site to lose anything data points
+   wise"): a run no longer re-saves what it pulls as study packs unless "archive" is in STUDY. Finished college football seasons are kept by the
+   CFBD proxy itself ("past:cfbd<path>"), which every run reads through, so nothing is lost; basketball batches still need "archive" to keep. */
+export async function runStudy({ site, token, job, log = console.log, out = "study-data", archive = process.env.STUDY_ARCHIVE === "1" }) {
   const want0 = String(process.env.STUDY || "").split(",").map(s => s.trim()).filter(Boolean);
   /* "noarchive" in STUDY: an analysis rerun — the answers are already kept, so no study packs are written again */
   if (want0.includes("noarchive")) archive = false;
+  if (want0.includes("archive")) archive = true;
   /* "fromarchive": a batch already kept as study packs is read back from them (no CFBD/CBBD call); "focus:<name>" tells the analysis
      which part to run (job/study3/run.py) */
   const fromArchive = want0.includes("fromarchive"), focus = (want0.find(x => x.startsWith("focus:")) || "").slice(6) || null;
-  const want = want0.filter(x => x !== "noarchive" && x !== "fromarchive" && !x.startsWith("focus:"));
+  const want = want0.filter(x => x !== "noarchive" && x !== "archive" && x !== "fromarchive" && !x.startsWith("focus:"));
   const FLOOR = +process.env.STUDY_FLOOR || 46000, CAP = +process.env.STUDY_CAP || 20000;
   const now = new Date(), cur = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;   // the proxy's season (src/cfbd.js)
   const H = { headers: { Authorization: "Bearer " + token } }, sleep = ms => new Promise(z => setTimeout(z, ms));
@@ -156,7 +160,7 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
     if (fromArchive && b.archive !== false) {
       const tag = `study-${b.api === "cfbd" ? "cfb" : "cbb"}-${b.name.replace(/^(cf|bb)_/, "")}`, years = [...new Set(list.map(([k]) => year(k)))];
       let okA = true, nA = 0;
-      for (const y of years) { const p1 = await getPackJ(`p${y || 2000}_${tag}`); if (!p1 || !p1.study) { if (y === years[0]) { okA = false; break } continue }
+      for (const y of years) { const p1 = await getPackJ(`p${y || 2000}_${tag}`); if (!p1 || !p1.study) { okA = false; break }   /* (Nov 8) any season missing — released, or never kept — and the whole batch reads through the proxy instead, so a hunt never runs on part of the seasons */
         const A = { ...p1.study.answers }; for (let i = 2; i <= (p1.study.parts || 1); i++) { const pi = await getPackJ(`p${y || 2000}_${tag}-${i}`); if (pi && pi.study) Object.assign(A, pi.study.answers) }
         for (const [k, v] of Object.entries(A)) { got++; nA++; const c = b.compact ? b.compact(v) : v; if (Array.isArray(c)) rows += c.length; res[k] = c
           if (!SCHEMA[b.name] && Array.isArray(v) && v.length) SCHEMA[b.name] = shape(v[Math.min(5, v.length - 1)]) }

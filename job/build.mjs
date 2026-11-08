@@ -68,10 +68,10 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad"];
+const MODES = ["release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
-const NOFRESH = ["probe", "look", "crawl", "study"].includes(MODE) || /test$/.test(MODE);
+const NOFRESH = ["probe", "look", "crawl", "study", "release"].includes(MODE) || /test$/.test(MODE);
 const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest", "prefetch", "pbpfill", "nflpick", "cfbpick"];   // these write packs only; the shared data version is unchanged
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
@@ -212,7 +212,10 @@ async function main() {
     const cf = async p => { for (let k = 0; k < 3; k++) { try { const r = await fetch(SITE + "/api/cfbd?path=" + encodeURIComponent(p), { headers: { Authorization: "Bearer " + sess.token } });
         if (r.ok) return { j: await r.json(), kept: !!r.headers.get("x-kept") }; if (r.status >= 400 && r.status < 500 && r.status !== 429) return { j: null, kept: false };
         if (r.status === 429) await new Promise(z => setTimeout(z, 20000)) } catch (e) { } await new Promise(z => setTimeout(z, 2000 * (k + 1))) } throw new Error("CFBD " + p + " failed 3 times") };
-    const AR = await A.runArchive({ seasons, idx, cf, left: cfbdLeft, getPack, putPack, putIndex, budget: M.BUDGET, floor: M.FLOOR, deadline: started + 150 * 60e3, log: x => console.log(x) });
+    /* (Nov 8, the data save) the archive is written again only when asked (PBP_ARCHIVE=1): the proxy keeps every finished season's plays,
+       drives and context itself, and the released study packs would otherwise all be rebuilt by the next fill */
+    const AR = process.env.PBP_ARCHIVE === "1" ? await A.runArchive({ seasons, idx, cf, left: cfbdLeft, getPack, putPack, putIndex, budget: M.BUDGET, floor: M.FLOOR, deadline: started + 150 * 60e3, log: x => console.log(x) })
+      : { seasons: [], packs: 0, mb: 0, calls: 0, stop: "archive not asked for (PBP_ARCHIVE=1)" };
     for (const x of AR.seasons) console.log(`::${x.err ? "warning" : "notice"} title=archive ${x.y}::${x.skip ? x.skip : x.err ? "ERROR " + x.err : `${x.weeks} weeks · ${(x.rows.plays || 0).toLocaleString()} plays · ${x.rows.drives || 0} drives · ${x.rows.games || 0} games · box ${x.rows.box || 0} · lines ${x.rows.lines || 0} · weather ${x.rows.weather || 0} · media ${x.rows.media || 0} · advanced ${x.rows.adv || 0}${x.noPlays ? " · NO PLAYS from CFBD" : ""} · ${x.packs} packs, ${((x.kb || 0) / 1024).toFixed(1)} MB gz · ${x.empty} empty answers · ${x.calls} CFBD calls (${x.left.toLocaleString()} left before this season)`}`);
     console.log(`::${AR.stop === "error" || AR.indexFailed || AR.manifestFailed ? "warning" : "notice"} title=archive::${AR.packs} packs, ${AR.mb.toFixed(1)} MB gzipped · ${AR.calls} CFBD calls${AR.stop ? ` · stopped: ${AR.stop}` : " · every season done"}${AR.indexFailed ? " · PACK INDEX WRITE FAILED" : ""} · manifest ${A.MANIFEST}`);
     if (!todo.length) { await report(!AR.indexFailed, `pbpfill · archive ${AR.packs} packs, ${AR.mb.toFixed(1)} MB, ${AR.calls} calls · nothing to fill`); return }
@@ -286,6 +289,11 @@ async function main() {
       console.log(`::notice title=style matchups::${Object.keys(d.t).length} teams through week ${d.wk} · ${d.calls} CFBD calls · ${(r.bytes / 1024).toFixed(0)} KB`) }
     catch (e) { console.log(`::warning title=style matchups failed::${String(e && e.stack || e).slice(0, 2000)}`); if (MODE === "style") throw e }
     if (MODE === "style") { await report(true, "style matchups"); return } }
+  /* MODE=release: the data save (job/release.mjs, Nov 8) — PAGE=dry lists and deletes nothing */
+  if (MODE === "release") { const { runRelease } = await import("./release.mjs"); const dry = (process.env.PAGE_PATH || process.env.PAGE || "") === "dry";
+    const R = await runRelease({ site: SITE, token: sess.token, job: JOB, dry });
+    console.log(`::notice title=release::${dry ? "dry run · " : ""}${R.checked} on the list · ${R.passed} passed the check · ${R.stayed} stay · ${R.deleted} ${dry ? "would be" : ""} released`);
+    await report(true, `release${dry ? " (dry run)" : ""} · ${R.deleted} packs ${dry ? "would go" : "released"} · ${R.stayed} stay`); return }
   /* MODE=probe: single-feature checks in a browser (job/probe.mjs, job/probes.mjs), results as notices on the run; PROBE picks them */
   if (MODE === "probe") { const { runProbes } = await import("./probe.mjs"); const browser = await chromium.launch();
     try { await runProbes({ browser, site: SITE, token: sess.token, only: process.env.PROBE || "" }) } finally { await browser.close() } return }

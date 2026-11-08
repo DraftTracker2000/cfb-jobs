@@ -122,16 +122,16 @@ const finY=p=>{if(/^\\/(info|live|scoreboard)/.test(p)||/minYear|maxYear|startYe
 const CURYEAR0=CUR;const hs=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(36)};
 const bcCov=new Set();for(const p of kv){const y=finY(p);if(y)bcCov.add("p"+y+"_bc-api1-"+hs(p))}
 const BC={packs:0,MB:0,coveredPacks:0,coveredMB:0};for(const [k,v] of Object.entries(ix)){if(!/_bc-api\\d+-/.test(k))continue;BC.packs++;BC.MB+=(v.bytes||0)/1048576;if(bcCov.has(k)){BC.coveredPacks++;BC.coveredMB+=(v.bytes||0)/1048576}}
-BC.MB=Math.round(BC.MB);BC.coveredMB=Math.round(BC.coveredMB);
+BC.MB=Math.round(BC.MB);BC.coveredMB=Math.round(BC.coveredMB);for(const [k,v] of Object.entries(ix))if(/_bc-api\d+-/.test(k))console.log("kvbc "+k+" "+((v.bytes||0)/1048576).toFixed(3)+" "+(bcCov.has(k)?1:0));
 const S={},big=[];let done=0,fail=0;
 for(const [k,v] of Object.entries(ix)){if(!/_study-/.test(k))continue;const fam=k.replace(/^p\\d{4}_/,"").replace(/-\\d+$/,"").replace(/-[rp]\\d+$/,"");const o=S[fam]=S[fam]||{packs:0,MB:0,answers:0,covered:0,notKept:0,notKeptMB:0,other:0,seasons:[9999,0],eg:[]};
  o.packs++;o.MB+=(v.bytes||0)/1048576;const y=+((/^p(\\d{4})/.exec(k)||[])[1]||0);if(y>2000){o.seasons[0]=Math.min(o.seasons[0],y);o.seasons[1]=Math.max(o.seasons[1],y)}
- let j=null;try{const r=await fetch(SITE+"/api/pack/"+k,H);if(!r.ok){fail++;continue}j=await r.json()}catch(e){fail++;continue}done++;
+ o._a0=o.answers;o._n0=o.notKept;let j=null;try{const r=await fetch(SITE+"/api/pack/"+k,H);if(!r.ok){fail++;continue}j=await r.json()}catch(e){fail++;continue}done++;
  const st=j&&j.study,ans=st&&st.answers;
  if(ans&&typeof ans==="object"){const cbb=st.source==="cbbd"||/^study-cbb-/.test(fam);for(const [p,a] of Object.entries(ans)){o.answers++;const sz=JSON.stringify(a||null).length;const ok=!cbb&&kv.has(p);if(ok)o.covered++;else{o.notKept++;o.notKeptMB+=sz/1048576;if(o.eg.length<3)o.eg.push(String(p).slice(0,90))}if(!cbb&&sz>=20e6)big.push(k+" "+String(p).slice(0,80))}}
  else if(j&&j.path&&j.plays){o.answers++;if(kv.has(j.path))o.covered++;else{o.notKept++;o.notKeptMB+=(v.bytes||0)/1048576;if(o.eg.length<3)o.eg.push(String(j.path).slice(0,90))}}
- else o.other++;j=null}
-for(const f in S){const o=S[f];o.MB=Math.round(o.MB*10)/10;o.notKeptMB=Math.round(o.notKeptMB*10)/10;o.seasons=o.seasons[1]?o.seasons.join("-"):""}
+ else o.other++;j=null;console.log("kvpack "+k+" "+((v.bytes||0)/1048576).toFixed(2)+" "+(o.answers-o._a0||0)+" "+(o.notKept-o._n0||0))}
+for(const f in S){const o=S[f];delete o._a0;delete o._n0;o.MB=Math.round(o.MB*10)/10;o.notKeptMB=Math.round(o.notKeptMB*10)/10;o.seasons=o.seasons[1]?o.seasons.join("-"):""}
 for(const f in S)console.log("kvcover "+f+" "+JSON.stringify(S[f]));console.log("kvcover builder "+JSON.stringify(BC));console.log("kvcover big "+JSON.stringify(big.slice(0,40)));
 const tot=Object.values(S).reduce((a,o)=>({packs:a.packs+o.packs,MB:a.MB+o.MB,answers:a.answers+o.answers,covered:a.covered+o.covered,notKept:a.notKept+o.notKept,notKeptMB:a.notKeptMB+o.notKeptMB,other:a.other+o.other}),{packs:0,MB:0,answers:0,covered:0,notKept:0,notKeptMB:0,other:0});
 return {kvKept:kv.size,kvPages:pages,builderCache:BC,studyPacksRead:done,studyPacksFailed:fail,studyTotal:tot,tooBigForProxy:big.length}` },

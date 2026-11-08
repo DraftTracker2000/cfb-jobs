@@ -56,8 +56,12 @@ jobs:
       - name: Findings packs (build)
         if: contains(github.event.inputs.batches, 'focus:findings') && hashFiles('study-data/manifest.json') != ''
         run: python3 -I job/study3/findings.py study-data
+      # focus:btcur (Nov 8): this season's backtests for the scorecard (job/study3/btcur.py), uploaded by the same step below
+      - name: This season's backtests (build)
+        if: contains(github.event.inputs.batches, 'focus:btcur') && hashFiles('study-data/manifest.json') != ''
+        run: python3 -I job/study3/btcur.py study-data
       - name: Findings packs (upload)
-        if: contains(github.event.inputs.batches, 'focus:findings') && hashFiles('study-data/findings/p2026_cfb-findings.json') != ''
+        if: (contains(github.event.inputs.batches, 'focus:findings') || contains(github.event.inputs.batches, 'focus:btcur')) && hashFiles('study-data/findings/*.json') != ''
         env:
           SITE_URL: ${{ secrets.SITE_URL || 'https://mycfbbigboard.com' }}
           JOB_TOKEN: ${{ secrets.JOB_TOKEN }}

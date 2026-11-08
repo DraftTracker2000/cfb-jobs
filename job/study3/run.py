@@ -35,6 +35,7 @@ try: FOCUS = json.load(open(os.path.join(D, 'manifest.json'))).get('focus')
 except Exception: FOCUS = None
 log(f'focus: {FOCUS or "everything"}')
 if FOCUS == 'findings': print('focus:findings — no hunt analysis this run; findings.py builds the packs'); sys.exit(0)
+if FOCUS == 'btcur': print('focus:btcur — no hunt analysis this run; btcur.py scores this season'); sys.exit(0)
 if FOCUS == 'hunt4':   # pattern hunt 4 (Thursday #41, Nov 5): the game-level topics, its own notices; nothing else this run
     import hunt4; step('hunt4', hunt4.run, reg, log, D); print('hunt4 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt5':   # pattern hunt 5 (Nov 6 — the owner: "try all pattern hunts"), its own notices; nothing else this run

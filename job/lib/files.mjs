@@ -42,9 +42,12 @@ export const FILES = {
     keep: ["gsis_id","display_name","espn_id","birth_date","position","height","weight","college_name",
       "rookie_season","last_season","latest_team","status","years_of_experience","draft_year","draft_round",
       "draft_pick","draft_team","headshot"], min: r => !r.last_season || +r.last_season >= 2008 },
-  /* every position, for matching NFL honors to players (Pro Bowl and All-Pro teams name linemen and defenders too) */
+  /* every position, for matching NFL honors to players (Pro Bowl and All-Pro teams name linemen and defenders too). The names and teams
+     (Refine 2, audit 2 FB2-01/03): an honor spelled "Patrick Surtain" finds Pat Surtain II by first + last name, and a Pro Bowl row's team
+     picks between two active namesakes */
   playersall: { url: () => NFLV + "players/players.csv", pos: "position", allPos: true,
-    keep: ["gsis_id","display_name","position","rookie_season","last_season","draft_year","draft_pick"], min: r => !r.last_season || +r.last_season >= 1997 },
+    keep: ["gsis_id","display_name","position","rookie_season","last_season","draft_year","draft_pick",
+      "first_name","last_name","football_name","common_first_name","draft_team","latest_team"], min: r => !r.last_season || +r.last_season >= 1997 },
   stats:   { url: q => NFLV + `stats_player/stats_player_reg_${q.season}.csv`, pos: "position",
     keep: ["player_id","player_display_name","position","season","recent_team","games","completions",
       "attempts","passing_yards","passing_tds","passing_interceptions","carries","rushing_yards",

@@ -29,9 +29,11 @@ const WALK = async (W) => {
     for (const tn of tabs) {
       const T = [...document.querySelectorAll("button.tab")].find(b => b.offsetParent && b.textContent.trim() === tn); if (!T) continue; T.click(); await w(2500);
       const top = T.getBoundingClientRect().bottom;
-      const subs = [...document.querySelectorAll("button")].filter(b => b.offsetParent && !b.classList.contains("tab") && b.getBoundingClientRect().top > top && b.getBoundingClientRect().top < top + 50).map(b => b.textContent.trim()).filter(t => t && !/^(College|Pros)$/.test(t) && !/run again|↻|🔍|🔔|👤|🧰/i.test(t)).slice(0, 12);
+      /* the sub-views: the page's own sub-view row (#vseg), else the buttons just under the tabs */
+      const subEls = () => { const v = [...document.querySelectorAll("#vseg button")].filter(b => b.offsetParent); return v.length ? v : [...document.querySelectorAll("button")].filter(b => b.offsetParent && !b.classList.contains("tab") && b.getBoundingClientRect().top > top && b.getBoundingClientRect().top < top + 70) };
+      const subs = subEls().map(b => b.textContent.trim()).filter(t => t && !/^(College|Pros)$/.test(t) && !/run again|↻|🔍|🔔|👤|🧰/i.test(t)).slice(0, 14);
       look(`${lvl} · ${tn}`);
-      for (const sn of subs) { const B = [...document.querySelectorAll("button")].find(b => b.offsetParent && b.textContent.trim() === sn && b.getBoundingClientRect().top > top && b.getBoundingClientRect().top < top + 50); if (!B) continue; B.click(); await w(2000); look(`${lvl} · ${tn} → ${sn}`) }
+      for (const sn of subs) { const B = subEls().find(b => b.textContent.trim() === sn); if (!B) continue; B.click(); await w(2000); look(`${lvl} · ${tn} → ${sn}`) }
     }
   }
   return out;

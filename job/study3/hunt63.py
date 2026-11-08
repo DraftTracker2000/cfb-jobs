@@ -1,4 +1,4 @@
-# Hunt 63 (Nov 8 — the leftovers list, the owner 12:27 am "go with 1 through 3"; his 10:30 pm ask, college too: "elite players wr1 and rb1 against
+# Hunt 63 (Nov 8 — the leftovers list, 12:27 am "go with 1 through 3"; his 10:30 pm ask, college too: "elite players wr1 and rb1 against
 # their ilk, wr2/wr3s against theirs … where they catch … if the receiver is the wr1 or wr2 … literally everything"). STUDY ONLY, prediction
 # first (rule 12). College receivers and runners, FBS 2020–2025 per-play player file (cf_playstats).
 # The read: his yards in a game against his usual (earlier games, half-life 5, last season at 0.7) moved by what the defense has allowed

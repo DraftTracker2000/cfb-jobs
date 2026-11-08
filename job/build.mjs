@@ -289,8 +289,8 @@ async function main() {
       console.log(`::notice title=style matchups::${Object.keys(d.t).length} teams through week ${d.wk} · ${d.calls} CFBD calls · ${(r.bytes / 1024).toFixed(0)} KB`) }
     catch (e) { console.log(`::warning title=style matchups failed::${String(e && e.stack || e).slice(0, 2000)}`); if (MODE === "style") throw e }
     if (MODE === "style") { await report(true, "style matchups"); return } }
-  /* MODE=release: the data save (job/release.mjs, Nov 8) — PAGE=dry lists and deletes nothing */
-  if (MODE === "release") { const { runRelease } = await import("./release.mjs"); const dry = (process.env.PAGE_PATH || process.env.PAGE || "") === "dry";
+  /* MODE=release: the data save (job/release.mjs, Nov 8) — the dry box lists and deletes nothing */
+  if (MODE === "release") { const { runRelease } = await import("./release.mjs"); const dry = process.env.PREFETCH_DRY === "1";
     const R = await runRelease({ site: SITE, token: sess.token, job: JOB, dry });
     console.log(`::notice title=release::${dry ? "dry run · " : ""}${R.checked} on the list · ${R.passed} passed the check · ${R.stayed} stay · ${R.deleted} ${dry ? "would be" : ""} released`);
     await report(true, `release${dry ? " (dry run)" : ""} · ${R.deleted} packs ${dry ? "would go" : "released"} · ${R.stayed} stay`); return }

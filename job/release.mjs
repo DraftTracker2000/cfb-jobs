@@ -4,7 +4,7 @@
      study pack: every non-empty answer in it (or, for the plays/box/context packs, every CFBD path it holds) must be in the proxy's kept copy
                  ("past:cfbd<path>", listed through /api/kv-keys); one miss and the pack stays
      builder pack: its name must be the page's own name for a path the proxy keeps (p<year>_bc-api1-<apiHash(path)>)
-   PAGE=dry (the run's page box) lists what would go and deletes nothing. Every name deleted is printed in the run log. */
+   The run's dry box lists what would go and deletes nothing. Every name deleted is printed in the run log. */
 import { readFileSync } from "node:fs";
 import { ctxPaths, boxPath } from "./cfbarchive.mjs";
 

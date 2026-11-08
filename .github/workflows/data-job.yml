@@ -21,7 +21,7 @@ on:
         default: ""
         type: string
       dry:
-        description: "MODE=prefetch / nflhof / pbpfill: a dry run — prefetch lists what it would ask CFBD for; nflhof reads and reports but writes nothing; pbpfill lists the seasons, pack sizes and CFBD calls"
+        description: "MODE=prefetch / nflhof / pbpfill / release: a dry run — prefetch lists what it would ask CFBD for; nflhof reads and reports but writes nothing; pbpfill lists the seasons, pack sizes and CFBD calls"
         default: false
         type: boolean
       seasons:

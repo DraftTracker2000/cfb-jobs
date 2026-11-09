@@ -87,7 +87,7 @@ NF = 'https://github.com/nflverse/nflverse-data/releases/download/'
 def get_csv(path):
     for k in range(3):
         try:
-            with urllib.request.urlopen(NF + path, timeout=120) as r: return pd.read_csv(io.BytesIO(r.read()), low_memory=False)
+            with urllib.request.urlopen(NF + path, timeout=120) as r: return pd.read_csv(io.BytesIO(r.read()), low_memory=False, compression='gzip' if path.endswith('.gz') else None)
         except Exception as e: err = e; time.sleep(5)
     raise err
 def nfl():
@@ -178,12 +178,83 @@ def nfl():
     note('nfl-wte', f'{CUR} so far, closer than his season average (page\'s powers)', ' · '.join(f'{k.split()[0]} {nice[k.split()[1]]} {v[0]:+.1f}%' for k, v in out.items()), sum(v[1] for v in out.values()), {'season': CUR})
     return CUR
 
+# ---------------- start/sit and waivers (Nov 8, 9:51 pm — the owner: "this and #4 are things we should have been testing every week") ----------------
+# START/SIT: each week, at each position, every pair of fantasy regulars (QB 12+, RB/WR 8+, TE 6+ PPR a game so far, 3+ games); we'd start the
+# one our read puts higher (recent-weighted PPR × the defense's PPR allowed to the position ^a × the line's implied points vs usual ^b; powers fit
+# on 2015–2021: QB 0/.75, RB .5/.5, WR .25/.5, TE .25/.25). Right = he outscored the other. Against his plain season average.
+# WAIVER: under 10 PPR a game, offensive snap share over his last 2 games 15+ points above his 3 before → his next 3 games vs players with
+# the same points so far whose snaps didn't jump. (Study: startsit.py — 2022–26 ours 61.6/63.6/62.2/62.1% vs average 59.6/62.5/60.7/59.9%;
+# waiver RB +2.7 PPR a game, WR +0.9, TE +0.7, 2015–25.)
+SS_POW = {'QB': (0, .75), 'RB': (.5, .5), 'WR': (.25, .5), 'TE': (.25, .25)}
+def nfl_startsit(CUR):
+    fix = {'STL': 'LA', 'SD': 'LAC', 'OAK': 'LV'}
+    W = pd.concat([get_csv(f'stats_player/stats_player_week_{y}.csv') for y in (CUR - 1, CUR)]); W = W[(W.season_type == 'REG') & W.position.isin(['QB', 'RB', 'WR', 'TE'])].copy()
+    for c in ('team', 'opponent_team'): W[c] = W[c].replace(fix)
+    W['fantasy_points_ppr'] = W.fantasy_points_ppr.fillna(0)
+    if os.environ.get('GAMES_CSV'): G = pd.read_csv(os.environ['GAMES_CSV'])   # a local copy, for testing off the runner
+    else:
+        with urllib.request.urlopen('https://github.com/nflverse/nfldata/raw/master/data/games.csv', timeout=120) as r: G = pd.read_csv(io.BytesIO(r.read()))
+    G = G[(G.game_type == 'REG') & G.season.isin([CUR - 1, CUR])]
+    for c in ('home_team', 'away_team'): G[c] = G[c].replace(fix)
+    h = G.assign(team=G.home_team, pts=G.home_score, imp=G.total_line / 2 + G.spread_line / 2); a = G.assign(team=G.away_team, pts=G.away_score, imp=G.total_line / 2 - G.spread_line / 2)
+    TP = pd.concat([h, a])[['season', 'week', 'team', 'pts', 'imp']].sort_values('week'); gt = TP.groupby(['season', 'team'])
+    TP['n0'] = gt.cumcount(); TP['c0'] = (gt.pts.cumsum() - TP.pts) / TP.n0.replace(0, np.nan); lp = TP.groupby(['season', 'team']).pts.mean()
+    TP['p0'] = [lp.get((y - 1, t), np.nan) for y, t in zip(TP.season, TP.team)]; w_ = TP.n0 / (TP.n0 + 3)
+    TP['up'] = np.where(TP.c0.notna() & TP.p0.notna(), w_ * TP.c0 + (1 - w_) * TP.p0, TP.c0.fillna(TP.p0)); TP['lm'] = (TP.imp / TP.up).where(TP.up > 5).clip(.4, 2.5)
+    W = W.merge(TP[['season', 'week', 'team', 'lm']], on=['season', 'week', 'team'], how='left')
+    DA = W.groupby(['season', 'week', 'opponent_team', 'position']).fantasy_points_ppr.sum().reset_index().sort_values('week'); g2 = DA.groupby(['season', 'opponent_team', 'position'])
+    DA['n0'] = g2.cumcount(); DA['cur'] = (g2.fantasy_points_ppr.cumsum() - DA.fantasy_points_ppr) / DA.n0.replace(0, np.nan)
+    la = DA.groupby(['season', 'opponent_team', 'position']).fantasy_points_ppr.mean(); DA['prv'] = [la.get((y - 1, t, q), np.nan) for y, t, q in zip(DA.season, DA.opponent_team, DA.position)]
+    lgm = DA.groupby(['season', 'position']).fantasy_points_ppr.mean(); ww = DA.n0 / (DA.n0 + 3)
+    DA['dm'] = (np.where(DA.cur.notna() & DA.prv.notna(), ww * DA.cur + (1 - ww) * DA.prv, DA.cur.fillna(DA.prv)) / np.array([lgm.get((y, q)) for y, q in zip(DA.season, DA.position)], dtype=float)).clip(.3, 3)
+    W = W.merge(DA[['season', 'week', 'opponent_team', 'position', 'dm']], on=['season', 'week', 'opponent_team', 'position'], how='left')
+    W = W.sort_values(['player_id', 'season', 'week']).reset_index(drop=True); gp = W.groupby(['player_id', 'season'])
+    W['k'] = gp.cumcount(); W['avg'] = (gp.fantasy_points_ppr.cumsum() - W.fantasy_points_ppr) / W.k.replace(0, np.nan)
+    ew = np.full(len(W), np.nan)
+    for pid, idx in W.groupby('player_id').indices.items():
+        v = W.fantasy_points_ppr.values[idx]; yy = W.season.values[idx]
+        for i in range(1, len(idx)):
+            j = np.arange(i - 1, -1, -1); j = j[yy[j] >= yy[i] - 1]
+            if len(j): wt = .5 ** (np.arange(len(j)) / 5) * np.where(yy[j] == yy[i], 1, .7); ew[idx[i]] = (wt * v[j]).sum() / wt.sum()
+    W['ew'] = ew; MIN = {'QB': 12, 'RB': 8, 'WR': 8, 'TE': 6}
+    X = W[(W.season == CUR) & (W.k >= 3) & (W.avg >= W.position.map(MIN))].dropna(subset=['avg', 'ew']).copy(); X['dm'] = X.dm.fillna(1); X['lm'] = X.lm.fillna(1)
+    def pairs(d, col):
+        right = tot = 0
+        for _, g in d.groupby(['week', 'position']):
+            p = g[col].values; f = g.fantasy_points_ppr.values
+            if len(p) < 2: continue
+            i, j = np.triu_indices(len(p), 1); keep = (p[i] != p[j]) & (f[i] != f[j]); right += int(((p[i] > p[j]) == (f[i] > f[j]))[keep].sum()); tot += int(keep.sum())
+        return (100 * right / tot if tot else None), tot
+    parts, N = [], 0
+    for pos, (a, b) in SS_POW.items():
+        d = X[X.position == pos].assign(q=lambda z: z.ew * z.dm ** a * z.lm ** b); o, n = pairs(d, 'q'); base, _ = pairs(d, 'avg'); N += n
+        if o is not None: parts.append(f'{pos} {o:.1f}% (avg {base:.1f}%)')
+    note('nfl-startsit', f'{CUR} so far: start/sit calls right (vs his season average)', ' · '.join(parts), N, {'season': CUR})
+    try:
+        sn = get_csv(f'snap_counts/snap_counts_{CUR}.csv.gz'); sn = sn[(sn.game_type == 'REG') & sn.position.isin(['RB', 'WR', 'TE'])].copy(); sn['team'] = sn.team.replace(fix)
+        sn['nm'] = sn.player.str.lower().str.replace(r'[^a-z]', '', regex=True); W['nm'] = W.player_display_name.str.lower().str.replace(r'[^a-z]', '', regex=True)
+        V = W[(W.season == CUR) & W.position.isin(['RB', 'WR', 'TE'])].merge(sn[['week', 'nm', 'team', 'offense_pct']], on=['week', 'nm', 'team']).sort_values(['player_id', 'week'])
+        rows = []
+        for pid, d in V.groupby('player_id'):
+            sp, f = d.offense_pct.values, d.fantasy_points_ppr.values
+            for i in range(5, len(d) - 1):
+                ppg = f[:i + 1].mean(); nx = f[i + 1:i + 4]
+                if len(nx) < 2 or ppg >= 10: continue
+                rows.append((d.position.iat[0], ppg, sp[i - 1:i + 1].mean() - sp[i - 4:i - 1].mean(), nx.mean()))
+        R = pd.DataFrame(rows, columns=['pos', 'ppg', 'jump', 'next'])
+        if len(R):
+            R['b'] = pd.cut(R.ppg, [0, 3, 5, 7, 10]); R['riser'] = R.jump >= .15; base = R[~R.riser].groupby(['pos', 'b'], observed=True).next.mean()
+            R['exp'] = [base.get((q, b), np.nan) for q, b in zip(R.pos, R.b)]; r = R[R.riser].dropna(subset=['exp'])
+            note('nfl-waiver', f'{CUR} so far: snap-share risers\' next 3 games vs the same points without the jump', ' · '.join(f'{q} {r[r.pos == q].next.mean() - r[r.pos == q].exp.mean():+.1f} PPR a game (n {(r.pos == q).sum()})' for q in ['RB', 'WR', 'TE'] if (r.pos == q).sum()), len(r), {'season': CUR})
+    except Exception: print(f'::warning title=btcur waiver::{traceback.format_exc()[-800:]}')
+
 def step(name, f, *a):
     try: return f(*a)
     except Exception: ERR.append(name); print(f'::warning title=btcur {name}::{traceback.format_exc()[-1500:]}'); return None
 C = step('college', college)
 if C: step('college What to expect', college_wte, C)
 N = step('nfl', nfl)
+if N: step('nfl start/sit and waivers', nfl_startsit, N)
 S = C or N or int(time.strftime('%Y'))
 os.makedirs(os.path.join(D, 'findings'), exist_ok=True)
 json.dump({'btcur': {'v': 1, 'at': time.strftime('%Y-%m-%d'), 'season': S, 'models': OUT, 'errors': ERR}}, open(os.path.join(D, 'findings', f'p{S}_btcur.json'), 'w'))

@@ -45,4 +45,5 @@ for (const [W, H, name] of [[1440, 900, "desk"], [1280, 800, "lap"], [390, 844, 
 }
 LOG.push("script errors: " + JSON.stringify([...new Set(errs)].slice(0, 8)));
 writeFileSync("bcshots/log.txt", LOG.join("\n")); console.log(LOG.join("\n"));
+const S_ = LOG.join(" ‖ "); for (let i = 0; i * 3800 < S_.length; i++) console.log(`::notice title=nav2shots ${i + 1}::${S_.slice(i * 3800, (i + 1) * 3800)}`);
 await browser.close();

@@ -82,6 +82,8 @@ export function batches(cur) {
     C("cf_media", R(2004, cur).map(y => `/games/media?year=${y}&seasonType=regular`)),
     B("bb_rankings", R(2008, cur + 1).map(y => ["/rankings", { season: y }])),
     B("bb_lines", R(2014, cur + 1).flatMap(y => cbbRanges(y).map(([a, b]) => ["/lines", { season: y, startDateRange: a, endDateRange: b }]))),
+    /* Nov 8 (hunt 76, three-point luck against the line): team box scores (makes and tries from three, both sides), named runs only */
+    B("bb_tgames", R(2015, cur + 1).flatMap(y => cbbRanges(y).map(([a, b]) => ["/games/teams", { season: y, startDateRange: a, endDateRange: b }])), { optIn: true }),
     /* Nov 5 (5:43 pm: "for the college per play. for this api month we just do the seasons that have players that are still active this
        season in them"): CFBD's per-play player credits (/plays/stats — who threw, caught, ran, sacked, hurried, broke up), one call per
        game with an FBS team (CFBD answers at most 2,000 rows a call; a game is well under that). Seasons 2020–2025; game ids from each

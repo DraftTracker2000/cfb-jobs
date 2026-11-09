@@ -13,6 +13,10 @@ on:
       width:
         default: "1440"
         type: string
+      script:
+        description: "which picture script: bcshots (the broadcast workspace) or nav2shots (the new header, Nov 9)"
+        default: "bcshots"
+        type: string
 permissions:
   contents: read
 jobs:
@@ -32,7 +36,7 @@ jobs:
           TAG: ${{ github.event.inputs.tag }}
           PAGES: ${{ github.event.inputs.pages }}
           WIDTH: ${{ github.event.inputs.width }}
-        run: mkdir -p bcshots && (node job/bcshots.mjs | tee bcshots/run.txt || true)
+        run: mkdir -p bcshots && (node job/${{ github.event.inputs.script || 'bcshots' }}.mjs | tee bcshots/run.txt || true)
       - uses: actions/upload-artifact@v4
         with:
           name: bc-shots

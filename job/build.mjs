@@ -292,7 +292,7 @@ async function main() {
   /* MODE=release: the data save (job/release.mjs, Nov 8) — the dry box lists and deletes nothing */
   if (MODE === "release") { const { runRelease } = await import("./release.mjs"); const dry = process.env.PREFETCH_DRY === "1";
     const R = await runRelease({ site: SITE, token: sess.token, job: JOB, dry });
-    console.log(`::notice title=release::${dry ? "dry run · " : ""}${R.checked} on the list · ${R.passed} passed the check · ${R.stayed} stay · ${R.deleted} ${dry ? "would be" : ""} released`);
+    console.log(`::notice title=release::${dry ? "dry run · " : ""}${R.checked} on the list · ${R.passed} passed the check · ${R.stayed} stay · ${R.deleted} ${dry ? "would be" : ""} released${(R.skipEg || []).length ? " · skipped e.g. " + R.skipEg.join(" ‖ ") : ""}${(R.stayEg || []).length ? " · stays e.g. " + R.stayEg.join(" ‖ ") : ""}`);
     await report(true, `release${dry ? " (dry run)" : ""} · ${R.deleted} packs ${dry ? "would go" : "released"} · ${R.stayed} stay`); return }
   /* MODE=probe: single-feature checks in a browser (job/probe.mjs, job/probes.mjs), results as notices on the run; PROBE picks them */
   if (MODE === "probe") { const { runProbes } = await import("./probe.mjs"); const browser = await chromium.launch();

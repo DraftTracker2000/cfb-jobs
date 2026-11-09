@@ -48,10 +48,10 @@ export async function runRelease({ site, token, job, dry, log = console.log }) {
       if (!Object.keys(A).length) keep.push([n, "no answers"]); else if (miss.length) keep.push([n, `${miss.length} answer(s) not kept: ${miss[0]}`]); else ok.push(n) } }
   for (const n of L.bc) { if (bcCov.has(n)) ok.push(n); else keep.push([n, "not matched to a kept answer"]) }
   log(`release: ${ok.length} packs pass the check, ${keep.length} stay`); for (const [n, w] of keep) log(`  stays: ${n} — ${w}`);
-  let deleted = 0;
+  let deleted = 0; const skipEg = [];
   for (let i = 0; i < ok.length; i += 100) {
     const r = await fetch(`${site}/api/pack-release`, { method: "POST", headers: { Authorization: "Bearer " + job, "Content-Type": "application/json" }, body: JSON.stringify({ names: ok.slice(i, i + 100), dry }) });
     const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error("pack-release " + r.status + " " + JSON.stringify(j).slice(0, 200));
-    deleted += j.deleted.length; for (const n of j.deleted) log(`  ${dry ? "would release" : "released"}: ${n}`); for (const [n, w] of j.skipped) log(`  skipped: ${n} — ${w}`) }
-  return { checked: L.study.length + L.bc.length + (L.cbb || []).length, passed: ok.length, stayed: keep.length, deleted, dry };
+    deleted += j.deleted.length; for (const n of j.deleted) log(`  ${dry ? "would release" : "released"}: ${n}`); for (const [n, w] of j.skipped) { log(`  skipped: ${n} — ${w}`); if (skipEg.length < 3) skipEg.push(n + " — " + w) } }
+  return { checked: L.study.length + L.bc.length + (L.cbb || []).length, passed: ok.length, stayed: keep.length, deleted, dry, skipEg, stayEg: keep.slice(0, 3).map(x => x.join(" — ")) };
 }

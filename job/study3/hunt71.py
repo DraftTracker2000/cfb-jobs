@@ -53,9 +53,9 @@ def run(reg, log, D):
     T['opp_rank'] = [rank(o, s, w) for o, s, w in zip(T.opp, T.season, T.week)]
     T['next_rank'] = [rank(o, s, w) if isinstance(o, str) else None for o, s, w in zip(T.next_opp, T.season, T.week)]
     # rivalries from the schedule alone: pairs that met in 15+ seasons, mostly non-conference or in a team's last regular-season game
-    pr = T[T.team < T.opp].assign(pair=lambda d: d.team + '|' + d.opp, last=lambda d: d.gno == d.ng - 1)
-    pa = pr.groupby('pair').agg(seasons=('season', 'nunique'), nonconf=('conf_game', lambda s: (~s.astype(bool)).mean()), last=('last', 'mean'))
-    RIV = set(pa[(pa.seasons >= 15) & ((pa.nonconf >= .5) | (pa.last >= .6))].index)
+    pr = T[T.team < T.opp].assign(pair=lambda d: d.team + '|' + d.opp, fin=lambda d: d.gno == d.ng - 1)
+    pa = pr.groupby('pair').agg(seasons=('season', 'nunique'), nonconf=('conf_game', lambda s: (~s.astype(bool)).mean()), fin=('fin', 'mean'))
+    RIV = set(pa[(pa.seasons >= 15) & ((pa.nonconf >= .5) | (pa.fin >= .6))].index)
     key = lambda a, b: a + '|' + b if a < b else b + '|' + a
     T['rival'] = [key(a, b) in RIV for a, b in zip(T.team, T.opp)]
     T['next_rival'] = [isinstance(b, str) and key(a, b) in RIV for a, b in zip(T.team, T.next_opp)]

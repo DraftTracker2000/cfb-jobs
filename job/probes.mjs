@@ -178,7 +178,7 @@ q.value="jo";q.oninput();await w(1500);const first=snap();clr();q.value="josh";q
 q.value="";q.oninput();await w(300);q.value="ma";q.oninput();await w(1500);q.value="mahomes";q.oninput();await w(1500);const warm=snap();
 return {ok:true,first,rest,warm}})()` },
   /* Nov 9: the Lab's new header on a phone — is anything covering the bottom buttons? (nav2shots' tap timed out) */
-  { name: "nav2phone", page: "/lab/?nav2", widths: [390], settle: 12000, ready: "header", run: `return await (async()=>{const bb=document.getElementById("n2bb");if(!bb)return {ok:false,err:"no bottom bar",cls:document.documentElement.className};
+  { name: "nav2phone", page: "/lab/", widths: [390], settle: 12000, ready: "header", run: `return await (async()=>{try{localStorage.setItem("cfbNav2","1")}catch(e){}if(!document.getElementById("n2bb")){const e=document.createElement("script");e.src="/lab/nav2.js?v=1";document.body.appendChild(e);for(let i=0;i<20&&!document.getElementById("n2bb");i++)await w(300)}await w(800);const bb=document.getElementById("n2bb");if(!bb)return {ok:false,err:"no bottom bar",cls:document.documentElement.className};
 const b=bb.querySelector('[data-n2b="PLAYERS"]'),r=b.getBoundingClientRect(),top=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
 const nm=e=>e?e.tagName.toLowerCase()+(e.id?"#"+e.id:"")+(typeof e.className==="string"&&e.className?"."+e.className.trim().split(/\s+/).slice(0,2).join("."):""):"none";
 const fixedBottom=[...document.querySelectorAll("body *")].filter(e=>{const c=getComputedStyle(e);if(c.position!=="fixed"&&c.position!=="sticky")return false;const q=e.getBoundingClientRect();return q.height&&q.bottom>=innerHeight-80&&q.top<innerHeight}).map(e=>nm(e)+" z"+getComputedStyle(e).zIndex).slice(0,8);

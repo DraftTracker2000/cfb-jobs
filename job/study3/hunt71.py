@@ -1,7 +1,7 @@
 # Hunt 71 (Nov 8, 2026 — the owner, 7:19 pm: "obviously just do all the 16 pattern hunts"; the "Next ideas — Nov 8" list). College football.
 # STUDY ONLY. Prediction first (rule 12): every tag is known before kickoff (the schedule, the poll, the line, earlier games), then scored on
 # the games after it. The outcome is the cover (margin minus the closing line's expected margin); break-even for picking a side is 52.4%.
-# Each test is shown on all seasons and on two halves (2005–2015, 2016–2026) to see whether it holds.
+# Each test is shown on all seasons with a line (2013–2026) and on two halves (2013–2019, 2020–2026) to see whether it holds.
 #   1 look-ahead   favorites whose NEXT game is against a ranked team or a rival
 #   2 letdown      teams the week after a big upset win (won as a 7+ underdog) or a rivalry win
 #   3 rivalry      favorites in rivalry games (pairs that met in 15+ seasons, mostly non-conference or in the last regular-season week)
@@ -24,8 +24,8 @@ def summ(d, col='cover'):
     c = d[col]; rate = 100 * (c > 0).mean(); t = stats.ttest_1samp(c, 0) if len(c) > 2 else None
     return f'{c.mean():+.2f} pts vs the line, covers {rate:.1f}% of {len(c)} (p {t.pvalue:.2f})' if t is not None else f'n {len(c)}'
 def halves(d, col='cover'):
-    a, b = d[d.season <= 2015], d[d.season >= 2016]
-    return f'all: {summ(d, col)} · 2005–15: {summ(a, col)} · 2016–26: {summ(b, col)}'
+    a, b = d[d.season <= 2019], d[d.season >= 2020]
+    return f'all: {summ(d, col)} · 2013–19: {summ(a, col)} · 2020–26: {summ(b, col)}'
 
 def run(reg, log, D):
     G, T, CO, TS = cfb_base.build()
@@ -53,7 +53,11 @@ def run(reg, log, D):
     T['opp_rank'] = [rank(o, s, w) for o, s, w in zip(T.opp, T.season, T.week)]
     T['next_rank'] = [rank(o, s, w) if isinstance(o, str) else None for o, s, w in zip(T.next_opp, T.season, T.week)]
     # rivalries from the schedule alone: pairs that met in 15+ seasons, mostly non-conference or in a team's last regular-season game
-    pr = T[T.team < T.opp].assign(pair=lambda d: d.team + '|' + d.opp, fin=lambda d: d.gno == d.ng - 1)
+    # from the full schedule (2004 on), not only the games with a line (2013 on)
+    A0 = G[G.both_fbs & G.stype.astype(str).str.startswith('reg')].copy(); A0['dt'] = pd.to_datetime(A0.date, utc=True, errors='coerce')
+    TT = pd.concat([A0.assign(team=A0.home, opp=A0.away), A0.assign(team=A0.away, opp=A0.home)]).sort_values(['team', 'season', 'dt'])
+    TT['gno'] = TT.groupby(['team', 'season']).cumcount(); TT['ng'] = TT.groupby(['team', 'season']).gid.transform('size')
+    pr = TT[TT.team < TT.opp].assign(pair=lambda d: d.team + '|' + d.opp, fin=lambda d: d.gno == d.ng - 1)
     pa = pr.groupby('pair').agg(seasons=('season', 'nunique'), nonconf=('conf_game', lambda s: (~s.astype(bool)).mean()), fin=('fin', 'mean'))
     RIV = set(pa[(pa.seasons >= 15) & ((pa.nonconf >= .5) | (pa.fin >= .6))].index)
     key = lambda a, b: a + '|' + b if a < b else b + '|' + a

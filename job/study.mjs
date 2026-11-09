@@ -80,6 +80,8 @@ export function batches(cur) {
        archive wrote them so finished seasons come from the proxy's kept copy */
     C("cf_venues", ["/venues"]),
     C("cf_media", R(2004, cur).map(y => `/games/media?year=${y}&seasonType=regular`)),
+    /* Nov 9 (hunt 78, college weather and the total): each season's game weather, named runs only */
+    C("cf_weather", R(2013, cur).map(y => `/games/weather?year=${y}&seasonType=both`), { optIn: true }),
     B("bb_rankings", R(2008, cur + 1).map(y => ["/rankings", { season: y }])),
     B("bb_lines", R(2014, cur + 1).flatMap(y => cbbRanges(y).map(([a, b]) => ["/lines", { season: y, startDateRange: a, endDateRange: b }]))),
     /* Nov 8 (hunt 76, three-point luck against the line): team box scores (makes and tries from three, both sides), named runs only */

@@ -32,6 +32,20 @@ export async function runRelease({ site, token, job, dry, log = console.log }) {
     else { keep.push([n, "unknown shape"]); continue }
     const miss = paths.filter(p => !kv.has(p));
     if (miss.length) keep.push([n, `${miss.length} answer(s) not kept: ${miss[0]}`]); else ok.push(n) }
+  /* Nov 9: basketball study packs — every answer in the pack (empty ones too, since the proxy doesn't store those) must be in the proxy's
+     finished-season keep ("past:cbbd<path>?<query>", src/hoops.js); one miss and the pack stays */
+  if ((L.cbb || []).length) {
+    const kvB = new Set(); let cb = null, pg = 0;
+    do { const r = await fetch(`${site}/api/kv-keys?prefix=${encodeURIComponent("past:cbbd")}${cb ? "&cursor=" + encodeURIComponent(cb) : ""}`, H); if (!r.ok) throw new Error("kv-keys " + r.status);
+      const j = await r.json(); for (const k of j.keys) kvB.add(k.slice(9)); cb = j.cursor; pg++ } while (cb && pg < 500);
+    log(`release: the proxy keeps ${kvB.size} finished basketball answers`);
+    const has = p => kvB.has(p) || kvB.has(String(p).replace(/^\/?/, "/"));
+    for (const n of L.cbb) {
+      if (!/^p\d{4}_study-cbb-/.test(n)) { keep.push([n, "not a basketball study pack"]); continue }
+      let j = null; try { const r = await fetch(`${site}/api/pack/${n}`, H); if (r.status === 404) { keep.push([n, "already gone"]); continue } if (!r.ok) { keep.push([n, "read " + r.status]); continue } j = await r.json() } catch (e) { keep.push([n, "read failed"]); continue }
+      const A = j && j.study && j.study.answers; if (!A || typeof A !== "object") { keep.push([n, "unknown shape"]); continue }
+      const miss = Object.keys(A).filter(p => !has(p));
+      if (!Object.keys(A).length) keep.push([n, "no answers"]); else if (miss.length) keep.push([n, `${miss.length} answer(s) not kept: ${miss[0]}`]); else ok.push(n) } }
   for (const n of L.bc) { if (bcCov.has(n)) ok.push(n); else keep.push([n, "not matched to a kept answer"]) }
   log(`release: ${ok.length} packs pass the check, ${keep.length} stay`); for (const [n, w] of keep) log(`  stays: ${n} — ${w}`);
   let deleted = 0;
@@ -39,5 +53,5 @@ export async function runRelease({ site, token, job, dry, log = console.log }) {
     const r = await fetch(`${site}/api/pack-release`, { method: "POST", headers: { Authorization: "Bearer " + job, "Content-Type": "application/json" }, body: JSON.stringify({ names: ok.slice(i, i + 100), dry }) });
     const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error("pack-release " + r.status + " " + JSON.stringify(j).slice(0, 200));
     deleted += j.deleted.length; for (const n of j.deleted) log(`  ${dry ? "would release" : "released"}: ${n}`); for (const [n, w] of j.skipped) log(`  skipped: ${n} — ${w}`) }
-  return { checked: L.study.length + L.bc.length, passed: ok.length, stayed: keep.length, deleted, dry };
+  return { checked: L.study.length + L.bc.length + (L.cbb || []).length, passed: ok.length, stayed: keep.length, deleted, dry };
 }

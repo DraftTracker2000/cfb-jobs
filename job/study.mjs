@@ -197,7 +197,8 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
     man.batches.push({ name: b.name, asked: n, got, kept, fresh, before, after, calls, rows, mb: +(bytes / 1e6).toFixed(2), newKVmb: +(newKV / 1e6).toFixed(2), packs, packMB: +packMB.toFixed(2), errors: errs.slice(0, 20) });
   }
   /* the site's own packs the analysis needs (read only): basketball head coaches by team and season (ESPN, built by the basketball job) */
-  for (const n of ["p2026_cbb-coaches"]) { try { const r = await fetch(`${site}/api/pack/${n}`, H); if (r.ok) writeFileSync(`${out}/site_${n}.json.gz`, gzipSync(Buffer.from(await r.text()))) } catch (e) { } }
+  /* (Nov 8, hunt 74) and the college coordinators by team and season (Wikipedia season pages, built for the coach pages) */
+  for (const n of ["p2026_cbb-coaches", `p${cur}_coord`]) { try { const r = await fetch(`${site}/api/pack/${n}`, H); if (r.ok) writeFileSync(`${out}/site_${n}.json.gz`, gzipSync(Buffer.from(await r.text()))) } catch (e) { } }
   const L1 = await left(); man.left1 = L1; man.used = used; man.cbbdLeft = lastLeft;
   if (Object.keys(IX).length) { for (let k = 0; k < 3; k++) { const r = await fetch(`${site}/api/pack-index`, { method: "PUT", body: JSON.stringify(IX), headers: { Authorization: "Bearer " + job, "Content-Type": "application/json" } }); if (r.ok) break; await sleep(4000) } }
   man.archive = { packs: ARCH.length, mb: +(ARCH.reduce((a, x) => a + x[1], 0) / 1e6).toFixed(1), names: ARCH };

@@ -1,6 +1,5 @@
 # Hunt 72 (Nov 8, 2026 — the owner, 7:19 pm: "obviously just do all the 16 pattern hunts"; the "Next ideas — Nov 8" list). NFL. STUDY ONLY.
-# nflverse schedules + closing lines (1999–2026), weekly player stats (2015–2026), play-by-play (2016–2025), rosters and snap counts
-# (2012–2025), read locally. Prediction first (rule 12): every tag is known before kickoff, then scored on the games after it.
+# nflverse schedules + closing lines (1999–2026), weekly player stats (2015–2026), play-by-play (2016–2025), rosters, read locally. Prediction first (rule 12): every tag is known before kickoff, then scored on the games after it.
 #   1/2  look-ahead and letdown, NFL: favorites before a division game against a winning team; teams after a 7+ point upset win
 #   10   out of it: teams at a third of their games won or worse, 10+ games in — against the line, and their skill players' fantasy points
 #   11   garbage time: a back's or receiver's share of PPR points with the game out of reach — does a high share fall off next season?
@@ -105,27 +104,6 @@ for (t, s), d in T.groupby(['team', 'season']):
                     break
 R = T.merge(pd.DataFrame(rows, columns=['team', 'season', 'week']).drop_duplicates(), on=['team', 'season', 'week'])
 out.append(f'14 STAR BACK (QB or top-2 fantasy player, out 2+ games, back this week): {halves(R)} ‖ as favorites {summ(R[R.exp > 0])} ‖ as underdogs {summ(R[R.exp < 0])}')
-# portal 14: snap-weighted age of each team, Super Bowl teams vs the league
-ages = []
-for y in range(2013, 2026):
-    f = glob.glob(f'{NV}/roster_{y}.csv*')
-    if not f: continue
-    ro = pd.read_csv(f[0], low_memory=False)[['pfr_id', 'birth_date']].dropna().drop_duplicates('pfr_id')
-    sn = pd.read_csv(f'{NV}/snap_{y}.csv.gz'); sn = sn[sn.game_type == 'REG']
-    sn['snaps'] = sn.offense_snaps.fillna(0) + sn.defense_snaps.fillna(0)
-    sn = sn.merge(ro, left_on='pfr_player_id', right_on='pfr_id', how='inner'); sn['team'] = sn.team.replace(fix)
-    sn['age'] = (pd.Timestamp(f'{y}-09-01') - pd.to_datetime(sn.birth_date, errors='coerce')).dt.days / 365.25
-    A = sn.dropna(subset=['age']).groupby('team').apply(lambda d: np.average(d.age, weights=d.snaps.clip(lower=0) + 1e-9)).rename('age').reset_index(); A['season'] = y
-    A['rank'] = A.age.rank(ascending=False); ages.append(A)
-A = pd.concat(ages)
-GS = pd.read_csv(GC); sb = GS[GS.game_type == 'SB'][['season', 'home_team', 'away_team', 'result']]
-sbt = []
-for _, x in sb.iterrows():
-    win = x.home_team if x.result > 0 else x.away_team
-    for t in (x.home_team, x.away_team): sbt.append((int(x.season), fix.get(t, t), t == win))
-SB = pd.DataFrame(sbt, columns=['season', 'team', 'won']).merge(A, on=['season', 'team'])
-po = GS[GS.game_type.isin(['WC', 'DIV', 'CON', 'SB'])]; pt = set(zip(po.season, po.home_team.replace(fix))) | set(zip(po.season, po.away_team.replace(fix)))
-A['playoff'] = [(s, t) in pt for s, t in zip(A.season, A.team)]
-ln = ', '.join(f"{r.season} {r.team}{' ✓' if r.won else ''} {r.age:.1f} (#{int(r['rank'])})" for _, r in SB.sort_values('season').iterrows())
-out.append(f'P14 SUPER BOWL AGE (snap-weighted age on Sept 1, 2013–2025; rank 1 = oldest of 32): Super Bowl teams average rank {SB["rank"].mean():.1f} (winners {SB[SB.won]["rank"].mean():.1f}), age {SB.age.mean():.2f} vs league {A.age.mean():.2f} · playoff teams {A[A.playoff].age.mean():.2f} vs non-playoff {A[~A.playoff].age.mean():.2f} · {ln}')
+# portal 14 (Super Bowl age): moved to nflage.py, weighted by games played — the first version used nflverse's snap-count file, which is
+# Pro Football Reference's (a source we don't use).
 for o in out: print(o, '\n')

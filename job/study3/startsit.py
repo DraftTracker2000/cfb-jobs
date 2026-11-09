@@ -1,12 +1,12 @@
 # Start/sit and waiver accuracy (Nov 8, 2026 — the owner, 9:51 pm: "this and #4 are things we should have been testing every week since we
 # started this, this wouldve been really good for accuracy testing"). STUDY ONLY. nflverse weekly stats 2015–2026, schedules + lines,
-# snap counts 2013–2025.
+# no snap counts.
 #  START/SIT  every week, at each position, every pair of fantasy regulars (QB 12+, RB/WR 8+, TE 6+ PPR a game so far, 3+ games): we'd
 #             start the one our number puts higher. Right = he outscored the other. Our number: his recent games weighted more × what this
 #             defense has allowed to the position in PPR (this season blended with last) ^a × his team's implied points vs its usual ^b,
 #             powers fit on 2015–2021. Baseline: his plain season average. Scored 2022–2026, and 2026 alone.
-#  WAIVER     a player under 10 PPR a game whose offensive snap share over his last 2 games is 15+ points above his 3 before: his next 3
-#             games against players with the same points a game so far whose snaps didn't jump.
+#  WAIVER     a player under 10 PPR a game whose share of his team's targets + carries over his last 2 games is 8+ points above his 3 before:
+#             his next 3 games against players with the same points a game so far without the jump. (Not snaps: nflverse's snap file is PFR's.)
 import sys, glob, numpy as np, pandas as pd
 WD, GC, NV = sys.argv[1:4]
 fix = {'STL': 'LA', 'SD': 'LAC', 'OAK': 'LV'}
@@ -55,25 +55,23 @@ for pos in ['QB', 'RB', 'WR', 'TE']:
         d = d.assign(q=d.ew * d.dm ** best[0] * d.lm ** best[1]); b0, n = pairs(d, 'avg'); b1, _ = pairs(d, 'ew'); b2, _ = pairs(d, 'q')
         line.append(f'{nm}: season average {100 * b0:.1f}% · recent-weighted {100 * b1:.1f}% · ours {100 * b2:.1f}% of {n:,} start/sit calls')
     out.append(' · '.join(line))
-# WAIVER: snap share jumps
-sn = []
-for y in range(2015, 2026):
-    s = pd.read_csv(f'{NV}/snap_{y}.csv.gz'); s = s[(s.game_type == 'REG') & s.position.isin(['RB', 'WR', 'TE'])][['season', 'week', 'player', 'team', 'offense_pct']]; sn.append(s)
-SN = pd.concat(sn); SN['team'] = SN.team.replace(fix); SN['nm'] = SN.player.str.lower().str.replace(r'[^a-z]', '', regex=True)
-W['nm'] = W.player_display_name.str.lower().str.replace(r'[^a-z]', '', regex=True)
-V = W[W.position.isin(['RB', 'WR', 'TE'])].merge(SN[['season', 'week', 'nm', 'team', 'offense_pct']], on=['season', 'week', 'nm', 'team'], how='inner').sort_values(['player_id', 'season', 'week']).reset_index(drop=True)
+# WAIVER (Nov 8, 10:10 pm — redone: nflverse's snap-count file is Pro Football Reference's, a source we don't use): a jump in his share of his
+# team's opportunities (targets + carries, from nflverse's own weekly stats), last 2 games vs the 3 before, 8+ points
+OP = pd.concat([pd.read_csv(f, low_memory=False, usecols=['player_id', 'season', 'week', 'season_type', 'team', 'position', 'targets', 'carries', 'fantasy_points_ppr']) for f in sorted(glob.glob(WD + '/w20*.csv'))])
+OP = OP[OP.season_type == 'REG'].copy(); OP['team'] = OP.team.replace(fix); OP['opp'] = OP.targets.fillna(0) + OP.carries.fillna(0)
+OP['share'] = OP.opp / OP.groupby(['season', 'week', 'team']).opp.transform('sum').replace(0, np.nan)
+V = OP[OP.position.isin(['RB', 'WR', 'TE'])].sort_values(['player_id', 'season', 'week'])
 rows = []
-for (pid, s), d in V.groupby(['player_id', 'season']):
-    sp, f, wk = d.offense_pct.values, d.fantasy_points_ppr.values, d.week.values
+for (pid, s_), d in V.groupby(['player_id', 'season']):
+    sh, f = d.share.fillna(0).values, d.fantasy_points_ppr.fillna(0).values
     for i in range(5, len(d) - 1):
-        last2, prev3 = sp[i - 1:i + 1].mean(), sp[i - 4:i - 1].mean(); ppg = f[:i + 1].mean()
-        nxt = f[i + 1:i + 4]
-        if len(nxt) < 2 or ppg >= 10: continue
-        rows.append((s, d.position.iat[0], ppg, last2 - prev3, nxt.mean()))
+        ppg = f[:i + 1].mean(); nx = f[i + 1:i + 4]
+        if len(nx) < 2 or ppg >= 10: continue
+        rows.append((s_, d.position.iat[0], ppg, sh[i - 1:i + 1].mean() - sh[i - 4:i - 1].mean(), nx.mean()))
 R = pd.DataFrame(rows, columns=['season', 'pos', 'ppg', 'jump', 'next'])
-R['b'] = pd.cut(R.ppg, [0, 3, 5, 7, 10]); R['riser'] = R.jump >= .15
+R['b'] = pd.cut(R.ppg, [0, 3, 5, 7, 10]); R['riser'] = R.jump >= .08
 base = R[~R.riser].groupby(['pos', 'b'], observed=True).next.mean(); R['exp'] = [base.get((p, b), np.nan) for p, b in zip(R.pos, R.b)]
 for pos in ['RB', 'WR', 'TE']:
     r = R[(R.pos == pos) & R.riser]
-    out.append(f'WAIVER {pos}: snap share up 15+ points (n {len(r)}): next 3 games {r.next.mean():.1f} PPR a game vs {r.exp.mean():.1f} for players with the same points so far whose snaps didn\'t jump ({r.next.mean() - r.exp.mean():+.1f}); became 10+ a game {100 * (r.next >= 10).mean():.0f}% vs {100 * (R[(R.pos == pos) & ~R.riser].next >= 10).mean():.0f}% · 2022–25: {r[r.season >= 2022].next.mean() - r[r.season >= 2022].exp.mean():+.1f}')
+    out.append(f'WAIVER {pos}: share of team targets + carries up 8+ points (n {len(r)}): next 3 games {r.next.mean():.1f} PPR a game vs {r.exp.mean():.1f} for players with the same points so far without the jump ({r.next.mean() - r.exp.mean():+.1f}); became 10+ a game {100 * (r.next >= 10).mean():.0f}% vs {100 * (R[(R.pos == pos) & ~R.riser].next >= 10).mean():.0f}% · 2022–26: {r[r.season >= 2022].next.mean() - r[r.season >= 2022].exp.mean():+.1f}')
 for o in out: print(o)

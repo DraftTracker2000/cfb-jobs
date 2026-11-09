@@ -182,9 +182,9 @@ def nfl():
 # START/SIT: each week, at each position, every pair of fantasy regulars (QB 12+, RB/WR 8+, TE 6+ PPR a game so far, 3+ games); we'd start the
 # one our read puts higher (recent-weighted PPR × the defense's PPR allowed to the position ^a × the line's implied points vs usual ^b; powers fit
 # on 2015–2021: QB 0/.75, RB .5/.5, WR .25/.5, TE .25/.25). Right = he outscored the other. Against his plain season average.
-# WAIVER: under 10 PPR a game, offensive snap share over his last 2 games 15+ points above his 3 before → his next 3 games vs players with
-# the same points so far whose snaps didn't jump. (Study: startsit.py — 2022–26 ours 61.6/63.6/62.2/62.1% vs average 59.6/62.5/60.7/59.9%;
-# waiver RB +2.7 PPR a game, WR +0.9, TE +0.7, 2015–25.)
+# WAIVER: under 10 PPR a game, his share of his team's targets + carries over his last 2 games 8+ points above his 3 before → his next 3
+# games vs players with the same points so far without the jump (not snaps: nflverse's snap file is Pro Football Reference's). (Study: startsit.py — 2022–26 ours 61.6/63.6/62.2/62.1% vs average 59.6/62.5/60.7/59.9%;
+# waiver RB +2.4 PPR a game, WR +2.1, TE +1.2, 2015–26.)
 SS_POW = {'QB': (0, .75), 'RB': (.5, .5), 'WR': (.25, .5), 'TE': (.25, .25)}
 def nfl_startsit(CUR):
     fix = {'STL': 'LA', 'SD': 'LAC', 'OAK': 'LV'}
@@ -231,21 +231,22 @@ def nfl_startsit(CUR):
         if o is not None: parts.append(f'{pos} {o:.1f}% (avg {base:.1f}%)')
     note('nfl-startsit', f'{CUR} so far: start/sit calls right (vs his season average)', ' · '.join(parts), N, {'season': CUR})
     try:
-        sn = get_csv(f'snap_counts/snap_counts_{CUR}.csv.gz'); sn = sn[(sn.game_type == 'REG') & sn.position.isin(['RB', 'WR', 'TE'])].copy(); sn['team'] = sn.team.replace(fix)
-        sn['nm'] = sn.player.str.lower().str.replace(r'[^a-z]', '', regex=True); W['nm'] = W.player_display_name.str.lower().str.replace(r'[^a-z]', '', regex=True)
-        V = W[(W.season == CUR) & W.position.isin(['RB', 'WR', 'TE'])].merge(sn[['week', 'nm', 'team', 'offense_pct']], on=['week', 'nm', 'team']).sort_values(['player_id', 'week'])
+        # share of his team's targets + carries (nflverse's own weekly stats; not snaps — nflverse's snap file is Pro Football Reference's)
+        O = W[(W.season == CUR)].copy(); O['opp'] = O.targets.fillna(0) + O.carries.fillna(0)
+        O['share'] = O.opp / O.groupby(['week', 'team']).opp.transform('sum').replace(0, np.nan)
+        V = O[O.position.isin(['RB', 'WR', 'TE'])].sort_values(['player_id', 'week'])
         rows = []
         for pid, d in V.groupby('player_id'):
-            sp, f = d.offense_pct.values, d.fantasy_points_ppr.values
+            sh, f = d.share.fillna(0).values, d.fantasy_points_ppr.values
             for i in range(5, len(d) - 1):
                 ppg = f[:i + 1].mean(); nx = f[i + 1:i + 4]
                 if len(nx) < 2 or ppg >= 10: continue
-                rows.append((d.position.iat[0], ppg, sp[i - 1:i + 1].mean() - sp[i - 4:i - 1].mean(), nx.mean()))
+                rows.append((d.position.iat[0], ppg, sh[i - 1:i + 1].mean() - sh[i - 4:i - 1].mean(), nx.mean()))
         R = pd.DataFrame(rows, columns=['pos', 'ppg', 'jump', 'next'])
         if len(R):
-            R['b'] = pd.cut(R.ppg, [0, 3, 5, 7, 10]); R['riser'] = R.jump >= .15; base = R[~R.riser].groupby(['pos', 'b'], observed=True).next.mean()
+            R['b'] = pd.cut(R.ppg, [0, 3, 5, 7, 10]); R['riser'] = R.jump >= .08; base = R[~R.riser].groupby(['pos', 'b'], observed=True).next.mean()
             R['exp'] = [base.get((q, b), np.nan) for q, b in zip(R.pos, R.b)]; r = R[R.riser].dropna(subset=['exp'])
-            note('nfl-waiver', f'{CUR} so far: snap-share risers\' next 3 games vs the same points without the jump', ' · '.join(f'{q} {r[r.pos == q].next.mean() - r[r.pos == q].exp.mean():+.1f} PPR a game (n {(r.pos == q).sum()})' for q in ['RB', 'WR', 'TE'] if (r.pos == q).sum()), len(r), {'season': CUR})
+            note('nfl-waiver', f'{CUR} so far: risers (share of team targets + carries up 8+ points)\' next 3 games vs the same points without the jump', ' · '.join(f'{q} {r[r.pos == q].next.mean() - r[r.pos == q].exp.mean():+.1f} PPR a game (n {(r.pos == q).sum()})' for q in ['RB', 'WR', 'TE'] if (r.pos == q).sum()), len(r), {'season': CUR})
     except Exception: print(f'::warning title=btcur waiver::{traceback.format_exc()[-800:]}')
 
 def step(name, f, *a):

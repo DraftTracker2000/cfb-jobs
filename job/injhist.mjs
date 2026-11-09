@@ -35,7 +35,7 @@ export async function buildInjHist({ from = 2016, to, prev = null, getPack = nul
   const id = n => { if (!n) return -1; if (!idx.has(n)) { idx.set(n, names.length); names.push(n) } return idx.get(n) };
   const d = {};
   for (let y = from; y <= to; y++) {
-    if (prev && prev.v >= 3 && prev.d && y < to && prev.d[y] && Object.keys(prev.d[y]).length > 300) { d[y] = prev.d[y]; continue }   /* finished seasons kept (v3, Nov 7: the IR-label rule changed, so a v2 pack is rebuilt once in full) */
+    if (prev && prev.v >= 4 && prev.d && y < to && prev.d[y] && Object.keys(prev.d[y]).length > 300) { d[y] = prev.d[y]; continue }   /* finished seasons kept (v3, Nov 7: the IR-label rule changed, so a v2 pack is rebuilt once in full) */
     const W = {};   // gsis -> week -> [i, s, m]
     try {
       const r = await fetch(NFLI + y + ".csv", { redirect: "follow" });
@@ -63,7 +63,16 @@ export async function buildInjHist({ from = 2016, to, prev = null, getPack = nul
             let i = nx && nx[0] >= 0 ? nx[0] : -1;
             if (i < 0 && !nx && lastW - w <= 1 && y === to && espnNow) { const e = espnNow[espnOf[g]]; if (e && !notHurt(e)) i = id(injName(e)) }
             if (i < 0) continue; const cur = W[g] && W[g][w];
-            if (cur) { if (!cur[2]) { cur[3] = 1; if (cur[0] < 0) cur[0] = i } } else (W[g] = W[g] || {})[w] = [i, 0, 0, 1]; exits++ } } } }
+            if (cur) { if (!cur[2]) { cur[3] = 1; if (cur[0] < 0) cur[0] = i } } else (W[g] = W[g] || {})[w] = [i, 0, 0, 1]; exits++ } }
+        /* listed, then sat (Nov 8 — the owner, 9:40 pm, on Ladd McConkey's foot: "shouldnt the one under it say Out before the Questionable up top"):
+           a player on the report as questionable or doubtful who then didn't play, while his team did, is a missed week too. The roster
+           files only mark game-day inactives some of the time, so these were counted as played (probe injgap: 24–48 a season 2021–25).
+           He must have played for that team earlier in the season. */
+        const pl = new Set(), tw = new Set(), byG = {};
+        for (const g in L.p) for (const r of L.p[g]) { if (r[c.type] !== "R") continue; pl.add(g + "|" + r[c.week]); tw.add(r[c.team] + "|" + r[c.week]); (byG[g] = byG[g] || []).push([+r[c.week], r[c.team]]) }
+        let sat = 0; for (const g in W) for (const w0 in W[g]) { const v = W[g][w0], w = +w0; if (v[2] || !(v[1] >= 1 && v[1] <= 3) || pl.has(g + "|" + w)) continue;
+          const T = (byG[g] || []).filter(z => z[0] < w).sort((a, b) => a[0] - b[0]).pop(); if (!T || !tw.has(T[1] + "|" + w)) continue; v[2] = 1; sat++ }
+        if (sat) log(`injury history ${y}: ${sat} listed weeks he then sat counted as missed`) } }
     /* a reserve week with no injury named takes the injury from the last listed week only when that week is one or two weeks before
        (straight from the report to IR). Nov 7 (11:58 pm: "mclaurin hurt his left knee and is out for the season … we had hamstring?"):
        it used to borrow from any earlier week, so McLaurin's Week 8–9 IR (a knee) carried his Week 4–5 hamstring. Older than that, the week
@@ -83,7 +92,7 @@ export async function buildInjHist({ from = 2016, to, prev = null, getPack = nul
 
 export async function uploadInjHist({ api, season, data }) {
   const name = `p${season}_injhist`;
-  const gz = gzipSync(Buffer.from(JSON.stringify({ injhist: { t: Date.now(), v: 3, from: Math.min(...Object.keys(data.d).map(Number)), inj: data.inj, d: data.d } })));
+  const gz = gzipSync(Buffer.from(JSON.stringify({ injhist: { t: Date.now(), v: 4, from: Math.min(...Object.keys(data.d).map(Number)), inj: data.inj, d: data.d } })));
   const r = await api("PUT", `/api/pack/${name}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
   await api("PUT", "/api/pack-index", { body: { [name]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });
   return { name, bytes: r.bytes };

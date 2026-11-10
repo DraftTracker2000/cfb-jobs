@@ -68,7 +68,7 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad"];
+const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const NOFRESH = ["probe", "look", "crawl", "study", "release"].includes(MODE) || /test$/.test(MODE);
@@ -106,6 +106,10 @@ const report = async (ok, message, detail) => { if (CF0 != null) { try { CFTOK =
   return api("POST", "/api/job/report", { body: { kind: MODE, ok, message: (message + (used != null ? ` · ${used.toLocaleString()} CFBD calls during the run (${left.toLocaleString()} left this month)` : CFERR ? ` · CFBD counter: ${CFERR}` : "") + stageLine()).slice(0, 1200), detail: { ...(detail || {}), cfbd: used != null ? { used, left } : undefined, stages: Object.fromEntries(Object.entries(STAGES).map(([k, v]) => [k, Math.round(v / 1000)])) }, started } }).catch(e => console.error("report failed:", e.message)) };
 
 async function main() {
+  /* MODE=boardsum (Nov 10): the board's summary on its own, from the version that's live now (job/boardsum.mjs) */
+  if (MODE === "boardsum") { const { chromium } = await import("playwright"), { boardSum } = await import("./boardsum.mjs");
+    const r = await boardSum({ site: SITE, jobToken: JOB, page: process.env.PAGE_PATH === "/" ? "/" : "/lab/", chromium, log: x => console.log(x) });
+    await report(true, `board summary · ${r.rows} rows · ${r.kb} KB · version ${r.snap}`); return }
   /* the NFL side: straight from nflverse's files (job/nfl.mjs) — its own runs, and part of the weekly refresh */
   if (MODE === "nfl" || MODE === "nflhistory" || MODE === "nfldraft" || MODE === "weekly") {
     const now = new Date(), curYear = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
@@ -457,7 +461,10 @@ async function main() {
   const pub = await api("POST", "/api/snap/publish", { body: { version, files: names, coverage: B.coverage || {}, finishedThrough: B.finishedThrough || 0, note: B.note || MODE } });
   const mins = ((Date.now() - started) / 60e3).toFixed(1);
   console.log(`published ${version} · fingerprint ${pub.fingerprint} · ${mins} min`);
-  await report(true, `${B.note || MODE} · ${names.length} files, ${(bytes / 1048576).toFixed(1)} MB${B.packNames.length ? ` · ${B.packNames.length} detail packs` : ""} · fingerprint ${pub.fingerprint}`, { version, coverage: B.coverage });
+  await report(true, `${B.note || MODE} · ${names.length} files, ${(bytes / 1048576).toFixed(1)} MB${B.packNames.length ? ` · ${B.packNames.length} detail packs` : ""} · fingerprint ${pub.fingerprint}`, { version, coverage: B.coverage })
+  /* the board's summary for pages that show the board without loading it (Nov 10 — job/boardsum.mjs), made from the version just published */
+  try { const { boardSum } = await import("./boardsum.mjs"); const r = await boardSum({ site: SITE, jobToken: JOB, page: "/lab/", want: version, chromium, log: x => console.log(x) });
+    console.log(`::notice title=board summary::${r.rows} rows · ${r.kb} KB · version ${r.snap}`) } catch (e) { console.log(`::warning title=board summary not made::${String(e && e.message || e).slice(0, 500)}`) };
   /* the look check once a day, not after every game-day update (Oct 9: ~3 min of Actions time each, up to 26 runs on a Saturday; a layout
      break doesn't need catching every 30 minutes). Standalone "look" runs are unaffected. */
   let lookDue = MODE === "live";

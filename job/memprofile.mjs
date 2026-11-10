@@ -142,7 +142,7 @@ for (let i = 0; i < 240; i++) {
   const ok = await p.evaluate(SITE === "basketball"
     ? () => !document.querySelector("#panel .load") && document.querySelectorAll("#panel tbody tr").length > 10
     : START === "pro" ? () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && !!window.__drawn }
-    : () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 }).catch(() => false);
+    : () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && (typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 || typeof COL_LATER !== "undefined" && COL_LATER && !!window.__drawn) }   /* Nov 10: or a page drawn without the board (the Lab holds it back for Home and the pros) */).catch(() => false);
   if (ok) break; await p.waitForTimeout(500);
 }
 await p.waitForTimeout(WAIT);
@@ -221,6 +221,8 @@ for (let r = 1; r <= ROUNDS; r++) {
     } catch (e) { log(`${label}: ${e.message.slice(0, 160)}`) }
   }
   await snap(`end of round ${r}`, true);
+  /* Nov 10 (engine rebuild): does the board's summary say exactly what the board says, in this browser? */
+  if (SITE === "football") { const c = await p.evaluate(() => window.__BSUM_CHECK || null).catch(() => null); log(`   board summary check: ${c ? JSON.stringify(c).slice(0, 300) : "not run (no summary used this visit)"}`) }
   /* the let-go (Nov 1): let go right away instead of waiting 3 minutes, to see what it frees; the next round shows how quick pages come back */
   if (r < ROUNDS) { const n = await p.evaluate(() => typeof window.__letGo === "function" ? window.__letGo() : null).catch(() => null);
     if (n != null) { await p.waitForTimeout(1500); await snap(`after the let-go (${n} files)`, true) } }
@@ -238,7 +240,7 @@ if (process.env.REOPEN !== "0") { netBytes = 0; NETBY = {};
     return out.join(" · ") || "none" } catch (e) { return "? " + e.message } }).catch(e => "? " + e.message));
   await p.goto(H + PAGE + (PAGE.includes("?") ? "&" : "?") + "ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
   for (let i = 0; i < 240; i++) { const ok = await p.evaluate(SITE === "basketball" ? () => !document.querySelector("#panel .load") && document.querySelectorAll("#panel tbody tr").length > 10
-      : () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 }).catch(() => false); if (ok) break; await p.waitForTimeout(500) }
+      : () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && (typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 || typeof COL_LATER !== "undefined" && COL_LATER && !!window.__drawn) }   /* Nov 10: or a page drawn without the board (the Lab holds it back for Home and the pros) */).catch(() => false); if (ok) break; await p.waitForTimeout(500) }
   await p.waitForTimeout(WAIT); await snap("return visit: board showing", true);
   log(`=== ${SITE} · ${BROWSER}: return visit, board showing: tab ${MB(rows[rows.length - 1].pm.tot)} MB (downloaded ${MB(netBytes)} MB) ===`);
   /* Nov 10: what the return visit downloaded (address and status), biggest first */

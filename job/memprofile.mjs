@@ -234,7 +234,7 @@ if (process.env.REOPEN !== "0") { netBytes = 0; NETBY = {};
   /* Nov 10: which shared files the page thought it didn't have (Safari's engine re-downloads ~8.5 MB of them on every return visit) */
   if (SITE === "football") log("   before the return visit, shared files not kept: " + await p.evaluate(() => { try { const F = (CLOUD.snap && CLOUD.snap.files) || {}, have = JSON.parse(localStorage.getItem("cfbSnapSha") || "{}"), out = [];
     for (const nm in F) { const h = have[nm]; if (!h) { out.push(nm + " (no record)"); continue } if (h.sha !== F[nm].sha) { out.push(nm + " (new version)"); continue }
-      const miss = (h.keys || []).filter(k => !haveSaved(k)); if (miss.length) out.push(`${nm} (${miss.length} of ${h.keys.length} keys not saved: ${miss.slice(0, 4).join(", ")})`) }
+      const miss = (h.keys || []).filter(k => IDB_OK ? !IDB_HAVE.has(k) : !haveSaved(k)); if (miss.length) out.push(`${nm} (${miss.length} of ${h.keys.length} keys not saved: ${miss.slice(0, 4).join(", ")})`) }
     return out.join(" · ") || "none" } catch (e) { return "? " + e.message } }).catch(e => "? " + e.message));
   await p.goto(H + PAGE + (PAGE.includes("?") ? "&" : "?") + "ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
   for (let i = 0; i < 240; i++) { const ok = await p.evaluate(SITE === "basketball" ? () => !document.querySelector("#panel .load") && document.querySelectorAll("#panel tbody tr").length > 10

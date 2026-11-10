@@ -244,10 +244,11 @@ if (process.env.REOPEN !== "0") { netBytes = 0; NETBY = {};
   /* Nov 10: what the return visit downloaded (address and status), biggest first */
   log("   return visit downloads: " + Object.entries(NETBY).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, b]) => `${k} ${MB(b)} MB`).join(" · "));
   /* and, on that return visit, how quick pro Legacy opens (Nov 10, 7:25 am: "6 seconds to load a page too?") */
-  if (SITE === "football") { const t0 = Date.now(); await p.evaluate(() => navGo("pro", "PLAYERS", "legacy")).catch(() => { }); let last = -1, steady = 0, st = null;
+  /* and, on that return visit, how quick the two slowest pages open (Nov 10, 7:25 am: "6 seconds to load a page too?") */
+  if (SITE === "football") for (const [lg, sec, chip, nm] of [["pro", "PLAYERS", "legacy", "pro Legacy"], ["col", "H2H", "games", "college H2H games"]]) { const t0 = Date.now(); await p.evaluate(a => navGo(a[0], a[1], a[2]), [lg, sec, chip]).catch(() => { }); let last = -1, steady = 0, st = null;
     while (Date.now() - t0 < 30000) { await p.waitForTimeout(100); const n = await p.evaluate(() => { const L = document.querySelector("#load"); return (L && L.offsetParent ? -1 : 1) * document.getElementsByTagName("*").length }).catch(() => -1);
       if (n > 0 && n === last) { if (++steady >= 6) { st = Date.now() - t0 - 600; break } } else steady = 0; last = n }
-    log(`=== ${SITE} · ${BROWSER}: return visit, pro Legacy: ${st != null ? (st / 1000).toFixed(1) + " s" : "not settled in 30 s"} ===`) } }
+    log(`=== ${SITE} · ${BROWSER}: return visit, ${nm}: ${st != null ? (st / 1000).toFixed(1) + " s" : "not settled in 30 s"} ===`) } }
 
 /* real sizes, Chrome only (Nov 1): the estimates above count a shared value twice, so at the very end each big holder is dropped in turn
    and the JavaScript memory freed is read after a clean-up. Done last, because it breaks the page. */

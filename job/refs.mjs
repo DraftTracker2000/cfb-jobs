@@ -4,6 +4,7 @@
 import { gzipSync } from "node:zlib";
 import { trimmedFile, sleeperTrim } from "./lib/files.mjs";
 import { buildDraft, buildCombine } from "./draft.mjs";
+import { buildLegtot, legtotProblem, fetchTrimmedSeason } from "./legtot.mjs";
 
 const BASE = ["nfl_draft", "nfl_draftall", "nfl_draftold", "nfl_players", "nfl_prodays", "nfl_combineoff", "sleeper", "combine"];
 
@@ -64,5 +65,12 @@ export async function refreshRefs({ site, jobToken, mode, log = console.log }) {
       log(`reference ${name}: ${(gz.length / 1024).toFixed(0)} KB`);
     } catch (e) { log(`reference ${name} failed: ${e.message}`) }   // one bad source doesn't stop the run
   }
-  return { refreshed: done, skipped, checked: all.length };
+  /* Legacy's season-by-season totals in one file (Nov 10 — job/legtot.mjs): rebuilt when today's NFL stats were, or when it's missing */
+  let legtot = "skipped";
+  try { const nm = `p${curYear}_nfl-legtot`, prev = await ctx.getPack(nm).catch(() => null);
+    if (mode === "history" || !prev || want.includes("nfl_stats_" + nflSeason)) {
+      const P = await buildLegtot({ prev, nflSeason, fetchSeason: fetchTrimmedSeason, log, full: mode === "history" });
+      const bad = legtotProblem(P, nflSeason); if (bad) { legtot = "not uploaded: " + bad; log("legacy totals " + legtot) } else { await ctx.putPack(nm, P); legtot = "uploaded" } } }
+  catch (e) { legtot = "failed: " + e.message; log("legacy totals " + legtot) }
+  return { refreshed: done, skipped, checked: all.length, legtot };
 }

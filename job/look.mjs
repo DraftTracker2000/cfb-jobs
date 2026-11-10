@@ -28,7 +28,7 @@ export async function lookCheck({ browser, site, token, page = "/", log = consol
       for (let k = 0; k < 3 && new URL(p.url()).pathname !== path; k++) { await p.waitForTimeout(2500); await p.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 }) }
       if (new URL(p.url()).pathname !== path) throw new Error(`asked for ${page}, landed on ${p.url()}`);
       /* Oct 11: every look since Oct 9 timed out here with nothing saying why — say what the page was showing */
-      try { await p.waitForFunction(() => [...document.querySelectorAll(".tabs button, #n2nav button")].some(b => b.offsetParent), null, { timeout: 60000 }) }   /* Oct 19: on a phone the first tab button can be hidden, so "the first one visible" never came */ catch (e) {
+      try { await p.waitForFunction(() => [...document.querySelectorAll(".tabs button, #n2nav button, #n2bb button")].some(b => b.offsetParent), null, { timeout: 60000 }) }   /* Oct 19: on a phone the first tab button can be hidden, so "the first one visible" never came */ catch (e) {
         const seen = await p.evaluate(() => { const tb = document.querySelector(".tabs"), L = document.getElementById("load"), cs = e => e ? getComputedStyle(e) : null;
           return { url: location.href, title: document.title, tabs: document.querySelectorAll(".tabs button").length, body: (document.body ? document.body.innerText : "").replace(/\s+/g, " ").slice(0, 200),
             /* Oct 19: the phone pass reported tab buttons but an empty page — say why */

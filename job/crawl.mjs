@@ -67,9 +67,13 @@ const DEEP_FB = async () => {
   const chem = await fetch("/data/nfl-chem.json").then(r => r.json()).catch(() => null);
   const duo = chem && Object.keys(chem.r).find(k => PL[k] && PL[k].team);
   if (duo) { await step("NFL profile (duo)", () => nflProfile(duo)); const c = document.getElementById("nflChem"); chk.push(["QB–receiver duo line", !!(c && c.textContent.trim())]) }
-  const wr = Object.entries(PL).filter(([k, v]) => v.pos === "WR" && v.team && (v.last || 0) >= CURYEAR).map(([k]) => k)[0];
-  if (wr) { await step("NFL Player vs Team (WR)", () => nflPvtForm({ name: `${PL[wr].name} · WR · ${PL[wr].team}`, team: PL[wr].team === "DET" ? "GB" : "DET", site: "home", roof: "out", tp: "any", wd: "any", pc: "clear", go: true }), 9000);
-    const o = document.getElementById("npOut"); chk.push(["Targets and catches read", !!(o && /targets and catches/i.test(o.textContent))]) }
+  /* Nov 10: the read is the Targets and Catches numbers under What to expect (the sentence that named them moved into the ⓘ), and the
+     first receiver in the list can be out that week — try up to three */
+  const wrs = Object.entries(PL).filter(([k, v]) => v.pos === "WR" && v.team && (v.last || 0) >= CURYEAR).map(([k]) => k).slice(0, 3);
+  if (wrs.length) { let ok = false;
+    for (const wr of wrs) { await step(`NFL Player vs Team (WR ${PL[wr].name})`, () => nflPvtForm({ name: `${PL[wr].name} · WR · ${PL[wr].team}`, team: PL[wr].team === "DET" ? "GB" : "DET", site: "home", roof: "out", tp: "any", wd: "any", pc: "clear", go: true }), 9000);
+      const o = document.getElementById("npOut"), t = o ? o.textContent : ""; if (/Targets\s*\d/.test(t) && /Catches\s*\d/.test(t)) { ok = true; break } }
+    chk.push(["Targets and catches read", ok]) }
   const hwr = await fetch("/data/cfb-home-wr.json").then(r => r.json()).catch(() => null);
   const hid = hwr && Object.keys(hwr.p).find(k => typeof poolOrArch === "function" && poolOrArch(k) && poolOrArch(k).s);
   if (hid) { await step("College profile (Better at home)", () => profile(hid)); const e = document.getElementById("hwr"); chk.push(["Better at home line", !!(e && e.textContent.trim())]) }
@@ -119,7 +123,7 @@ async function open(browser, site, token, page, W) {
   await p.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
   for (let k = 0; k < 3 && new URL(p.url()).pathname !== path; k++) { await p.waitForTimeout(2500); await p.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 }) }
   if (new URL(p.url()).pathname !== path) throw new Error(`asked for ${page}, landed on ${p.url()}`);
-  await p.waitForFunction(() => [...document.querySelectorAll("button.tab, .tabs button, #n2nav button")].some(b => b.offsetParent), null, { timeout: 90000 });
+  await p.waitForFunction(() => [...document.querySelectorAll("button.tab, .tabs button, #n2nav button, #n2bb button")].some(b => b.offsetParent), null, { timeout: 90000 });
   await p.waitForTimeout(6000);
   await p.evaluate(() => { [...document.querySelectorAll("button")].find(b => b.textContent.trim() === "Got it")?.click(); document.querySelectorAll(".tourx").forEach(x => x.remove()) });
   return { ctx, p, errs };

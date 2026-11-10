@@ -186,6 +186,10 @@ for (let r = 1; r <= ROUNDS; r++) {
     const label = `r${r} ` + (pg.v || `${pg.lg} ${pg.sec}${pg.chip ? " " + pg.chip : ""}`);
     try {
       const t0 = Date.now();
+      /* Nov 10 (7:25 am: "6 seconds to load a page too?"): a page whose name matches CPU_PAGE gets a Chrome CPU profile of its load —
+         where the time went, function by function */
+      const prof = cdp && process.env.CPU_PAGE && label.includes(process.env.CPU_PAGE);
+      if (prof) { try { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 500 }); await cdp.send("Profiler.start") } catch (e) { log("profiler: " + e.message) } }
       await p.evaluate(SITE === "basketball" ? (pg) => go(pg.v) : (pg) => navGo(pg.lg, pg.sec, pg.chip), pg);
       /* how quick: until the page stops changing (element count steady for 0.6 s, no loading line) */
       let last = -1, steady = 0, settle = null;
@@ -193,6 +197,10 @@ for (let r = 1; r <= ROUNDS; r++) {
         const n = await p.evaluate(() => { const L = document.querySelector("#load,#panel .load"); return (L && L.offsetParent ? -1 : 1) * document.getElementsByTagName("*").length }).catch(() => -1);
         if (n > 0 && n === last) { if (++steady >= 6) { settle = Date.now() - t0 - 600; break } } else steady = 0; last = n }
       SETTLE.push([r, label, settle]);
+      if (prof) { try { const { profile: P } = await cdp.send("Profiler.stop"); const self = {}, byId = {}; for (const n of P.nodes) byId[n.id] = n;
+          const dt = P.timeDeltas || [], tot = (P.endTime - P.startTime) / 1000; const hit = {}; (P.samples || []).forEach((id, i) => { hit[id] = (hit[id] || 0) + (dt[i] || 0) });
+          for (const id in hit) { const n = byId[id], f = n.callFrame, k = `${f.functionName || "(anon)"} ${String(f.url || "").replace(/^https?:\/\/[^/]+/, "").slice(0, 30)}:${f.lineNumber + 1}`; self[k] = (self[k] || 0) + hit[id] / 1000 }
+          log(`   CPU on ${label} (${tot.toFixed(0)} ms profiled): ` + Object.entries(self).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([k, v]) => `${k} ${v.toFixed(0)} ms`).join(" · ")) } catch (e) { log("profiler: " + e.message) } }
       await p.waitForTimeout(Math.max(0, WAIT - (Date.now() - t0)));
       await snap(label + (settle != null ? ` (${(settle / 1000).toFixed(1)} s)` : " (slow)"), false);
       if (process.env.IDLE && r === 1) {   /* sit still 2 s: what keeps redrawing? */

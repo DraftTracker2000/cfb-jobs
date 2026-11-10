@@ -20,6 +20,10 @@ on:
         description: "1 = after each page, sit still 2 s and log what keeps redrawing"
         default: ""
         type: string
+      cpu:
+        description: "Chrome CPU profile of the page(s) whose name has this text, e.g. 'pro PLAYERS legacy'"
+        default: ""
+        type: string
       start:
         description: "pro = open on the pro side (football), then flip College / Pros quickly and time the college board"
         default: ""
@@ -56,6 +60,7 @@ jobs:
           COMPARE: ${{ github.event.inputs.compare }}
           IDLE: ${{ github.event.inputs.idle }}
           START: ${{ github.event.inputs.start }}
+          CPU_PAGE: ${{ github.event.inputs.cpu }}
         run: node job/memprofile.mjs | tee mem.txt
       - if: always()
         run: echo "$(head -c 60000 mem.txt)" >> $GITHUB_STEP_SUMMARY

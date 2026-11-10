@@ -69,7 +69,7 @@ const SIZER = (names) => {
   for (const n of names) { let v; try { v = (0, eval)(n) } catch { continue } if (v == null || typeof v === "function" || typeof v !== "object" && !(typeof v === "string" && v.length > 50000)) continue;
     const r = est(v); if (r.bytes > 256 * 1024) out[n] = Math.round(r.bytes) + (r.cut ? "+" : "") }
   let mem = null;
-  try { const M = (0, eval)("MEM"); if (M && typeof M === "object") { mem = {}; for (const k of Object.keys(M)) { const fam = (k.match(/^[a-z]+[0-9]*_?/i) || ["?"])[0].replace(/\d+_?$/, "#_"); const r = est(M[k], 5e6); mem[fam] = (mem[fam] || 0) + r.bytes } } } catch { }
+  try { const M = (0, eval)("MEM"); if (M && typeof M === "object") { mem = {}; for (const k of Object.keys(M)) { const fam = /^nf_/.test(k) ? k.slice(0, 28) : (k.match(/^[a-z]+[0-9]*_?/i) || ["?"])[0].replace(/\d+_?$/, "#_");   /* NFL packs one by one (Nov 10) */ const r = est(M[k], 5e6); mem[fam] = (mem[fam] || 0) + r.bytes } } } catch { }
   /* the board's own holders, key by key (Nov 1): D (the board), its grades and recruit index */
   const parts = {};
   for (const nm of ["D", "D.res", "D.resD", "D.recIdx", "D.byYear", "D.career", "D.pool"]) { let v; try { v = (0, eval)(nm) } catch { continue } if (!v || typeof v !== "object") continue;

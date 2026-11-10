@@ -188,7 +188,7 @@ for (let r = 1; r <= ROUNDS; r++) {
       const t0 = Date.now();
       /* Nov 10 (7:25 am: "6 seconds to load a page too?"): a page whose name matches CPU_PAGE gets a Chrome CPU profile of its load —
          where the time went, function by function */
-      const prof = cdp && process.env.CPU_PAGE && label.includes(process.env.CPU_PAGE);
+      const prof = cdp && process.env.CPU_PAGE && process.env.CPU_PAGE.split("|").some(x => x && label.includes(x));
       if (prof) { try { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 500 }); await cdp.send("Profiler.start") } catch (e) { log("profiler: " + e.message) } }
       await p.evaluate(SITE === "basketball" ? (pg) => go(pg.v) : (pg) => navGo(pg.lg, pg.sec, pg.chip), pg);
       /* how quick: until the page stops changing (element count steady for 0.6 s, no loading line) */

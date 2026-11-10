@@ -105,7 +105,7 @@ if (process.env.COMPARE) for (const u of ["about:blank", ...process.env.COMPARE.
 }
 const p = await ctx.newPage();
 let errs = []; p.on("pageerror", e => errs.push(e.message));
-let netBytes = 0; p.on("requestfinished", async r => { try { netBytes += (await r.sizes()).responseBodySize } catch { } });
+let netBytes = 0, NETBY = {}; p.on("requestfinished", async r => { try { const b = (await r.sizes()).responseBodySize; netBytes += b; const rs = await r.response(); const k = r.url().replace(/^https?:\/\/[^/]+/, "").slice(0, 70) + " " + (rs ? rs.status() : "?"); NETBY[k] = (NETBY[k] || 0) + b } catch { } });
 const cdp = BROWSER === "chromium" ? await ctx.newCDPSession(p) : null;
 if (cdp) await cdp.send("Performance.enable");
 
@@ -219,7 +219,7 @@ for (let r = 1; r <= ROUNDS; r++) {
 }
 await p.waitForTimeout(120000); await snap("after 2 idle minutes", true);
 /* a return visit (Nov 1): the same browser opens the board again, with everything already saved, like the owner's own tab after the first day */
-if (process.env.REOPEN !== "0") { netBytes = 0;
+if (process.env.REOPEN !== "0") { netBytes = 0; NETBY = {};
   /* Nov 10: the return visit opens on the college side, like the first open (the Lab holds the college board back on a pro-side open, and
      the menu's last page is a pro page — the return visits measured Nov 9–10 had opened there, without the college board) */
   if (SITE === "football") await p.evaluate(() => { try { const n = JSON.parse(localStorage.getItem("cfbNav") || "{}"); n.lg = "col"; localStorage.setItem("cfbNav", JSON.stringify(n)) } catch (e) { } }).catch(() => { });
@@ -228,6 +228,8 @@ if (process.env.REOPEN !== "0") { netBytes = 0;
       : () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 }).catch(() => false); if (ok) break; await p.waitForTimeout(500) }
   await p.waitForTimeout(WAIT); await snap("return visit: board showing", true);
   log(`=== ${SITE} · ${BROWSER}: return visit, board showing: tab ${MB(rows[rows.length - 1].pm.tot)} MB (downloaded ${MB(netBytes)} MB) ===`);
+  /* Nov 10: what the return visit downloaded (address and status), biggest first */
+  log("   return visit downloads: " + Object.entries(NETBY).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, b]) => `${k} ${MB(b)} MB`).join(" · "));
   /* and, on that return visit, how quick pro Legacy opens (Nov 10, 7:25 am: "6 seconds to load a page too?") */
   if (SITE === "football") { const t0 = Date.now(); await p.evaluate(() => navGo("pro", "PLAYERS", "legacy")).catch(() => { }); let last = -1, steady = 0, st = null;
     while (Date.now() - t0 < 30000) { await p.waitForTimeout(100); const n = await p.evaluate(() => { const L = document.querySelector("#load"); return (L && L.offsetParent ? -1 : 1) * document.getElementsByTagName("*").length }).catch(() => -1);

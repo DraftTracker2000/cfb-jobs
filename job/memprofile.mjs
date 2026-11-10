@@ -219,11 +219,20 @@ for (let r = 1; r <= ROUNDS; r++) {
 }
 await p.waitForTimeout(120000); await snap("after 2 idle minutes", true);
 /* a return visit (Nov 1): the same browser opens the board again, with everything already saved, like the owner's own tab after the first day */
-if (process.env.REOPEN !== "0") { netBytes = 0; await p.goto(H + PAGE + (PAGE.includes("?") ? "&" : "?") + "ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
+if (process.env.REOPEN !== "0") { netBytes = 0;
+  /* Nov 10: the return visit opens on the college side, like the first open (the Lab holds the college board back on a pro-side open, and
+     the menu's last page is a pro page — the return visits measured Nov 9–10 had opened there, without the college board) */
+  if (SITE === "football") await p.evaluate(() => { try { const n = JSON.parse(localStorage.getItem("cfbNav") || "{}"); n.lg = "col"; localStorage.setItem("cfbNav", JSON.stringify(n)) } catch (e) { } }).catch(() => { });
+  await p.goto(H + PAGE + (PAGE.includes("?") ? "&" : "?") + "ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
   for (let i = 0; i < 240; i++) { const ok = await p.evaluate(SITE === "basketball" ? () => !document.querySelector("#panel .load") && document.querySelectorAll("#panel tbody tr").length > 10
       : () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 }).catch(() => false); if (ok) break; await p.waitForTimeout(500) }
   await p.waitForTimeout(WAIT); await snap("return visit: board showing", true);
-  log(`=== ${SITE} · ${BROWSER}: return visit, board showing: tab ${MB(rows[rows.length - 1].pm.tot)} MB (downloaded ${MB(netBytes)} MB) ===`) }
+  log(`=== ${SITE} · ${BROWSER}: return visit, board showing: tab ${MB(rows[rows.length - 1].pm.tot)} MB (downloaded ${MB(netBytes)} MB) ===`);
+  /* and, on that return visit, how quick pro Legacy opens (Nov 10, 7:25 am: "6 seconds to load a page too?") */
+  if (SITE === "football") { const t0 = Date.now(); await p.evaluate(() => navGo("pro", "PLAYERS", "legacy")).catch(() => { }); let last = -1, steady = 0, st = null;
+    while (Date.now() - t0 < 30000) { await p.waitForTimeout(100); const n = await p.evaluate(() => { const L = document.querySelector("#load"); return (L && L.offsetParent ? -1 : 1) * document.getElementsByTagName("*").length }).catch(() => -1);
+      if (n > 0 && n === last) { if (++steady >= 6) { st = Date.now() - t0 - 600; break } } else steady = 0; last = n }
+    log(`=== ${SITE} · ${BROWSER}: return visit, pro Legacy: ${st != null ? (st / 1000).toFixed(1) + " s" : "not settled in 30 s"} ===`) } }
 
 /* real sizes, Chrome only (Nov 1): the estimates above count a shared value twice, so at the very end each big holder is dropped in turn
    and the JavaScript memory freed is read after a clean-up. Done last, because it breaks the page. */

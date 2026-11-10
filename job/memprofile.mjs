@@ -231,17 +231,17 @@ if (process.env.REOPEN !== "0") { netBytes = 0; NETBY = {};
   /* Nov 10: the return visit opens on the college side, like the first open (the Lab holds the college board back on a pro-side open, and
      the menu's last page is a pro page — the return visits measured Nov 9–10 had opened there, without the college board) */
   if (SITE === "football") await p.evaluate(() => { try { const n = JSON.parse(localStorage.getItem("cfbNav") || "{}"); n.lg = "col"; localStorage.setItem("cfbNav", JSON.stringify(n)) } catch (e) { } }).catch(() => { });
+  /* Nov 10: which shared files the page thought it didn't have (Safari's engine re-downloads ~8.5 MB of them on every return visit) */
+  if (SITE === "football") log("   before the return visit, shared files not kept: " + await p.evaluate(() => { try { const F = (CLOUD.snap && CLOUD.snap.files) || {}, have = JSON.parse(localStorage.getItem("cfbSnapSha") || "{}"), out = [];
+    for (const nm in F) { const h = have[nm]; if (!h) { out.push(nm + " (no record)"); continue } if (h.sha !== F[nm].sha) { out.push(nm + " (new version)"); continue }
+      const miss = (h.keys || []).filter(k => !haveSaved(k)); if (miss.length) out.push(`${nm} (${miss.length} of ${h.keys.length} keys not saved: ${miss.slice(0, 4).join(", ")})`) }
+    return out.join(" · ") || "none" } catch (e) { return "? " + e.message } }).catch(e => "? " + e.message));
   await p.goto(H + PAGE + (PAGE.includes("?") ? "&" : "?") + "ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
   for (let i = 0; i < 240; i++) { const ok = await p.evaluate(SITE === "basketball" ? () => !document.querySelector("#panel .load") && document.querySelectorAll("#panel tbody tr").length > 10
       : () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 }).catch(() => false); if (ok) break; await p.waitForTimeout(500) }
   await p.waitForTimeout(WAIT); await snap("return visit: board showing", true);
   log(`=== ${SITE} · ${BROWSER}: return visit, board showing: tab ${MB(rows[rows.length - 1].pm.tot)} MB (downloaded ${MB(netBytes)} MB) ===`);
   /* Nov 10: what the return visit downloaded (address and status), biggest first */
-  /* Nov 10: which shared files the page thought it didn't have (Safari's engine re-downloads ~8.5 MB of them on every return visit) */
-  if (SITE === "football") log("   return visit, shared files not kept: " + await p.evaluate(() => { try { const F = (CLOUD.snap && CLOUD.snap.files) || {}, have = JSON.parse(localStorage.getItem("cfbSnapSha") || "{}"), out = [];
-    for (const nm in F) { const h = have[nm]; if (!h) { out.push(nm + " (no record)"); continue } if (h.sha !== F[nm].sha) { out.push(nm + " (new version)"); continue }
-      const miss = (h.keys || []).filter(k => !haveSaved(k)); if (miss.length) out.push(`${nm} (${miss.length} of ${h.keys.length} keys not saved: ${miss.slice(0, 4).join(", ")})`) }
-    return out.join(" · ") || "none" } catch (e) { return "? " + e.message } }).catch(e => "? " + e.message));
   log("   return visit downloads: " + Object.entries(NETBY).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, b]) => `${k} ${MB(b)} MB`).join(" · "));
   /* and, on that return visit, how quick pro Legacy opens (Nov 10, 7:25 am: "6 seconds to load a page too?") */
   if (SITE === "football") { const t0 = Date.now(); await p.evaluate(() => navGo("pro", "PLAYERS", "legacy")).catch(() => { }); let last = -1, steady = 0, st = null;

@@ -144,6 +144,9 @@ const html = await p.evaluate(async () => { let t = [...document.scripts].filter
 NAMES.push(...await topNames(html));
 log(`${SITE} · ${BROWSER} · page code ${MB(html.length)} MB · ${NAMES.length} top-level names to size`);
 await snap("opened (board showing)", true);
+/* Nov 9 (memory hunt): which data packs the page asked for before the board showed, and from where (the Lab keeps window.__PKLOG) */
+{ const K = await p.evaluate(() => (window.__PKLOG || []).slice(0, 60)).catch(() => []);
+  for (const [nm, t, st] of K) log(`   pack at open: ${String(nm).padEnd(22)} ${String(t).padStart(6)} ms · ${st}`) }
 
 /* every page in the menu */
 const pages = await p.evaluate(SITE === "basketball"

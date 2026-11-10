@@ -110,7 +110,7 @@ const cdp = BROWSER === "chromium" ? await ctx.newCDPSession(p) : null;
 if (cdp) await cdp.send("Performance.enable");
 
 
-const rows = []; let prevVars = {}, prevMem = {}; const NAMES = [], SETTLE = [];
+const rows = []; let prevVars = {}, prevMem = {}, PK_SEEN = 0; const NAMES = [], SETTLE = [];
 let prevTot = 0;
 async function snap(label, full) {
   await p.waitForTimeout(500);
@@ -130,8 +130,10 @@ async function snap(label, full) {
   /* Nov 10: which saved-data families grew in memory on this page */
   const memGrew = Object.entries(s.mem || {}).map(([k, v]) => [k, v - (prevMem[k] || 0)]).filter(([, d]) => d > 2 * 1048576).sort((a, b) => b[1] - a[1]).slice(0, 5);
   if (s.mem) prevMem = s.mem;
+  /* and which data packs this page asked for (the Lab's pack log), when it grew a lot */
+  let pk = ""; try { const K = await p.evaluate(() => (window.__PKLOG || []).map(x => x[0])); const nw = K.slice(PK_SEEN); PK_SEEN = K.length; if (nw.length && memGrew.length) pk = " · packs: " + nw.slice(0, 12).join(", ") + (nw.length > 12 ? ` +${nw.length - 12}` : "") } catch { }
   rows.push({ label, pm, heap, s });
-  log(`${label.padEnd(34)} tab ${MB(pm.tot).padStart(7)} MB${heap != null ? ` · JS ${MB(heap).padStart(6)} MB` : ""} · ${String(s.nodes || "?").padStart(6)} elements · downloaded ${MB(netBytes).padStart(6)} MB${grew.length ? " · grew: " + grew.map(([k, d]) => `${k} +${MB(d)}`).join(", ") : ""}${memGrew.length ? " · in MEM: " + memGrew.map(([k, d]) => `${k} +${MB(d)}`).join(", ") : ""}`);
+  log(`${label.padEnd(34)} tab ${MB(pm.tot).padStart(7)} MB${heap != null ? ` · JS ${MB(heap).padStart(6)} MB` : ""} · ${String(s.nodes || "?").padStart(6)} elements · downloaded ${MB(netBytes).padStart(6)} MB${grew.length ? " · grew: " + grew.map(([k, d]) => `${k} +${MB(d)}`).join(", ") : ""}${memGrew.length ? " · in MEM: " + memGrew.map(([k, d]) => `${k} +${MB(d)}`).join(", ") : ""}${pk}`);
 }
 
 await p.goto(H + PAGE + (PAGE.includes("?") ? "&" : "?") + "ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });

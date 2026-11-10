@@ -303,7 +303,7 @@ async function main() {
     try { await runProbes({ browser, site: SITE, token: sess.token, only: process.env.PROBE || "" }) } finally { await browser.close() } return }
   /* MODE=look: only the look check (job/look.mjs), on the page set by PAGE_PATH */
   /* MODE=crawl: the weekly crawl (job/crawl.mjs, Nov 8) — every view of both boards and the deep views and additions; reported as its own run */
-  if (MODE === "crawl") { const { crawlCheck, crawlMsg } = await import("./crawl.mjs"); const browser = await chromium.launch(); const C = await crawlCheck({ browser, site: SITE, token: sess.token }); await browser.close();
+  if (MODE === "crawl") { const { crawlCheck, crawlMsg } = await import("./crawl.mjs"); const browser = await chromium.launch(); const C = await crawlCheck({ browser, site: SITE, token: sess.token, ...(PAGE && PAGE !== "/" ? { pages: [[PAGE, "football"], ["/cbb" + PAGE, "basketball"]] } : {}) });   /* PAGE_PATH "/lab/?nav2" crawls both Labs with the new header (Nov 10) */ await browser.close();
     await api("POST", "/api/job/report", { body: { kind: "crawl", ok: C.ok, message: crawlMsg(C), detail: C } });
     console.log(`::${C.ok ? "notice" : "warning"} title=crawl::${crawlMsg(C).replace(/[\r\n]+/g, " ")}`); for (const p of C.problems.slice(0, 40)) console.log("  " + p); return }
   if (MODE === "look") { const browser = await chromium.launch(); const L = await lookCheck({ browser, site: SITE, token: sess.token, page: PAGE }); await browser.close();

@@ -21,14 +21,14 @@ export async function lookCheck({ browser, site, token, page = "/", log = consol
       const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return /^cfbTour|^cfbPT_|^cfbH2hHint/.test(k) ? "1" : g.call(this, k) };
     }, token);
     try {
-      const t0 = Date.now();
-      await p.goto(`${site}${page}?ro=1`, { waitUntil: "domcontentloaded", timeout: 60000 });
+      const t0 = Date.now(), url = `${site}${page}${page.includes("?") ? "&" : "?"}ro=1`, path = page.split("?")[0];   /* page may carry a query: "/lab/?nav2" (Nov 10) */
+      await p.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
       /* Oct 11: a first visit lands on the sign-in page, which sets the cookie and goes to the front page — so a look at /lab/ was
          really looking at the live page. Go again until we're on the page asked for. */
-      for (let k = 0; k < 3 && new URL(p.url()).pathname !== page; k++) { await p.waitForTimeout(2500); await p.goto(`${site}${page}?ro=1`, { waitUntil: "domcontentloaded", timeout: 60000 }) }
-      if (new URL(p.url()).pathname !== page) throw new Error(`asked for ${page}, landed on ${p.url()}`);
+      for (let k = 0; k < 3 && new URL(p.url()).pathname !== path; k++) { await p.waitForTimeout(2500); await p.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 }) }
+      if (new URL(p.url()).pathname !== path) throw new Error(`asked for ${page}, landed on ${p.url()}`);
       /* Oct 11: every look since Oct 9 timed out here with nothing saying why — say what the page was showing */
-      try { await p.waitForFunction(() => [...document.querySelectorAll(".tabs button")].some(b => b.offsetParent), null, { timeout: 60000 }) }   /* Oct 19: on a phone the first tab button can be hidden, so "the first one visible" never came */ catch (e) {
+      try { await p.waitForFunction(() => [...document.querySelectorAll(".tabs button, #n2nav button")].some(b => b.offsetParent), null, { timeout: 60000 }) }   /* Oct 19: on a phone the first tab button can be hidden, so "the first one visible" never came */ catch (e) {
         const seen = await p.evaluate(() => { const tb = document.querySelector(".tabs"), L = document.getElementById("load"), cs = e => e ? getComputedStyle(e) : null;
           return { url: location.href, title: document.title, tabs: document.querySelectorAll(".tabs button").length, body: (document.body ? document.body.innerText : "").replace(/\s+/g, " ").slice(0, 200),
             /* Oct 19: the phone pass reported tab buttons but an empty page — say why */
@@ -40,11 +40,16 @@ export async function lookCheck({ browser, site, token, page = "/", log = consol
         await p.waitForFunction(() => typeof SNAP_HIST === "undefined" || !SNAP_HIST, null, { timeout: 120000 }); fullLoad = +((Date.now() - t0) / 1000).toFixed(1) } catch (e) { problems.push(`375px: the board took over 90 s to show players on a first visit`) } }
       await p.waitForTimeout(4000);
       await p.evaluate(() => { [...document.querySelectorAll("button")].find(b => b.textContent.trim() === "Got it")?.click(); document.querySelectorAll(".tourx").forEach(x => x.remove()) });
-      for (const [t, s] of VIEWS) {
-        const r = await p.evaluate(async ([t, s]) => {
+      /* the new header (Nov 10 — the switchover): no tab buttons; its own page list (NAV) and navigation (navGo), Home and every page on both sides */
+      const n2 = await p.evaluate(() => typeof NAV !== "undefined" && typeof navGo === "function" && !!document.getElementById("n2nav"));
+      const steps = n2 ? await p.evaluate(() => { const o = []; for (const lg of ["col", "pro"]) { o.push([lg, "HOME", "", (lg === "pro" ? "Pros" : "College") + " · Home"]); for (const sec in NAV[lg] || {}) for (const [c, l] of NAV[lg][sec]) o.push([lg, sec, c, (lg === "pro" ? "Pros" : "College") + " · " + String(l).replace(/<[^>]+>/g, "").replace(/&amp;/g, "&")]) } return o }) : VIEWS;
+      for (const st of steps) {
+        const r = await p.evaluate(async ([t, s, n2]) => {
           const w = ms => new Promise(r => setTimeout(r, ms));
-          const tb = document.querySelectorAll(".tabs button")[t]; if (!tb) return null; tb.click(); await w(900);
-          const seg = [...document.querySelectorAll("#vseg button")].filter(b => b.offsetParent); if (seg.length && s < seg.length) { seg[s].click(); await w(2500) } else if (s) return null;
+          let tb, seg = [];
+          if (n2) { try { navGo(t[0], t[1], t[2]) } catch (e) { return { name: t[3], out: ["couldn't open: " + String(e.message || e).slice(0, 100)] } } await w(2500); tb = { textContent: t[3] } }
+          else { tb = document.querySelectorAll(".tabs button")[t]; if (!tb) return null; tb.click(); await w(900);
+            seg = [...document.querySelectorAll("#vseg button")].filter(b => b.offsetParent); if (seg.length && s < seg.length) { seg[s].click(); await w(2500) } else if (s) return null }
           document.querySelectorAll(".tourx").forEach(x => x.remove());
           const Wd = document.documentElement.clientWidth, all = [...document.body.querySelectorAll("*")].filter(e => !e.closest("tbody tr:nth-child(n+15)"));
           const sc = all.filter(e => /auto|scroll/.test(getComputedStyle(e).overflowX)), inS = e => sc.some(x => x !== e && x.contains(e));
@@ -54,7 +59,7 @@ export async function lookCheck({ browser, site, token, page = "/", log = consol
           /* two i buttons side by side (Oct 9: Drafted and Portal each had a pair) */
           for (const b of document.querySelectorAll(".ib")) { const n = b.nextElementSibling; if (b.offsetParent && n && n.classList.contains("ib") && n.offsetParent) { out.push(`two i buttons side by side ("${b.dataset.i}", "${n.dataset.i}")`); break } }
           return { name: (tb.textContent || "").trim() + (seg[s] ? " → " + seg[s].textContent.trim() : ""), out };
-        }, [t, s]);
+        }, n2 ? [st, 0, true] : [st[0], st[1], false]);
         if (!r) continue; views++;
         for (const o of r.out) problems.push(`${W}px · ${r.name}: ${o}`);
       }

@@ -23,6 +23,24 @@ const WALK = async (W) => {
   const textBad = () => { const t = (document.querySelector("#panel") || document.body).innerText; const m = t.match(/.{0,40}(?:^|[^A-Za-z])(undefined|NaN|\[object Object\])(?![A-Za-z]).{0,30}/); return m ? m[0].replace(/\s+/g, " ") : null };
   const overflow = () => { if (W > 800) return null; const Wd = document.documentElement.clientWidth; for (const e of document.body.querySelectorAll("*")) { if (!e.offsetParent) continue; const r = e.getBoundingClientRect(); if (!r.width || r.right <= Wd + 1) continue; const c = getComputedStyle(e); if (c.position === "fixed") continue; let p = e.parentElement, inS = false; while (p) { if (/auto|scroll/.test(getComputedStyle(p).overflowX)) { inS = true; break } p = p.parentElement } if (!inS) return `${e.tagName.toLowerCase()}.${String(e.className).split(" ")[0]} ends at ${Math.round(r.right)} of ${Wd}` } return null };
   const look = name => { const b = textBad(), o = overflow(), e = (window.__crawlErr || []).splice(0); out.push({ name, bad: b, over: o, errs: e }) };
+  /* the new header (Nov 10 — the switchover): no tab buttons, so walk its own page list (NAV) with its own navigation (navGo), Home first,
+     then each page's sub-view row; both boards' new headers (nav2.js, nav2-bb.js) give the same two */
+  if (typeof NAV !== "undefined" && typeof navGo === "function" && document.getElementById("n2nav")) {
+    const clean = t => String(t || "").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").trim();
+    for (const lg of ["col", "pro"]) {
+      const lv = lg === "pro" ? "Pros" : "College", L = NAV[lg] || {};
+      try { navGo(lg, "HOME") } catch (e) { } await w(2500); look(`${lv} · Home`);
+      for (const sec of Object.keys(L)) for (const [c, lab] of L[sec] || []) {
+        const nm = `${lv} · ${sec === "REPORT" ? "Home" : sec[0] + sec.slice(1).toLowerCase()} → ${clean(lab)}`;
+        try { navGo(lg, sec, c) } catch (e) { out.push({ name: nm, bad: null, over: null, errs: ["couldn't open: " + String(e.message || e).slice(0, 120)] }); continue }
+        await w(2500); look(nm);
+        const subEls = () => [...document.querySelectorAll("#vseg button")].filter(b => b.offsetParent);
+        const subs = subEls().map(b => b.textContent.trim()).filter(t => t && !/run again|↻|🔍|🔔|👤|🧰/i.test(t)).slice(0, 14);
+        for (const sn of subs.slice(1)) { const B = subEls().find(b => b.textContent.trim() === sn); if (!B) continue; B.click(); await w(2000); look(`${nm} → ${sn}`) }
+      }
+    }
+    return out;
+  }
   for (const lvl of ["College", "Pros"]) {
     const L = [...document.querySelectorAll("button")].find(b => vis(b) && b.textContent.trim() === lvl); if (L) { L.click(); await w(2500) }
     const tabs = [...document.querySelectorAll("button.tab")].filter(b => b.offsetParent).map(b => b.textContent.trim()).filter(t => t !== "📌");
@@ -96,19 +114,21 @@ async function open(browser, site, token, page, W) {
     const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return /^cfbTour|^cfbPT_|^cfbH2hHint/.test(k) ? "1" : g.call(this, k) };
     window.__crawlErr = []; addEventListener("unhandledrejection", e => window.__crawlErr.push("unhandled: " + String(e.reason && e.reason.message || e.reason).slice(0, 160)));
   }, token);
-  await p.goto(`${site}${page}?ro=1`, { waitUntil: "domcontentloaded", timeout: 60000 });
-  for (let k = 0; k < 3 && new URL(p.url()).pathname !== page; k++) { await p.waitForTimeout(2500); await p.goto(`${site}${page}?ro=1`, { waitUntil: "domcontentloaded", timeout: 60000 }) }
-  if (new URL(p.url()).pathname !== page) throw new Error(`asked for ${page}, landed on ${p.url()}`);
-  await p.waitForFunction(() => [...document.querySelectorAll("button.tab, .tabs button")].some(b => b.offsetParent), null, { timeout: 90000 });
+  /* page may carry a query (Nov 10: "/lab/?nav2" to try the new header before the switchover) */
+  const url = `${site}${page}${page.includes("?") ? "&" : "?"}ro=1`, path = page.split("?")[0];
+  await p.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+  for (let k = 0; k < 3 && new URL(p.url()).pathname !== path; k++) { await p.waitForTimeout(2500); await p.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 }) }
+  if (new URL(p.url()).pathname !== path) throw new Error(`asked for ${page}, landed on ${p.url()}`);
+  await p.waitForFunction(() => [...document.querySelectorAll("button.tab, .tabs button, #n2nav button")].some(b => b.offsetParent), null, { timeout: 90000 });
   await p.waitForTimeout(6000);
   await p.evaluate(() => { [...document.querySelectorAll("button")].find(b => b.textContent.trim() === "Got it")?.click(); document.querySelectorAll(".tourx").forEach(x => x.remove()) });
   return { ctx, p, errs };
 }
 
-export async function crawlCheck({ browser, site, token, log = console.log }) {
+export async function crawlCheck({ browser, site, token, log = console.log, pages = PAGES }) {
   const problems = [], checks = []; let views = 0;
   const note = (where, r) => { views++; if (r.bad) problems.push(`${where} · ${r.name}: shows "${r.bad}"`); if (r.over) problems.push(`${where} · ${r.name}: ${r.over}`); for (const e of r.errs || []) problems.push(`${where} · ${r.name}: ${e}`) };
-  for (const [page, nm] of PAGES) for (const W of [1280, 375]) {
+  for (const [page, nm] of pages) for (const W of [1280, 375]) {
     const where = `${nm} ${W}px`; let s;
     try {
       s = await open(browser, site, token, page, W);

@@ -86,6 +86,9 @@ const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, e
 const H = URL0.replace(/\/+$/, "");
 await ctx.addCookies([{ name: "cfbs", value: ss.token, url: H }]);
 await ctx.addInitScript(t => { try { localStorage.setItem("cfbTok", t) } catch (e) { } }, ss.token);
+/* Nov 9 (memory hunt): START=pro opens on the pro side, as someone whose last visit was there (the Lab then holds the college board back) */
+const START = process.env.START || "";
+if (START === "pro" && SITE === "football") await ctx.addInitScript(() => { try { if (!sessionStorage.getItem("mpStarted")) { sessionStorage.setItem("mpStarted", "1"); localStorage.setItem("cfbNav", JSON.stringify({ lg: "pro" })) } } catch (e) { } });
 /* Nov 2 (the owner's Safari timeline: style, layout and paint on every frame while idle, ~30% CPU): count animation-frame callbacks */
 await ctx.addInitScript(() => { window.__raf = 0; const r = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = f => { window.__raf++; return r(f) } });
 /* (Nov 2, chasing football Leaders → This week: ~150 style recalcs a second with no animation running) who sets timers, which observers fire */
@@ -133,6 +136,7 @@ await p.goto(H + PAGE + (PAGE.includes("?") ? "&" : "?") + "ro=1", { waitUntil: 
 for (let i = 0; i < 240; i++) {
   const ok = await p.evaluate(SITE === "basketball"
     ? () => !document.querySelector("#panel .load") && document.querySelectorAll("#panel tbody tr").length > 10
+    : START === "pro" ? () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && !!window.__drawn }
     : () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 }).catch(() => false);
   if (ok) break; await p.waitForTimeout(500);
 }
@@ -147,6 +151,25 @@ await snap("opened (board showing)", true);
 /* Nov 9 (memory hunt): which data packs the page asked for before the board showed, and from where (the Lab keeps window.__PKLOG) */
 { const K = await p.evaluate(() => (window.__PKLOG || []).slice(0, 60)).catch(() => []);
   for (const [nm, t, st] of K) log(`   pack at open: ${String(nm).padEnd(22)} ${String(t).padStart(6)} ms · ${st}`) }
+
+/* Nov 9 (9:41 pm: "a quick flip back and forth could cause college to not load tho or get interrupted"): opened on the pros, flip
+   College / Pros four times a third of a second apart, end on college, and time until the college Home is up with the board in */
+if (START === "pro" && SITE === "football") {
+  const st = await p.evaluate(() => ({ lg: NAV_LG, later: typeof COL_LATER !== "undefined" && COL_LATER, pool: !!(D && D.pool) })).catch(e => ({ err: e.message }));
+  log(`pro start: side ${st.lg} · college board held back: ${st.later ? "yes" : "no"} · college players in: ${st.pool ? "yes" : "no"}${st.err ? " · " + st.err : ""}`);
+  const t0 = Date.now();
+  for (const lg of ["col", "pro", "col", "pro", "col"]) { await p.evaluate(l => navGo(l, "HOME"), lg).catch(() => { }); await p.waitForTimeout(330) }
+  const look = () => p.evaluate(() => { const L = document.getElementById("load"); return { lg: NAV_LG, load: !!(L && L.offsetParent), loadTxt: L ? L.textContent.slice(0, 80) : "", pool: D && D.pool ? Object.keys(D.pool).length : 0,
+    cards: document.querySelectorAll("#empty .hmc").length, rows: document.querySelectorAll("#empty .hmc .trr, #empty .hmc .hxg").length } }).catch(e => ({ err: e.message }));
+  let up = null, L1 = null;
+  for (let i = 0; i < 300; i++) { L1 = await look(); if (L1.lg === "col" && L1.pool && !L1.load && L1.rows > 0) { up = Date.now() - t0; break } await p.waitForTimeout(500) }
+  log(`quick flips → college Home ${up != null ? `up in ${(up / 1000).toFixed(1)} s` : "NOT up after 150 s"} · ${L1.pool} college players · ${L1.cards} cards, ${L1.rows} rows · loading line ${L1.load ? `still showing ("${L1.loadTxt}")` : "gone"}${L1.err ? " · " + L1.err : ""}`);
+  await snap("after the quick flips (college in)", true);
+  /* back to the pros and to college once more: the board is in, nothing loads again */
+  await p.evaluate(() => navGo("pro", "HOME")).catch(() => { }); await p.waitForTimeout(1500); const L2 = await look();
+  await p.evaluate(() => navGo("col", "HOME")).catch(() => { }); await p.waitForTimeout(1500); const L3 = await look();
+  log(`flip again: pros ${L2.cards} cards, loading line ${L2.load ? "up" : "gone"} · college ${L3.cards} cards, ${L3.rows} rows, loading line ${L3.load ? "up" : "gone"}`)
+}
 
 /* every page in the menu */
 const pages = await p.evaluate(SITE === "basketball"

@@ -11,7 +11,7 @@ on:
       page:
         default: "/"
         type: choice
-        options: ["/", "/lab/", "/cbb/lab/"]
+        options: ["/", "/lab/", "/lab/?nav2", "/cbb/lab/", "/cbb/lab/?nav2"]
       compare:
         description: "other sites to measure first (comma-separated), for comparison"
         default: ""

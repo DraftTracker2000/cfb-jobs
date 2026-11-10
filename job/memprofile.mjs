@@ -128,7 +128,7 @@ async function snap(label, full) {
   log(`${label.padEnd(34)} tab ${MB(pm.tot).padStart(7)} MB${heap != null ? ` · JS ${MB(heap).padStart(6)} MB` : ""} · ${String(s.nodes || "?").padStart(6)} elements · downloaded ${MB(netBytes).padStart(6)} MB${grew.length ? " · grew: " + grew.map(([k, d]) => `${k} +${MB(d)}`).join(", ") : ""}`);
 }
 
-await p.goto(H + PAGE + "?ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
+await p.goto(H + PAGE + (PAGE.includes("?") ? "&" : "?") + "ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
 /* until the board shows */
 for (let i = 0; i < 240; i++) {
   const ok = await p.evaluate(SITE === "basketball"
@@ -188,7 +188,7 @@ for (let r = 1; r <= ROUNDS; r++) {
 }
 await p.waitForTimeout(120000); await snap("after 2 idle minutes", true);
 /* a return visit (Nov 1): the same browser opens the board again, with everything already saved, like the owner's own tab after the first day */
-if (process.env.REOPEN !== "0") { netBytes = 0; await p.goto(H + PAGE + "?ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
+if (process.env.REOPEN !== "0") { netBytes = 0; await p.goto(H + PAGE + (PAGE.includes("?") ? "&" : "?") + "ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
   for (let i = 0; i < 240; i++) { const ok = await p.evaluate(SITE === "basketball" ? () => !document.querySelector("#panel .load") && document.querySelectorAll("#panel tbody tr").length > 10
       : () => { const L = document.getElementById("load"); return !(L && L.offsetParent) && typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100 }).catch(() => false); if (ok) break; await p.waitForTimeout(500) }
   await p.waitForTimeout(WAIT); await snap("return visit: board showing", true);

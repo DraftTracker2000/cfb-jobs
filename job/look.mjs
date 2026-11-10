@@ -36,7 +36,8 @@ export async function lookCheck({ browser, site, token, page = "/", log = consol
         throw new Error(`no tabs after 60 s · ${seen ? `${seen.url} · "${seen.title}" · ${seen.tabs} tab buttons · ${seen.why} · page says: ${seen.body}` : "page unreadable"}${errs.length ? ` · script errors: ${errs.slice(0, 2).join(" | ")}` : ""}`) }
       /* a first visit on a phone (a fresh browser has nothing saved): how long until the board shows players, and until the
          history files (past rosters, recruiting classes) have also landed */
-      if (W < 800) { try { await p.waitForFunction(() => typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100, null, { timeout: 90000 }); firstRows = +((Date.now() - t0) / 1000).toFixed(1);
+      if (W < 800) { try { /* players on screen: the board loaded, or (the new engine, Nov 10) Home drawn from the board's summary without loading the board */
+        await p.waitForFunction(() => (typeof D !== "undefined" && D.pool && Object.keys(D.pool).length > 100) || (typeof BSUM !== "undefined" && BSUM && BSUM.rows && BSUM.rows.length > 100), null, { timeout: 90000 }); firstRows = +((Date.now() - t0) / 1000).toFixed(1);
         await p.waitForFunction(() => typeof SNAP_HIST === "undefined" || !SNAP_HIST, null, { timeout: 120000 }); fullLoad = +((Date.now() - t0) / 1000).toFixed(1) } catch (e) { problems.push(`375px: the board took over 90 s to show players on a first visit`) } }
       await p.waitForTimeout(4000);
       await p.evaluate(() => { [...document.querySelectorAll("button")].find(b => b.textContent.trim() === "Got it")?.click(); document.querySelectorAll(".tourx").forEach(x => x.remove()) });

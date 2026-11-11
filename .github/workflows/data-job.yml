@@ -12,10 +12,10 @@ on:
         type: choice
         options: [live, boardsum, release, cavail, look, crawl, probe, extras, honors, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, grtest, nfl, nflhistory, nfldraft, history, full, colgap, style, punt, prefetch, nflhof, study, pbpfill, nflpick, cfbpick, thisday, nflstad]
       page:
-        description: "Which version of the site runs the build: / (live) or /lab/ · /lab/?nav2 = the new header · /lab/sw.html = the switchover page (look and crawl only)"
+        description: "Which version of the site runs the build: / (live) or /lab/ · /lab/?nav2 = the new header · /lab/sw/ = the switchover page (look and crawl only)"
         default: "/"
         type: choice
-        options: ["/", "/lab/", "/lab/?nav2", "/lab/sw.html"]
+        options: ["/", "/lab/", "/lab/?nav2", "/lab/sw/"]
       probe:
         description: "MODE=probe: which probes (names from job/probes.mjs, comma-separated; empty = all) · MODE=study: which batches (job/study.mjs; empty = all)"
         default: ""

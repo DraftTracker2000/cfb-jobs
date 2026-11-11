@@ -78,8 +78,8 @@ const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
 const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, crawl: 75, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflpick: 20, cfbpick: 25, nflstad: 15, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180, study: 300, pbpfill: 300 }[MODE];
 /* prefetch always runs on the Lab page: the hook it needs (window.__PREFETCH) is a Lab builder */
-const PAGE = MODE === "prefetch" || MODE === "pbpfill" || MODE === "cfbpick" ? "/lab/" : ["/", "/lab/", "/lab/?nav2"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
-if (PAGE.includes("?") && MODE !== "crawl" && MODE !== "look") { console.error(`PAGE_PATH ${PAGE} (the new header) is for the look check and the crawl only`); process.exit(1) }   /* Nov 10 */
+const PAGE = MODE === "prefetch" || MODE === "pbpfill" || MODE === "cfbpick" ? "/lab/" : ["/", "/lab/", "/lab/?nav2", "/lab/sw.html"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
+if ((PAGE.includes("?") || PAGE.endsWith(".html")) && MODE !== "crawl" && MODE !== "look") { console.error(`PAGE_PATH ${PAGE} (the new header) is for the look check and the crawl only`); process.exit(1) }   /* Nov 10 */
 const started = Date.now();
 
 if (!SITE || !JOB) { console.error("SITE_URL and JOB_TOKEN are required"); process.exit(1) }

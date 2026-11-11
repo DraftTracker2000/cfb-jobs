@@ -51,7 +51,8 @@ export async function boardSum({ site, jobToken, page = "/", log = console.log, 
     let B = null;
     for (let tries = 0; tries < 4; tries++) {
       if (tries) { log(`board summary: the page still has ${B && B.v} (want ${want}) — trying again in 60 s`); await p.waitForTimeout(60000) }
-      await p.goto(H + page + (page.includes("?") ? "&" : "?") + "ro=1", { waitUntil: "domcontentloaded", timeout: 90000 });
+      /* Nov 11 (switchover): the new header opens on Home, which no longer builds the board — open the Big Board itself */
+      await p.goto(H + page + (page.includes("?") ? "&" : "?") + "ro=1#/col/players/board", { waitUntil: "domcontentloaded", timeout: 90000 });
       /* until the board has finished building (PERF.ready is set at the end of build) */
       let ok = false; for (let i = 0; i < 360 && !ok; i++) { ok = await p.evaluate(() => typeof PERF !== "undefined" && !!PERF.ready && typeof D !== "undefined" && !!D.pool && !!D.res).catch(() => false); if (!ok) await p.waitForTimeout(1000) }
       if (!ok) throw new Error("the board didn't finish building in 6 minutes");

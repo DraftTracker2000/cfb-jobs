@@ -1596,6 +1596,11 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
         x.ks = X; const { ks, ...rest } = x; if (JSON.stringify(rest) !== sig0) { delete x.ks; log(`nfl: kick ${s}: existing fields would change — not added`); continue }
         KSB.push(`${s} (kept season, added once): ${bf} → ${ksBrief(x, s)}`) } catch (e) { log(`nfl: ${s} kicks in order: ${e.message}`) } }
     KX.kCols = K_COLS; KX.pCols = P_COLS; KX.dstCols = DST_COLS; KX.kgCols = KG_COLS; KX.who = KP; KX.whoCols = ["name", "pos", "born", "college", "last", "team"]; await put(P("kick"), KX);
+    /* this season and last only (Nov 10 — the engine rebuild, the owner 11:41 am: "keeping all the same data just structuring in a way that benefits
+       everyone"): the pages that only ever read those two seasons (ratings, team profiles, fantasy, the weekly projections, who's active) read
+       this instead of all 28 (19 MB in a phone's memory). The same objects, copied as they are; the full pack stays for careers. */
+    { const now = { kCols: KX.kCols, pCols: KX.pCols, dstCols: KX.dstCols, kgCols: KX.kgCols, who: KX.who, whoCols: KX.whoCols, s: {} }; for (const s of [Y - 1, Y]) if (KX.s[s]) now.s[s] = KX.s[s];
+      if (Object.keys(now.s).length) await put(P("kick-now"), now) }
     if (KSB.length) log(`::notice title=NFL kicks in order::${KSB.join(" | ").slice(0, 3000)} · kick pack ${kb(P("kick"))} → ${((up[P("kick")] || 0) / 1024).toFixed(0)} KB`) }
   /* starts by season (this run's seasons over the last run's) and every GM's draft classes, graded */
   { let ST = null; try { ST = getPack ? (await getPack(P("starts"))) || (await getPack(`p${Y - 1}_nfl-starts`)) : null } catch { }

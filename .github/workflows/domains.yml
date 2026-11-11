@@ -1,0 +1,27 @@
+# Domain check (Nov 11 — Sam: "each name you come up with you have to check if that URL exists or is taken already").
+# Read-only: asks the public RDAP registry whether each .com / .net / .io / .co name is registered. No keys, no purchases.
+name: Domain check
+on:
+  workflow_dispatch:
+    inputs:
+      names:
+        description: "space-separated domains"
+        required: true
+        type: string
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: RDAP lookups
+        env:
+          NAMES: ${{ inputs.names }}
+        run: |
+          for d in $NAMES; do
+            case "$d" in *[!a-z0-9.-]*) echo "skip $d"; continue;; esac
+            code=$(curl -s -o /tmp/r.json -w '%{http_code}' -L --max-time 20 "https://rdap.org/domain/$d")
+            if [ "$code" = "404" ]; then echo "DOMAIN $d FREE"
+            elif [ "$code" = "200" ]; then reg=$(python3 -c "import json;j=json.load(open('/tmp/r.json'));ev={e.get('eventAction'):e.get('eventDate','')[:10] for e in j.get('events',[])};print(ev.get('registration','?'))"); echo "DOMAIN $d TAKEN since $reg"
+            else echo "DOMAIN $d UNKNOWN http $code"; fi
+            sleep 1
+          done

@@ -79,7 +79,10 @@ jobs:
         if: steps.mode.outputs.skip != '1' && steps.mode.outputs.mode != 'cavail'
         run: |
           npm install --no-save "playwright@>=1.0 <1.65"
-          npx playwright install --with-deps chromium
+          # Nov 11: the runners' Ubuntu mirror stopped resolving (apt font packages failed, the 15:07 UTC data run died here) — try 3 times, then
+          # install the browser alone (it comes from Playwright's own download, not apt; only some fonts are missing then)
+          ok=0; for i in 1 2 3; do if timeout 600 npx playwright install --with-deps chromium; then ok=1; break; fi; echo "::warning::browser install try $i failed"; sleep 20; done
+          [ "$ok" = 1 ] || npx playwright install chromium
 
       - name: Build and publish
         if: steps.mode.outputs.skip != '1'

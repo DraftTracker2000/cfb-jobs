@@ -1,4 +1,4 @@
-# Domain check (Nov 11 — Sam: "each name you come up with you have to check if that URL exists or is taken already").
+# Domain check (Nov 11 — the owner: "each name you come up with you have to check if that URL exists or is taken already").
 # Read-only: asks the public RDAP registry whether each .com / .net / .io / .co name is registered. No keys, no purchases.
 name: Domain check
 on:

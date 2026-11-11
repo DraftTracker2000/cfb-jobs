@@ -50,7 +50,10 @@ jobs:
           node-version: 24
       - run: |
           npm install --no-save "playwright@>=1.0 <1.65"
-          npx playwright install --with-deps ${{ matrix.browser }}
+          # Nov 11: the runners' Ubuntu mirror stopped resolving (apt font packages failed, the 15:07 UTC data run died here) — try 3 times, then
+          # install the browser alone (it comes from Playwright's own download, not apt; only some fonts are missing then)
+          ok=0; for i in 1 2 3; do if timeout 600 npx playwright install --with-deps ${{ matrix.browser }}; then ok=1; break; fi; echo "::warning::browser install try $i failed"; sleep 20; done
+          [ "$ok" = 1 ] || npx playwright install ${{ matrix.browser }}
       - env:
           JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
           BROWSER: ${{ matrix.browser }}

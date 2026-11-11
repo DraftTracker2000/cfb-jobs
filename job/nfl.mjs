@@ -1394,6 +1394,19 @@ export async function inGame(s, prev, espnToGsis, log = console.log, nameToGsis 
     (out.p[g] = out.p[g] || {})[gid] = r }
   log(`nfl: in-game injuries ${s}: ${read} games read${fail ? `, ${fail} not reached` : ""} · ${Object.keys(out.p).length} players (play-by-play only ${nb}, both ${nboth}, ESPN only ${ne})`); return out }
 
+/* each player's last 16 regular-season games of fantasy points over the last three seasons (Nov 10 — the engine rebuild, the owner 11:41 am:
+   "keeping all the same data just structuring in a way that benefits everyone"): the pro "Now" ranking (the page's nflNow) read three whole
+   seasons of game logs (~45 MB in a phone's memory) for only these numbers. logsOf(s) → that season's logs pack ({cols, p}); src = the
+   logs packs' shas, carried so the page uses this only with the same logs it has. Players with fewer than 6 games are left out (the page
+   skips them too). */
+export async function l16Pack({ SS, logsOf, src }) {
+  const R = {};
+  for (const s of SS) { const L = await logsOf(s); if (!L || !L.p) throw new Error(`no logs for ${s}`); const C = L.cols || LOG_COLS, wi = C.indexOf("week"), ti = C.indexOf("type"), fi = C.indexOf("fp");
+    for (const id in L.p) for (const row of L.p[id]) if (row[ti] === "R") (R[id] = R[id] || []).push([s, row[wi], row[fi]]) }
+  const p = {}; for (const id in R) { const A = R[id].sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (A.length >= 6) p[id] = A.slice(-16).map(x => x[2]) }
+  return { v: 1, at: Date.now(), seasons: SS, src, p };
+}
+
 export async function buildNfl({ api, getPack, getIndex, curYear, all = false, startsOnly = false, staff = {}, log = console.log }) {
   const t0 = Date.now(), up = {}, index = {}, held = [];
   /* a pack that comes out under 40% of its last size is held back, not written (Oct 6: nflverse moved the schedule file and a run wrote an
@@ -1602,6 +1615,11 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
     { const now = { kCols: KX.kCols, pCols: KX.pCols, dstCols: KX.dstCols, kgCols: KX.kgCols, who: KX.who, whoCols: KX.whoCols, s: {} }; for (const s of [Y - 1, Y]) if (KX.s[s]) now.s[s] = KX.s[s];
       if (Object.keys(now.s).length) await put(P("kick-now"), now) }
     if (KSB.length) log(`::notice title=NFL kicks in order::${KSB.join(" | ").slice(0, 3000)} · kick pack ${kb(P("kick"))} → ${((up[P("kick")] || 0) / 1024).toFixed(0)} KB`) }
+  /* the "Now" ranking's last 16 games (l16Pack, Nov 10): made from the logs packs as they stand after this run, with their shas */
+  if (!startsOnly) try { const ixAll = { ...prevIx, ...index }, nameOf = part => { let best = null; for (const k in ixAll) { const m = /^p(\d{4})_nfl-(.+)$/.exec(k); if (m && m[2] === part && (best == null || +m[1] > best)) best = +m[1] } return best == null ? null : `p${best}_nfl-${part}` };
+    const SS = [Y - 2, Y - 1, Y].filter(s => nameOf(`logs-${s}`)), src = {}; for (const s of SS) src[s] = ixAll[nameOf(`logs-${s}`)].sha;
+    const Q = await l16Pack({ SS, src, logsOf: async s => LOGS[s] || (getPack ? await getPack(nameOf(`logs-${s}`)).catch(() => null) : null) });
+    if (Object.keys(Q.p).length >= 200) await put(P("l16"), Q); else log(`nfl: l16: only ${Object.keys(Q.p).length} players — not written`) } catch (e) { log("nfl: l16: " + e.message) }
   /* starts by season (this run's seasons over the last run's) and every GM's draft classes, graded */
   { let ST = null; try { ST = getPack ? (await getPack(P("starts"))) || (await getPack(`p${Y - 1}_nfl-starts`)) : null } catch { }
     if (!ST || !ST.s) ST = { s: {}, g: {} };

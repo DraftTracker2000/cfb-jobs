@@ -64,6 +64,6 @@ jobs:
           IDLE: ${{ github.event.inputs.idle }}
           START: ${{ github.event.inputs.start }}
           CPU_PAGE: ${{ github.event.inputs.cpu }}
-        run: node job/memprofile.mjs | tee mem.txt
+        run: set -o pipefail; node job/memprofile.mjs | tee mem.txt   # Nov 11: a crashed profile showed green because tee succeeded
       - if: always()
         run: echo "$(head -c 60000 mem.txt)" >> $GITHUB_STEP_SUMMARY

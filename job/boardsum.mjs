@@ -34,7 +34,7 @@ export function boardsumProblem(P) {
   return null;
 }
 
-export async function boardSum({ site, jobToken, page = "/lab/", log = console.log, chromium, want = null }) {
+export async function boardSum({ site, jobToken, page = "/", log = console.log, chromium, want = null }) {
   const api = async (method, path, { body, token = jobToken, headers = {}, raw } = {}) => {
     const r = await fetch(site + path, { method, body: raw ? body : body && JSON.stringify(body), headers: { Authorization: "Bearer " + token, ...(body && !raw ? { "Content-Type": "application/json" } : {}), ...headers } });
     const t = await r.text(); let j = null; try { j = JSON.parse(t) } catch { } if (!r.ok) throw new Error(`${method} ${path} → ${r.status} ${t.slice(0, 160)}`); return j };
@@ -70,6 +70,6 @@ export async function boardSum({ site, jobToken, page = "/lab/", log = console.l
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
-  boardSum({ site: process.env.SITE_URL || "https://mycfbbigboard.com", jobToken: process.env.JOB_TOKEN, page: process.env.PAGE_PATH || "/lab/" })
+  boardSum({ site: process.env.SITE_URL || "https://mycfbbigboard.com", jobToken: process.env.JOB_TOKEN, page: process.env.PAGE_PATH || "/" })
     .then(r => console.log(JSON.stringify(r))).catch(e => { console.error("FAILED:", e.message); process.exit(1) });
 }

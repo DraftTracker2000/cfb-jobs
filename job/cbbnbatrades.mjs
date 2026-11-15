@@ -133,6 +133,40 @@ export function nbaAwards(w) { const k = String(w).search(/\n\s*\|\s*highlights\
     const S = []; for (let i = 0; i < marks.length; i++) { if (marks[i] === "-") continue; if (marks[i + 1] === "-" && typeof marks[i + 2] === "number") { for (let y = marks[i]; y <= marks[i + 2] && y - marks[i] < 25; y++) S.push(y); i += 2 } else S.push(marks[i]) }
     for (const y of [...new Set(S)]) if (!out.some(x => x[0] === kind && x[1] === y)) out.push([kind, y]) }
   return out }
+/* All-Star picks from Wikipedia's "List of NBA All-Stars" (Nov 15 — the owner, 7:59 am: "are all star boards an option"; 8:14 am: "yes to 1-4"):
+   the infobox lines put some players a pick too high (Kobe 19 for 18, Bird 13 for 12, Doc Rivers 5 for 1 — coaching and contest lines
+   read as picks), so the list is the record for every player on it. Its third column holds the game years ("2005–2026", "1970–1977;
+   1979–1989"); a pick is stored by season start year like the rest (the 1998 game = 1997–98 → 1997). No game in 1999 (lockout). */
+export function parseAllStarList(html) {
+  const tabs = String(html).split(/<table[^>]*class="[^"]*wikitable/).slice(1), out = {};
+  for (const t of tabs) { const body = t.split("</table>")[0]; if (!/Selections/i.test(body.slice(0, 1500))) continue;
+    for (const tr of body.split(/<tr[\s>]/).slice(1)) { const td = [...tr.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => m[1]); if (td.length < 3) continue;
+      const nm = ((td[0].match(/title="([^"]+)"/) || [])[1] || "").replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/\s*\([^)]*\)\s*$/, "").trim(); if (!nm) continue;
+      const n = +td[1].replace(/<[^>]*>/g, "").trim(), txt = td[2].replace(/<[^>]*>/g, "").replace(/&#8211;|&ndash;/g, "–"), ys = [];
+      for (const p of txt.split(/[;,]/)) { const m = p.match(/(\d{4})\s*[–\-−]\s*(\d{2,4})/); if (m) { let b = +m[2]; if (b < 100) b = Math.floor(+m[1] / 100) * 100 + b; for (let y = +m[1]; y <= b; y++) if (y !== 1999) ys.push(y) } else { const y = parseInt(p); if (y > 1900) ys.push(y) } }
+      if (n && ys.length === n) out[nm] = ys.map(y => y - 1) }
+    if (Object.keys(out).length) break }
+  return out }
+export async function fixAllStars({ getPack, putPack, log = console.log, force = false }) {
+  const C = await getPack("p2000_cbb-nbacareers"); if (!C || !C.aw) return log("all-stars: no careers pack");
+  if (C.asv === 1 && !force) return;
+  const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ action: "parse", page: "List of NBA All-Stars", prop: "text", format: "json", formatversion: "2" }), { headers: WUA });
+  if (!r.ok) return log("all-stars: list read failed " + r.status); const L = parseAllStarList((await r.json()).parse.text);
+  if (Object.keys(L).length < 400) return log(`all-stars: only ${Object.keys(L).length} players read — left as it was`);
+  /* names as keys without accents or punctuation. A name the list spells another way (Mike Conley Jr., Rod Hundley,
+     Nathaniel Clifton) is the same player when the last name and every year match. Picks outside a player's own NBA years are never
+     given to him (two players named Eddie Johnson share one name here). */
+  const SFX = /\s+(Jr\.?|Sr\.?|II|III|IV)$/, key = s => String(s).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]/g, ""), AKA = { "Metta Sandiford-Artest": "Metta World Peace" };
+  const byKey = {}, byLast = {}, last = s => key(String(s).replace(SFX, "").split(/\s+/).pop());
+  for (const [nm, ys] of Object.entries(L)) { byKey[key(nm)] = ys; (byLast[last(nm)] = byLast[last(nm)] || []).push(ys) }
+  let changed = 0, removed = 0, added = 0; const ex = [];
+  for (const nm of new Set([...Object.keys(C.aw), ...Object.keys(C.p || {})])) { const have = (C.aw[nm] || []).filter(x => x[0] === "allstar").map(x => x[1]).sort((a, b) => a - b);
+    const want = byKey[key(AKA[nm] || nm)] || ((byLast[last(nm)] || []).find(ys => have.length && ys.join() === have.join())) || [];
+    if (want.join() === have.join()) continue;
+    const st = (C.p || {})[nm]; if (st && st.length && want.some(y => !st.some(t => y >= t[1] - 1 && y <= t[2]))) { if (ex.length < 12) ex.push(`${nm} left as is (list years outside his career)`); continue } if (!want.length) removed++; else if (!have.length) added++; else changed++; if (ex.length < 12) ex.push(`${nm} ${have.length}→${want.length}`);
+    const rest = (C.aw[nm] || []).filter(x => x[0] !== "allstar"); const nw = rest.concat(want.map(y => ["allstar", y])); if (nw.length) C.aw[nm] = nw; else delete C.aw[nm] }
+  C.asv = 1; await putPack("p2000_cbb-nbacareers", C);
+  log(`all-stars: list of ${Object.keys(L).length} players · ${changed} counts fixed, ${removed} players' picks taken off (not on the list), ${added} added · ${ex.join(", ")}`) }
 /* where a player came from (Oct 26 — the owner: "we have draft data … don't we know where players like luka came from"): the infobox's high
    school, college, the clubs he played for before his first NBA season, nationality and draft line */
 export function nbaOrigin(w) { const f = k => { const m = w.match(new RegExp(`\\n[ \\t]*\\|[ \\t]*${k}[ \\t]*=[ \\t]*([^\\n]*)`, "i")); return m ? m[1].replace(/<ref[^>]*\/>|<ref[^>]*>.*?<\/ref>/g, "").replace(/\{\{[^{}]*\}\}/g, "").replace(/\[\[[^\]|]*\|([^\]]*)\]\]/g, "$1").replace(/\[\[([^\]]*)\]\]/g, "$1").replace(/<br\s*\/?>/g, ", ").replace(/''+/g, "").replace(/\s+/g, " ").trim() : "" };

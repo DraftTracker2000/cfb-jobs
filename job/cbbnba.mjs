@@ -263,7 +263,9 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
   for (const [ab, X] of Object.entries(T)) { const c = TC[ab]; X.pnet = X.net;
     /* allowed per game: this season blended in game by game (15 games = half each), like the net rating */
     if (c && c.al && c.al.g && X.al) { const w = c.al.g / (c.al.g + 15), b = {}; for (const k in X.al) if (k !== "g") b[k] = Math.round(10 * (w * (c.al[k] || 0) + (1 - w) * X.al[k])) / 10; X.alNow = b; X.alNow.cg = c.al.g }
-    if (c && c.g) { const w = c.g / (c.g + 15); X.pnet = Math.round(10 * (w * c.net + (1 - w) * X.net)) / 10; X.cw = c.w; X.cl = c.l; X.cnet = c.net } }
+    if (c && c.g) { const w = c.g / (c.g + 15); X.pnet = Math.round(10 * (w * c.net + (1 - w) * X.net)) / 10; X.cw = c.w; X.cl = c.l; X.cnet = c.net;
+      /* this season's ratings too (Nov 15 — the owner: "why would they not be using this season"): the NBA team charts read them */
+      X.cur = { g: c.g, ortg: c.ortg, drtg: c.drtg, net: c.net, pace: c.pace, tpr: c.tpr, paint: c.paint, fb: c.fb } } }
   /* this season's rosters: every player, with his college (our ESPN-id join) and last season's NBA line */
   const byE = {}; for (const [eid, X] of Object.entries(players || {})) byE[eid] = X;
   /* last season's line for everyone (college or not) from the box-score cache */

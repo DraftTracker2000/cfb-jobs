@@ -645,6 +645,8 @@ export async function main() {
   const games = [];
   for (const y of off ? [S, S + 1] : [S]) for (const [a, b] of ranges(y, 31)) games.push(...await cb("/games", { season: y, startDateRange: a, endDateRange: b }));   /* CBBD answers at most 3,000 rows: a month at a time */
   const seen = new Set(), G = games.filter(g => !seen.has(g.id) && seen.add(g.id));
+  /* Nov 16: games CBBD left at "scheduled" after their day — ESPN's date or status (job/cbbstale.mjs) */
+  try { const { fixStale } = await import("./cbbstale.mjs"); await fixStale(G, { log }) } catch (e) { log("stale games: " + e.message) }
   const isAP = p => /ap/i.test(p.pollType || "");
   const pollsAll = await cb("/rankings", { season: NEXT }).catch(() => []), polls = pollsAll.filter(isAP);
   /* the full AP and Coaches polls for the Polls page (Oct 17 — basketball catching up to football's AP / Coaches page): the latest week of each,

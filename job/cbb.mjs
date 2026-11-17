@@ -597,7 +597,7 @@ export async function main() {
         const h = r ? H_S[r.id + "|" + r.tm] : null;
         const espn = { cls: a.cls || undefined, jersey: a.jersey || undefined, inj: a.inj || undefined, eid: a.eid };
         if (inSeason && !(r && h && r.min >= EARLY)) { const pr = pid ? prevRow[pid] : null, ph = pr ? H_P[pr.id + "|" + pr.tm] : null;
-          if (pr && ph && pr.min >= 150) { const e = statEntry(pr, ph, tid, { prev: S - 1, now: r ? { g: r.g, min: r.min, pts: r.pts, reb: r.reb, ast: r.ast } : null }, true);
+          if (pr && ph && pr.min >= 150) { const e = statEntry(pr, ph, tid, { prev: S - 1, now: r ? statEntry(r, h || ph, tid, {}).s : null }, true);   /* now: this season's full line (Nov 17 — the owner: "we are now in the new season. we should be showing stats like it"); the grade still uses last season's until 150 minutes */
             if (a.jersey) e.jersey = a.jersey; if (a.inj) e.inj = a.inj; if (a.ht && !e.ht) e.ht = a.ht; if (a.wt && !e.wt) e.wt = a.wt; e.eid = a.eid; board.push(e); continue } }
         if (r && h && r.min >= 20 && !(inSeason && r.min < EARLY && recByName[normName(a.nm)])) { const e = statEntry(r, h, tid, {}); /* class: ours (seasons played) — ESPN's preseason lists still carry last season's class */ if (a.jersey) e.jersey = a.jersey; if (a.inj) e.inj = a.inj; if (a.ht && !e.ht) e.ht = a.ht; if (a.wt && !e.wt) e.wt = a.wt; e.eid = a.eid; board.push(e); continue }
         const rc = recByName[normName(a.nm)];

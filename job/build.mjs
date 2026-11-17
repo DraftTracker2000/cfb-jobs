@@ -311,6 +311,10 @@ async function main() {
     await api("POST", "/api/job/report", { body: { kind: "look", ok: L.ok, message: lookMsg(L), detail: L } });
     /* Oct 11: also put the result on the run itself, so it can be read from GitHub without opening the site */
     console.log(`::${L.ok ? "notice" : "warning"} title=look ${PAGE}::${lookMsg(L).replace(/[\r\n]+/g, " ")}`); return }
+  /* college coaches' 4th-down calls this season (Nov 16, job/colcalls.mjs): Sunday catch-ups and the weekly run; never fails the run */
+  if (SUNDAY_CATCHUP || MODE === "weekly") { try { const now = new Date(), season = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+      const { colCallsSeason } = await import("./colcalls.mjs"); const R = await colCallsSeason({ site: SITE, token: sess.token, api, season });
+      if (R) console.log(`college calls: ${R.name} · ${R.teams} teams · ${R.weeks} weeks · ${(R.bytes / 1024).toFixed(0)} KB`) } catch (e) { console.log("college calls: " + e.message) } }
   /* the live version's files seed the build, so unchanged history isn't downloaded again */
   let seed = {};
   if (MODE !== "history" && MODE !== "prefetch" && MODE !== "pbpfill") {

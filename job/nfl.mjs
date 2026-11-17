@@ -598,9 +598,29 @@ export function huntMerge(H0, B, lastPlayed, POS = {}, SRC0 = null, X = {}) {
   H.note = "s[season] = { qbk[defense] = [EPA a dropback vs the QB's own level × 1000 (negative = QBs played below their own level), QB-games, dropbacks, game-to-game spread × 1000], te[team] = [targets to TEs, all targets], qp[passer] (qpCols), dt[defense] = for each of dtCols (rb, te: opposing backs' / TEs' receiving PPR a game vs their own; ay: opposing air yards a throw vs their own; ru: opposing backs' yards a carry vs their own) [season value × 100, games, game spread × 100], ct[team] (ctCols) } · vac[s][team] = [targets in s − 1 by players not on the team in s, team targets in s − 1, top five [gsis, targets]] · mv[s] = [gsis, from, to, share before × 1000, share after × 1000, games before, games after, new team's vacated share × 1000] (WR/TE/RB on one team each season) · src = the last two seasons' targets and games by team and player · fin[s] = built after the season ended · regular season, nflverse play-by-play";
   return H;
 }
+/* Coaches' calls (Nov 16 — the owner, 7:31–7:32 pm: "yes. dan campbell in particular has left a lot of points on the board" · "yes it should be
+   on the site"): for each head coach and team (nflverse's home_coach / away_coach for the offense), regular season and playoffs:
+   g games · n4 4th downs where the team ran, passed, punted or kicked a field goal (no-plays, kneels and spikes out), leaving out the last
+   5:00 of the 4th quarter, overtime and plays where the offense's win chance was under 5% or over 95% · go / cv went for it, converted
+   (fourth_down_converted) · sn / sgo / scv the same on 4th-and-1–2 from the offense's own 40 on · run / runm, pass / passm the tries by kind ·
+   p2 / p2m two-point tries and makes (two_point_conv_result success), p2r / p2rm, p2p / p2pm by run and pass. Same counting as the read-only
+   probe the numbers were first shown from (docs/research/patternhunt3/coachcalls.mjs). */
+export const CD_COLS = ["g", "n4", "go", "cv", "sn", "sgo", "scv", "run", "runm", "pass", "passm", "p2", "p2m", "p2r", "p2rm", "p2p", "p2pm"];
+export function cdAdd(CD, o) {
+  const T = o.posteam, c = T && (T === o.home_team ? o.home_coach : T === o.away_team ? o.away_coach : null); if (!c || c === "NA") return;
+  const k = c + "|" + T, x = CD[k] = CD[k] || { gs: new Set(), v: new Array(CD_COLS.length).fill(0) }, I = n => CD_COLS.indexOf(n), add = n => x.v[I(n)]++;
+  if (o.game_id) x.gs.add(o.game_id);
+  const pt = o.play_type;
+  if (o.two_point_attempt === "1") { add("p2"); const ok = o.two_point_conv_result === "success"; if (ok) add("p2m"); if (pt === "run") { add("p2r"); if (ok) add("p2rm") } else if (pt === "pass") { add("p2p"); if (ok) add("p2pm") } return }
+  if (o.down !== "4" || !["run", "pass", "punt", "field_goal"].includes(pt) || o.qb_kneel === "1" || o.qb_spike === "1") return;
+  const q = num(o.qtr), gsr = num(o.game_seconds_remaining), wp = num(o.wp); if (q == null || q >= 5 || (q === 4 && gsr != null && gsr < 300) || !(wp >= .05 && wp <= .95)) return;
+  const go = pt === "run" || pt === "pass", cv = o.fourth_down_converted === "1", tg = num(o.ydstogo), yl = num(o.yardline_100), short = tg != null && yl != null && tg <= 2 && yl <= 60;
+  add("n4"); if (go) { add("go"); if (cv) add("cv"); add(pt); if (cv) add(pt + "m") }
+  if (short) { add("sn"); if (go) { add("sgo"); if (cv) add("scv") } } }
+export function cdOut(CD) { const t = {}; for (const k in CD) { const x = CD[k]; x.v[0] = x.gs.size; t[k] = x.v } return { cols: CD_COLS, note: "coach|team → counts; see cdAdd", t } }
 export async function pbp(S, log, POS = null) {
   const t = await get(`pbp/play_by_play_${S}.csv.gz`, log); if (!t) return null;
-  const LGD = {}, LYH = {};
+  const LGD = {}, LYH = {}, CD = {};
   const P = {}, R = {}, U = {}, T = {}, G = {}, WX = {}, DRV = {}, FS = {}, DF = {}, OPQ = {}, INJ = {}, BON = {};
   const TTG = {}, RGM = {}, TCH = {}, UGM = {};   /* TCH: team touches (carries + catches) by game and situation; UGM: the games each back carried in (Oct 30) */
   const GPL = {}, SEEN_KEYS = ["passer_player_id", "receiver_player_id", "rusher_player_id", "solo_tackle_1_player_id", "solo_tackle_2_player_id", "assist_tackle_1_player_id", "assist_tackle_2_player_id", "tackle_with_assist_1_player_id", "tackle_with_assist_2_player_id", "pass_defense_1_player_id", "pass_defense_2_player_id", "interception_player_id", "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id", "qb_hit_1_player_id", "qb_hit_2_player_id", "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id", "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id", "lateral_receiver_player_id", "lateral_rusher_player_id"];
@@ -630,7 +650,7 @@ export async function pbp(S, log, POS = null) {
     "solo_tackle_1_player_id", "solo_tackle_2_player_id", "assist_tackle_1_player_id", "assist_tackle_2_player_id", "tackle_with_assist_1_player_id", "tackle_with_assist_2_player_id",
     "pass_defense_1_player_id", "pass_defense_2_player_id", "interception_player_id", "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id",
     "qb_hit_1_player_id", "qb_hit_2_player_id", "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id", "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id", "desc", "wp", "pass_touchdown", "rush_touchdown", "return_touchdown", "td_player_id", "td_player_name", "receiving_yards", "rushing_yards",
-    "lateral_receiver_player_id", "lateral_receiving_yards", "lateral_rusher_player_id", "lateral_rushing_yards", "cpoe", "comp_air_epa", "comp_yac_epa", "qb_scramble", "pass_oe", "qb_dropback", "game_seconds_remaining", "spread_line", "yards_after_catch", "shotgun", "no_huddle", "pass_length", "goal_to_go", "fourth_down_converted", "time", "fixed_drive_result", "drive_quarter_start"], o => {
+    "lateral_receiver_player_id", "lateral_receiving_yards", "lateral_rusher_player_id", "lateral_rushing_yards", "cpoe", "comp_air_epa", "comp_yac_epa", "qb_scramble", "pass_oe", "qb_dropback", "game_seconds_remaining", "spread_line", "yards_after_catch", "shotgun", "no_huddle", "pass_length", "goal_to_go", "fourth_down_converted", "time", "fixed_drive_result", "drive_quarter_start", "home_coach", "away_coach", "two_point_conv_result"], o => {
     const g = o.game_id; if (!g) return;
     /* Oct 29 (the owner: in-game injuries from our own play-by-play): each game's plays in order, each offense's snaps so far, and the last play every
        player was named on (carry, catch, throw, tackle, sack, pass defended…) — to tell whether a man hurt on a play ever came back */
@@ -677,7 +697,7 @@ export async function pbp(S, log, POS = null) {
     const hs = num(o.total_home_score), as = num(o.total_away_score), q = num(o.qtr);
     if (hs != null && as != null) { const m = hs - as, x = G[g] = G[g] || [null, null, 0, 0, o.home_team, o.away_team];
       if (q <= 2) x[0] = m; if (q <= 3) x[1] = m; if (m < x[2]) x[2] = m; if (m > x[3]) x[3] = m }
-    tendAdd(TD, o); chAdd(CH, o); if (POS) syAdd(SX, o, POS); gmAdd(GX, o); tsAdd(TS, o); csAdd(CS, o); btAdd(BT, o);
+    cdAdd(CD, o); tendAdd(TD, o); chAdd(CH, o); if (POS) syAdd(SX, o, POS); gmAdd(GX, o); tsAdd(TS, o); csAdd(CS, o); btAdd(BT, o);
     if (o.two_point_attempt === "1" || o.qb_spike === "1" || o.qb_kneel === "1" || o.aborted_play === "1") return;
     /* pass protection (Oct 1: the best offensive lines): dropbacks, sacks and QB hits, for the offense (prO, and game by game prG)
        and the defense (prD) — so a line's sack rate can be read against the pass rushes it faced */
@@ -863,7 +883,7 @@ export async function pbp(S, log, POS = null) {
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
     gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], tendCols: TEND_COLS, pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, gpl: GPL, bon: BON,
-    dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF, ...(POS ? syOut(SX) : {}), ...gmOut(GX), ...tsOut(TS), ...csOut(CS), ...btOut(BT) };
+    dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF, cd: cdOut(CD), ...(POS ? syOut(SX) : {}), ...gmOut(GX), ...tsOut(TS), ...csOut(CS), ...btOut(BT) };
 }
 /* rain or snow at kickoff, from the play-by-play's weather line ("Light Rain Temp: 45° F, …"): 0 clear or dry, 1 rain, 2 snow,
    null when there's no weather line. Indoors is always 0. "Chance of rain" is a forecast, not rain. (Sept 29: temp, wind and

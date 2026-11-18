@@ -70,7 +70,15 @@ export function lineupsOf(bx, pb) {
    other twos (paint outside the restricted area, mid-range), threes. Each one [made, tries, made on an assist], per player and per team
    (o = the team's own shots, d = what it allowed) */
 export const SHK = ["rim", "two", "three"];
-export function shotKind(a) { if (!(a.isFieldGoal === 1 || a.actionType === "2pt" || a.actionType === "3pt")) return -1; if (a.actionType === "3pt") return 2; if (a.actionType !== "2pt") return -1; return a.area === "Restricted Area" ? 0 : a.area ? 1 : -1 }
+/* Nov 18: every two of 2026–27 was dropped — this season's feed came through with no court area on the twos, and a two without one was
+   skipped, so the file held threes only ("Starting fives vs this defense" read Threes 100% for everyone). A two with no area now goes by its
+   distance (4 feet or less = at the rim), then by its kind (layup, dunk, tip = at the rim), and otherwise counts as another two */
+export function shotKind(a) { if (!(a.isFieldGoal === 1 || a.actionType === "2pt" || a.actionType === "3pt")) return -1; if (a.actionType === "3pt") return 2; if (a.actionType !== "2pt") return -1;
+  const ar = String(a.area || ""); if (ar) return /restricted/i.test(ar) ? 0 : 1;
+  if (a.shotDistance != null && a.shotDistance !== "" && isFinite(+a.shotDistance)) return +a.shotDistance <= 4 ? 0 : 1;
+  return /layup|dunk|tip|alley/i.test(`${a.subType || ""} ${a.descriptor || ""}`) ? 0 : 1 }
+/* each team's biggest lead in a game, from the running score (Nov 18 — for comebacks and blown leads on the NBA team page) */
+export function leadsOf(pb) { let mh = 0, ma = 0; for (const a of (pb.game.actions || [])) { const h = +a.scoreHome, w = +a.scoreAway; if (!isFinite(h) || !isFinite(w)) continue; if (h - w > mh) mh = h - w; if (w - h > ma) ma = w - h } return [mh, ma] }
 export function shotsOf(pb, home, away) {
   const pl = {}, tm = { [home]: { o: [[0, 0, 0], [0, 0, 0], [0, 0, 0]], d: [[0, 0, 0], [0, 0, 0], [0, 0, 0]] }, [away]: { o: [[0, 0, 0], [0, 0, 0], [0, 0, 0]], d: [[0, 0, 0], [0, 0, 0], [0, 0, 0]] } };
   let n = 0;
@@ -85,6 +93,8 @@ export function keepShots(P, gid, pb, home, away) { if ((P.shDone || {})[gid]) r
   P.shK = SHK; P.sh = P.sh || {}; P.sht = P.sht || {}; P.shDone = P.shDone || {};
   for (const [id, v] of Object.entries(r.pl)) addSh(P.sh[id] = P.sh[id] || z3(), v);
   for (const [t, v] of Object.entries(r.tm)) { const T = P.sht[t] = P.sht[t] || { o: z3(), d: z3() }; addSh(T.o, v.o); addSh(T.d, v.d) }
+  try { (P.ld = P.ld || {})[gid] = leadsOf(pb) } catch (e) { }
+  if (!P.shDbg) { const x = (pb.game.actions || []).find(a => a.actionType === "2pt"); if (x) P.shDbg = Object.keys(x).sort().join(",") }
   P.shDone[gid] = 1; return true }
 
 /* the season's finished regular-season games from NBA.com's schedule file (Oct 22: game numbers aren't in date order — opening week's
@@ -114,6 +124,8 @@ export async function buildNbaSzn({ getPack, putPack, packStatus, log = console.
   const S = curNba, name = `p${S}_cbb-nbaszn`;
   let P = await getPack(name).catch(() => null);
   if (!P || P.v !== 8 || P.season !== S) P = { v: 8, season: S, boxCols: BOXCOLS, luCols: LUCOLS, done: {}, g: {}, nm: {}, box: {}, lu: {}, bad: 0 };
+  /* Nov 18: the shot spots are read again once with the fix above (twos had been dropped) — the threes come out the same; leads are kept on the same pass */
+  if (P.shV !== 2) { P.sh = {}; P.sht = {}; P.shDone = {}; P.ld = {}; delete P.shDbg; P.shV = 2 }
   const code = "002" + String(S - 1).slice(2); let read = 0, gap = 0; const IDS = await nbaFinalIds(code);
   const ids = IDS || Array.from({ length: 1230 }, (_, i) => code + String(i + 1).padStart(5, "0"));
   for (const gid of ids) { if (read >= CAP || (!IDS && gap >= 12)) break;

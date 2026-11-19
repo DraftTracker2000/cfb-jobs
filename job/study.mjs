@@ -206,8 +206,8 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
   /* the site's own packs the analysis needs (read only): basketball head coaches by team and season (ESPN, built by the basketball job) */
   /* (Nov 8, hunt 74) and the college coordinators by team and season (Wikipedia season pages, built for the coach pages) */
   for (const n of ["p2026_cbb-coaches", `p${cur}_coord`]) { try { const r = await fetch(`${site}/api/pack/${n}`, H); if (r.ok) writeFileSync(`${out}/site_${n}.json.gz`, gzipSync(Buffer.from(await r.text()))) } catch (e) { } }
-  /* (Nov 19, hunt 79) "nbarefs": the NBA games with ESPN's closing line, score, fouls and free throws, one pack a season (job/cbbrefhist.mjs), read with the job token */
-  if (want0.includes("nbarefs")) { let n = 0; for (let y = 2003; y <= cur + 1; y++) { try { const r = await fetch(`${site}/api/pack/p${y}_cbb-refraw-n`, { headers: { Authorization: "Bearer " + job } });
+  /* (Nov 19, hunt 79) "nbarefs": the NBA games with ESPN's closing line, score, fouls and free throws, one pack a season (job/cbbrefhist.mjs), read with the run's sign-in */
+  if (want0.includes("nbarefs")) { let n = 0; for (let y = 2003; y <= cur + 1; y++) { try { const r = await fetch(`${site}/api/pack/p${y}_cbb-refraw-n`, H);
     if (r.ok) { writeFileSync(`${out}/site_nbarefs_${y}.json.gz`, gzipSync(Buffer.from(await r.text()))); n++ } } catch (e) { } } log(`study nbarefs: ${n} seasons copied`) }
   const L1 = await left(); man.left1 = L1; man.used = used; man.cbbdLeft = lastLeft;
   if (Object.keys(IX).length) { for (let k = 0; k < 3; k++) { const r = await fetch(`${site}/api/pack-index`, { method: "PUT", body: JSON.stringify(IX), headers: { Authorization: "Bearer " + job, "Content-Type": "application/json" } }); if (r.ok) break; await sleep(4000) } }

@@ -33,18 +33,43 @@ export function parseNbaRecord(w) {
     const resL = row.split("\n").filter(x => /^\s*\|(?![}+])/.test(x)).pop() || "", res = disp(resL.replace(/^\s*\|/, "")).replace(/\s+/g, " ");
     out.push([y0 + 1, tm, wn, l, pw, pl, /^[—–-]$/.test(res) || /^\d/.test(res) ? "" : res.slice(0, 60)]) }
   return out }
+/* the coaching stops in his infobox, assistant jobs included (Nov 18, 11:42 pm — the owner: "do 1 & 2", the NBA coaching tree): the record
+   table only has his head jobs; the infobox's coach_years / coach_team lines have every NBA stop — "Golden State Warriors (assistant)" is an
+   assistant job, no bracket is the head job. Kept: NBA teams only (college and G League stops left out), as [first season's end year, last
+   season's end year, team, "a" assistant / "h" head]; "present" runs to the current season. The tree itself (who sat on whose bench) is
+   worked out on the site from these and the head coaches' records. */
+/* a stop's team by its city first ("New Orleans Hornets / Pelicans" is New Orleans, not Charlotte's Hornets); a nickname alone isn't enough —
+   the Birmingham Bullets are a British team, not Washington */
+const CITY = Object.keys(NBA_TEAMS).sort((a, b) => b.length - a.length);
+const cityTeam = s => { s = String(s || "").trim(); const c = CITY.find(k => s === k || s.startsWith(k + " ")); return c ? NBA_TEAMS[c] : null };
+export function parseNbaStops(w, curNba) {
+  w = String(w || "").replace(/<ref[^>]*\/>/g, "").replace(/<ref[\s\S]*?<\/ref>/g, "");
+  /* {{nbay|2012|start}} is the 2012–13 season, {{nbay|2012|end}} its end (2013), {{nbay|2013|full=y}} that one season: each becomes «season's end year» */
+  w = w.replace(/\{\{\s*nbay\s*\|\s*(\d{4})[^{}]*\}\}/gi, (m, y) => `«${+y + 1}»`);
+  for (let k = 0; k < 4; k++) w = w.replace(/\{\{[^{}]*\}\}/g, "");
+  const clean = s => String(s || "").replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1").replace(/<[^>]+>/g, "").replace(/'{2,3}/g, "").trim();
+  const line = k => { const m = w.match(new RegExp("\\|\\s*" + k + "\\s*=\\s*([^\\n]*)")); return m ? m[1] : "" };
+  const out = []; for (let i = 1; i <= 30; i++) { const yrs = clean(line("coach_years" + i)), tm0 = clean(line("coach_team" + i)); if (!tm0) continue;
+    const role = (tm0.match(/\(([^)]*)\)\s*$/) || [])[1] || "", tm = cityTeam(tm0.replace(/\s*\([^)]*\)\s*$/, "")); if (!tm) continue;
+    if (role && !/assistant|associate|interim|head/i.test(role)) continue;   /* scout, player development, front office: not a bench job */
+    const a = /assistant|associate/i.test(role) ? "a" : "h", pres = /present/i.test(yrs); let s0, s1;
+    const E = [...yrs.matchAll(/«(\d{4})»/g)].map(m => +m[1]);
+    if (E.length) { s0 = E[0]; s1 = E.length > 1 ? E[E.length - 1] : pres ? curNba : E[0] }
+    else { const m = yrs.match(/(\d{4})\s*(?:[–-]\s*(\d{4}|\d{2}|present))?/i); if (!m) continue; const y0 = +m[1]; s0 = y0 + 1; s1 = m[2] == null ? y0 + 1 : /present/i.test(m[2]) ? curNba : m[2].length === 2 ? +(String(y0).slice(0, 2) + m[2]) : +m[2] }
+    out.push([s0, Math.max(s0, s1), tm, a]) }
+  return out }
 async function wikiText(title) { for (let k = 0; k < 5; k++) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?action=parse&redirects=1&prop=wikitext&format=json&page=" + encodeURIComponent(title), { headers: { "User-Agent": "mycfbbigboard.com data job (NBA coach records)" } });
       if (r.status === 429 || r.status >= 500) { await new Promise(z => setTimeout(z, 4000 * (k + 1))); continue } const j = await r.json(); return j.parse ? j.parse.wikitext["*"] : "" } catch { await new Promise(z => setTimeout(z, 1500)) } } return null }
 /* names: { name: [team abbreviations we have him at] } → K.coh { name: { r: [[seasonEnd, team, W, L, playoff W, playoff L, result]], at } }, K.cohMiss */
 export async function buildNbaCoaches(K, names, log, curNba) {
-  K.coh = K.coh || {}; K.cohMiss = K.cohMiss || []; if (K.cohV !== 2) { K.cohMiss = []; K.cohV = 2 }   /* v2: the GP-wins-losses template is read — coaches missed before get another look */
+  K.coh = K.coh || {}; K.cohMiss = K.cohMiss || []; if (K.cohV !== 2 && K.cohV !== 3) { K.cohMiss = []; K.cohV = 2 } if (K.cohV === 2) K.cohV = 3;   /* v2: the GP-wins-losses template is read — coaches missed before get another look; v3 (Nov 18): each page read once more for its stops (st) */
   let added = 0, tried = 0, errs = 0;
   for (const [nm, teams] of Object.entries(names)) {
-    const have = K.coh[nm]; if (have && !(teams.cur && Math.max(...have.r.map(r => r[0])) < curNba)) continue; if (!have && K.cohMiss.includes(nm)) continue;
-    tried++; let got = null;
+    const have = K.coh[nm]; if (have && have.st && !(teams.cur && Math.max(...have.r.map(r => r[0])) < curNba)) continue; if (!have && K.cohMiss.includes(nm)) continue;
+    tried++; let got = null, gotSt = null;
     for (const title of [nm, nm + " (basketball)", nm + " (basketball coach)"]) { const w = await wikiText(title); if (w == null) { got = "ERR"; break } if (!w || /may refer to|\{\{\s*(disambiguation|hndis)/i.test(w)) continue;
-      const R = parseNbaRecord(w); if (R.length && (!teams.list.length || R.some(r => teams.list.includes(r[1])))) { got = R; break } }
-    if (got === "ERR") { errs++; continue } if (got) { K.coh[nm] = { r: got, at: Date.now() }; added++ } else if (!K.cohMiss.includes(nm)) K.cohMiss.push(nm);
+      const R = parseNbaRecord(w); if (R.length && (!teams.list.length || R.some(r => teams.list.includes(r[1])))) { got = R; gotSt = parseNbaStops(w, curNba); break } }
+    if (got === "ERR") { errs++; continue } if (got) { K.coh[nm] = { r: got, st: gotSt || [], at: Date.now() }; added++ } else if (!K.cohMiss.includes(nm)) K.cohMiss.push(nm);
     await new Promise(z => setTimeout(z, 700)) }
   log(`nbastats: NBA coach records — ${tried} looked up, ${added} kept, ${errs} to retry next run (Wikipedia busy), ${Object.keys(K.coh).length} on file`) }
 export { teamOf, kk };

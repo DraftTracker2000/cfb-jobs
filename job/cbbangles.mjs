@@ -38,8 +38,8 @@ export async function buildCbbAngles({ getPack, putPack, log = console.log, S, n
     const b = z(Sd.map(s => A.side === "o" ? (s.O["d_" + A.k] == null ? null : sg * s.O["d_" + A.k]) : (s.O["o_" + A.k] == null ? null : -sg * s.O["o_" + A.k])));
     return Sd.map((s, i) => a[i] == null || b[i] == null ? null : a[i] + b[i]) };
   const f1 = v => v == null ? "—" : (Math.round(v * 10) / 10).toFixed(1);
-  const why = (A, s) => A.k === "reb" ? `${nm(s.t)} grabs ${f1(s.L.o_reb)} boards a game · ${nm(s.o)} allows ${f1(s.O.d_reb)}`
-    : A.k === "tov" ? `${nm(s.t)} forces ${f1(s.L.d_tov)} turnovers · ${nm(s.o)} gives it away ${f1(s.O.o_tov)}` : `${nm(s.t)} allows ${f1(s.L.d_m3)} made threes · ${nm(s.o)} makes ${f1(s.O.o_m3)}`;
+  const why = (A, s) => A.k === "reb" ? `${nm(s.t)} grabs ${f1(s.L.o_reb)} boards a game · ${nm(s.o)} allows ${f1(s.O.d_reb)} a game`
+    : A.k === "tov" ? `${nm(s.t)} forces ${f1(s.L.d_tov)} turnovers · ${nm(s.o)} gives it away ${f1(s.O.o_tov)}` : `${nm(s.t)} allows ${f1(s.L.d_m3)} made threes a game · ${nm(s.o)} makes ${f1(s.O.o_m3)}`;
   const team = [];
   for (const A of TESTED) { const v = score(A), i = v.reduce((b, x, j) => x != null && (b < 0 || x > v[b]) ? j : b, -1); if (i < 0) continue; const s = Sd[i];
     if (A.bet === "tt-over" && s.imp == null) continue;

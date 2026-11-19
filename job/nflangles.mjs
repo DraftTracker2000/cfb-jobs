@@ -9,7 +9,9 @@
      sched — from the schedule: teaser legs (underdogs of 1.5–2.5) and teams that just lost as 7+ point favorites
      past  — earlier weeks' angles with their result (1 won, 0 lost, null push / not graded), for the Tuesday fantasy check */
 import { gzipSync } from "node:zlib";
-import { get0, rows, games } from "./nfl.mjs";
+import { get0 as get0raw, rows, games } from "./nfl.mjs";
+/* one read of each nflverse file per run (the earlier weeks' backfill builds the angles once a week of the season) */
+const F0 = new Map(), get0 = (p, log) => { if (!F0.has(p)) F0.set(p, get0raw(p, log)); return F0.get(p) };
 
 const num = v => { if (v === "" || v == null || v === "NA") return null; const x = +v; return isFinite(x) ? x : null };
 const r2 = v => v == null ? null : Math.round(v * 100) / 100;
@@ -171,4 +173,15 @@ export async function uploadAngles({ api, season, data }) {
   const r = await api("PUT", `/api/pack/${name}`, { raw: true, body: gz, headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
   await api("PUT", "/api/pack-index", { body: { [name]: { sha: r.sha, bytes: r.bytes, at: Date.now() } } });
   return { name, bytes: r.bytes };
+}
+
+/* this season's earlier weeks (Nov 19 — the owner: "i would just do everything you can now"): each worked out as if it were next (asOf), from
+   the games before it only, kept in past with bf: 1 (worked out afterwards, never shown before kickoff), then graded on the next build */
+export async function backfillAngles({ season, ang, log = console.log }) {
+  if (!ang || ang.week == null) return 0; let n = 0;
+  const first = Math.min(...Object.keys(ang.past || {}).map(Number).concat([ang.week]));
+  for (let w = 1; w < ang.week; w++) { if ((ang.past || {})[w]) continue;
+    try { const b = await buildAngles({ season, asOf: w, log: () => {} }); if (b.week !== w) continue;
+      (ang.past = ang.past || {})[w] = { team: b.team || [], rb: (b.rb || []).filter(x => x.best), sched: b.sched || [], bf: 1 }; n++ } catch (e) { log(`angles: backfill week ${w}: ${e.message}`) } }
+  log(`angles: ${n} earlier weeks worked out (first kept week was ${first})`); return n;
 }

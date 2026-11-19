@@ -126,8 +126,10 @@ async function main() {
       console.log(`nfl: ${r.packs} packs, ${r.mb.toFixed(1)} MB, seasons ${r.seasons[0]}–${r.seasons[r.seasons.length - 1]}, ${r.minutes.toFixed(1)} min`);
       if (r.held && r.held.length) console.log("nfl: held back (much smaller than last time): " + r.held.join(", "));
       /* this week's betting angles (Nov 19, job/nflangles.mjs): from nflverse's play-by-play and schedule; never fails the run */
-      try { const { buildAngles, uploadAngles } = await import("./nflangles.mjs"); const pv = await getPack(`p${curYear}_nfl-angles`).catch(() => null);
-        const ang = await buildAngles({ season: curYear, prev: pv && pv.angles, log: x => console.log(x) }); const u = await uploadAngles({ api, season: curYear, data: ang });
+      try { const { buildAngles, uploadAngles, backfillAngles } = await import("./nflangles.mjs"); const pv = await getPack(`p${curYear}_nfl-angles`).catch(() => null);
+        let ang = await buildAngles({ season: curYear, prev: pv && pv.angles, log: x => console.log(x) });
+        /* this season's earlier weeks, worked out once (then kept in the pack) and graded by building again with them */
+        if (await backfillAngles({ season: curYear, ang, log: x => console.log(x) })) ang = await buildAngles({ season: curYear, prev: ang, log: x => console.log(x) }); const u = await uploadAngles({ api, season: curYear, data: ang });
         const rec = Object.values(ang.past || {}).flatMap(w => [...(w.team || []), ...(w.rb || []), ...(w.sched || [])]).filter(x => x.r === 0 || x.r === 1);
         console.log(`::notice title=angles::${u.name} ${(u.bytes / 1024).toFixed(0)} KB · week ${ang.week} · ${ang.team.length} team angles · ${ang.rb.filter(x => x.best).length} best RB TD matchups · record so far ${rec.filter(x => x.r === 1).length}-${rec.filter(x => x.r === 0).length}`) }
       catch (e) { console.log("angles: " + e.message) }

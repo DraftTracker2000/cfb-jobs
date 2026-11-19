@@ -35,7 +35,7 @@ export async function buildCbbAngles({ getPack, putPack, log = console.log, S, n
     for (const l of await cb("/lines", { season: S, startDateRange: a.toISOString(), endDateRange: b.toISOString() })) { const L = pickLine(l.lines); if (L && L.sp != null) F[l.gameId] = L }
     let n = 0; for (const g of sched) if (F[g.id]) { g.ln = F[g.id]; n++ } log(`angles: ${n} lines read fresh for ${day}`) } catch (e) { log("angles: fresh lines: " + e.message) }
   const lined = day ? sched.filter(g => etDay(g.d) === day && g.ln && g.ln.sp != null) : [], DG = lined.length >= 5 ? lined : [];
-  const Sd = []; for (const g of DG) for (const [t, o, h] of [[g.h, g.a, 1], [g.a, g.h, 0]]) { const L = form(t, day), O = form(o, day); if (!L || !O) continue;
+  const pickDay = (DG, day) => { const Sd = []; for (const g of DG) for (const [t, o, h] of [[g.h, g.a, 1], [g.a, g.h, 0]]) { const L = form(t, day), O = form(o, day); if (!L || !O) continue;
     const sp = h ? g.ln.sp : -g.ln.sp, ou = g.ln.ou != null ? +g.ln.ou : null; Sd.push({ g, t, o, sp, ou, imp: ou != null ? (ou - sp) / 2 : null, L, O }) }
   const z = arr => { const v = arr.filter(x => x != null), m = v.reduce((a, b) => a + b, 0) / (v.length || 1), s = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(1, v.length - 1)) || 1; return arr.map(x => x == null ? null : (x - m) / s) };
   /* side "o": my offense strong vs their defense bad at stopping it · side "d": my defense strong vs their offense weak (turnovers count against the offense) */
@@ -51,17 +51,22 @@ export async function buildCbbAngles({ getPack, putPack, log = console.log, S, n
     if (A.bet === "tt-over" && s.imp == null) continue;
     const bet = A.bet === "tt-over" ? { t: "tt", side: nm(s.t), dir: "over", line: Math.round(s.imp * 2) / 2 } : { t: "ats", side: nm(s.o), line: -s.sp };
     team.push({ k: A.k + "-" + A.bet, lab: A.lab, gid: s.g.id, team: nm(s.t), opp: nm(s.o), tid: s.t, oid: s.o, bet, why: why(A, s), hit: A.hit, h: A.h }) }
+    return { team, Sd } };
+  const { team, Sd } = pickDay(DG, day);
   /* grade earlier days */
   const past = Object.assign({}, (prev && prev.past) || {});
   if (prev && prev.day && prev.day !== day && (prev.team || []).length) past[prev.day] = { team: prev.team };
+  /* this season's earlier days, worked out the same way from the games before each (bf: worked out afterwards, never shown before tip) */
+  { const FD = {}; for (const g of GM.games) if (g.s === S && g.st === "final" && g.hs != null && g.ln && g.ln.sp != null) { const d = etDay(g.d); if (!day || d < day) (FD[d] = FD[d] || []).push(g) }
+    for (const [d, L] of Object.entries(FD)) if (!past[d] && L.length >= 5) { const P = pickDay(L, d); if (P.team.length) past[d] = { team: P.team, bf: 1 } } }
   const byId = Object.fromEntries(GM.games.map(g => [g.id, g])), cmp = (a, b) => a > b ? 1 : a < b ? 0 : null;
   for (const d in past) for (const a of past[d].team || []) { if (a.r === 0 || a.r === 1) continue; const g = byId[a.gid]; if (!g || g.st !== "final" || g.hs == null) continue;
     const pts = id => +id === +g.h ? g.hs : g.as, me = a.bet.t === "ats" ? a.oid : a.tid, them = +me === +g.h ? g.a : g.h;
     a.r = a.bet.t === "ats" ? cmp(pts(me) - pts(them) + a.bet.line, 0) : cmp(pts(me), a.bet.line) }
   /* never wipe the day's picks: a later run with fewer lines (or none) keeps what an earlier run found for the same day */
-  if (!team.length && prev && prev.day === day && (prev.team || []).length) { log(`angles: kept ${prev.team.length} from the earlier run for ${day}`); return prev }
-  const out = { t: Date.now(), v: 1, season: S, day, games: DG.map(g => ({ id: g.id, h: g.h, a: g.a, home: nm(g.h), away: nm(g.a), sp: g.ln.sp, ou: g.ln.ou })), team, past };
+  const keep = !team.length && prev && prev.day === day && (prev.team || []).length; if (keep) log(`angles: kept ${prev.team.length} from the earlier run for ${day}`);
+  const out = { t: Date.now(), v: 1, season: S, day, games: keep ? prev.games : DG.map(g => ({ id: g.id, h: g.h, a: g.a, home: nm(g.h), away: nm(g.a), sp: g.ln.sp, ou: g.ln.ou })), team: keep ? prev.team : team, past };
   await putPack(`p${S}_cbb-angles`, out);
-  log(`angles: ${day || "no day"} · ${DG.length} games with a line · ${Sd.length} sides with 5+ games · ${team.length} angles${team.length ? " — " + team.map(a => `${a.lab}: ${a.bet.side} ${a.bet.t === "tt" ? "over " + a.bet.line : (a.bet.line > 0 ? "+" : "") + a.bet.line}`).join(" | ") : ""} · ${Object.keys(past).length} past days`);
+  log(`angles: ${day || "no day"} · ${DG.length} games with a line · ${Sd.length} sides with 5+ games · ${out.team.length} angles${out.team.length ? " — " + out.team.map(a => `${a.lab}: ${a.bet.side} ${a.bet.t === "tt" ? "over " + a.bet.line : (a.bet.line > 0 ? "+" : "") + a.bet.line}`).join(" | ") : ""} · ${Object.keys(past).length} past days`);
   return out;
 }

@@ -152,8 +152,9 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
   for (const b of batches(cur).filter(b => want.length ? want.includes(b.name) : !b.optIn)) {
     if (b.pathsFrom) { b.paths = await b.pathsFrom(cfGet); log(`study ${b.name}: ${b.paths.length} paths`) }
     const n = (b.paths || b.items).length, before = await left();
-    if (before != null && before - n < FLOOR) { log(`::warning title=study ${b.name} skipped::${before} left − ${n} would pass the floor ${FLOOR}`); man.batches.push({ name: b.name, skipped: "floor" }); continue }
-    if (used + n > CAP) { log(`::warning title=study ${b.name} skipped::this run's cap ${CAP} (used ${used})`); man.batches.push({ name: b.name, skipped: "cap" }); continue }
+    /* (Nov 19) a batch read back from the archive costs no call, so the floor and the cap don't apply to it */
+    if (!(fromArchive && b.archive !== false) && before != null && before - n < FLOOR) { log(`::warning title=study ${b.name} skipped::${before} left − ${n} would pass the floor ${FLOOR}`); man.batches.push({ name: b.name, skipped: "floor" }); continue }
+    if (!(fromArchive && b.archive !== false) && used + n > CAP) { log(`::warning title=study ${b.name} skipped::this run's cap ${CAP} (used ${used})`); man.batches.push({ name: b.name, skipped: "cap" }); continue }
     const t0 = Date.now(), res = {}, raw = {}, errs = []; let kept = 0, fresh = 0, newKV = 0, bytes = 0, got = 0, rows = 0, packs = 0, packMB = 0;
     const arch = archive && b.archive !== false;
     const list = b.api === "cfbd" ? b.paths.map(p => [p, p]) : b.items.map(it => [it[0] + "?" + new URLSearchParams(Object.entries(it[1]).map(([k, v]) => [k, String(v)])), it]);

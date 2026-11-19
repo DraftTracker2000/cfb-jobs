@@ -68,15 +68,15 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad"];
+const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad", "colang"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const NOFRESH = ["probe", "look", "crawl", "study", "release"].includes(MODE) || /test$/.test(MODE);
-const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest", "prefetch", "pbpfill", "nflpick", "cfbpick"];   // these write packs only; the shared data version is unchanged
+const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest", "prefetch", "pbpfill", "nflpick", "cfbpick", "colang"];   // these write packs only; the shared data version is unchanged
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, crawl: 75, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflpick: 20, cfbpick: 25, nflstad: 15, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180, study: 300, pbpfill: 300 }[MODE];
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, crawl: 75, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflpick: 20, cfbpick: 25, colang: 20, nflstad: 15, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180, study: 300, pbpfill: 300 }[MODE];
 /* prefetch always runs on the Lab page: the hook it needs (window.__PREFETCH) is a Lab builder */
 const PAGE = MODE === "prefetch" || MODE === "pbpfill" || MODE === "cfbpick" ? "/lab/" : ["/", "/lab/", "/lab/?nav2", "/lab/sw/"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 if ((PAGE.includes("?") || PAGE.startsWith("/lab/sw")) && MODE !== "crawl" && MODE !== "look") { console.error(`PAGE_PATH ${PAGE} (the new header) is for the look check and the crawl only`); process.exit(1) }   /* Nov 10 */
@@ -194,6 +194,15 @@ async function main() {
       return }
     PFS.idx = idx; PFS.list = list }
   CFTOK = sess.token; CF0 = await cfbdLeft(); if (CF0 != null) console.log(`::notice title=CFBD::calls left at the start of this ${MODE} run: ${CF0.toLocaleString()}`);
+  /* this week's college football betting angles (Nov 19, job/colangles.mjs): MODE=colang on its own, and inside the weekly run; never fails the weekly run */
+  if (MODE === "colang" || MODE === "weekly") { try { const { buildColAngles, uploadColAngles } = await import("./colangles.mjs"), { pageSeason } = await import("./prefetch.mjs"), season = pageSeason();
+      const cf = async p => { for (let k = 0; k < 3; k++) { try { const r = await fetch(SITE + "/api/cfbd?path=" + encodeURIComponent(p), { headers: { Authorization: "Bearer " + sess.token } });
+          if (r.ok) return r.json(); if (r.status >= 400 && r.status < 500 && r.status !== 429) return null; if (r.status === 429) await new Promise(z => setTimeout(z, 20000)) } catch (e) { } await new Promise(z => setTimeout(z, 2000 * (k + 1))) } throw new Error("CFBD " + p + " failed 3 times") };
+      const prev = await fetch(SITE + `/api/pack/p${season}_colang`, { headers: { Authorization: "Bearer " + sess.token } }).then(r => r.ok ? r.json() : null).catch(() => null);
+      const data = await buildColAngles({ cf, season, prev, log: x => console.log(x) }), u = await uploadColAngles({ api, season, data });
+      console.log(`::notice title=college angles::week ${data.week} · ${data.team.map(a => `${a.lab} ${a.bet.t === "tot" ? "under " + a.bet.line : a.bet.side + " " + (a.bet.t === "tt" ? "over " : "") + a.bet.line}`).join(" | ")} · ${u.name} ${(u.bytes / 1024).toFixed(0)} KB`);
+      if (MODE === "colang") { await report(true, `college angles · week ${data.week} · ${data.team.length} angles`); return } }
+    catch (e) { if (MODE === "colang") throw e; console.log("college angles: " + e.message) } }
   /* MODE=pbpfill (job/pbpfill.mjs, Nov 1): the plan from the pack index and each season's pack — the dry run stops here (no browser, no CFBD call) */
   let PBF = null;
   if (MODE === "pbpfill") { const M = await import("./pbpfill.mjs"); const { pageSeason } = await import("./prefetch.mjs"); const cur = pageSeason();

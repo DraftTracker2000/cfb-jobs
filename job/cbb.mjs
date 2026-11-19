@@ -287,6 +287,10 @@ export async function main() {
     await site("PUT", "/api/pack-index", { body: INDEX }); const msg = `Basketball · NBA stats only · ${((Date.now() - started) / 60e3).toFixed(1)} min · 0 CBBD calls`; log(msg);
     await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return }
 
+  /* cbbang (Nov 19): today's betting angles on their own, from the packs the last everyday run wrote (one CBBD call, for team names) */
+  if (MODE === "cbbang") { const { buildCbbAngles } = await import("./cbbangles.mjs"), T0 = await cb("/teams");
+    const A = await buildCbbAngles({ getPack, putPack, log, S: UPCOMING, names: Object.fromEntries(T0.map(t => [t.id, t.school])) }); await site("PUT", "/api/pack-index", { body: INDEX });
+    await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: `Basketball angles · ${A.day || "no games"} · ${A.team.length} angles · ${CALLS} CBBD call${CALLS === 1 ? "" : "s"}`, started } }).catch(e => log("report failed: " + e.message)); return }
   /* teams and Division I */
   const teamsRaw = await cb("/teams");
   const TEAM = Object.fromEntries(teamsRaw.map(t => [t.id, t]));
@@ -698,6 +702,8 @@ export async function main() {
 
   /* ---------- games: lines, TV, our pick, series, splits, game logs (job/cbbgames.mjs) ---------- */
   const GM = await buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList: teamsRaw.filter(t => D1.has(t.id)), adj: H.adj, own: ownOnce });
+  /* today's betting angles (Nov 19, job/cbbangles.mjs): from the logs and games just written, no CBBD call */
+  if (!off) try { const { buildCbbAngles } = await import("./cbbangles.mjs"); await buildCbbAngles({ getPack, putPack, log, S, names: Object.fromEntries(teamsRaw.map(t => [t.id, t.school])) }) } catch (e) { log("angles: " + e.message) }
   { const OWNR = await ownOnce(), SH = OWNR ? (off ? OWNR.finBy(S) : OWNR.by) : null;   /* [off, def, net, tempo, rank, off rank, def rank, games] */
     if (OWNR) for (const id of Object.keys(teams)) { teams[id].own = (SH || {})[id] || null; if (off) teams[id].ownNext = OWNR.by[id] || null } }
   /* coach extras: recruiting classes, transfers in and out, player development, shot diet (job/cbbcoachx.mjs) */

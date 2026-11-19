@@ -36,8 +36,8 @@ export async function buildColAngles({ cf, season, log = console.log, prev = nul
     for (const x of B || []) for (const t of x.teams || []) { const st = {}; for (const s of t.stats || []) st[s.category] = s.stat;
       const ca = String(st.completionAttempts || "").split(/[-\/]/), att = +ca[1] || null;
       BOX[x.id + "|" + (t.team || t.school)] = { car: +st.rushingAttempts || null, ryd: +st.rushingYards || 0, att, pyd: +st.netPassingYards || 0, give: +st.turnovers || 0 } } }
-  /* each team's games in order, its numbers and what it allowed */
-  const done = G.filter(g => g.hs != null).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  /* each team's games in order (FBS vs FBS with a line, as in the test), its numbers and what it allowed */
+  const done = G.filter(g => g.hs != null && lines[g.id]).sort((a, b) => String(a.date).localeCompare(String(b.date)));
   const val = (g, t) => { const B = BOX[g.id + "|" + t] || {}, H = t === g.home; return { pf: H ? g.hs : g.as, ypc: B.car ? B.ryd / B.car : null, ypa: B.att ? B.pyd / B.att : null, give: B.give ?? null } };
   const H = {}; for (const g of done) for (const [t, o] of [[g.home, g.away], [g.away, g.home]]) (H[t] = H[t] || []).push({ o: val(g, t), d: val(g, o) });
   const mean = (A, f) => { const v = A.map(f).filter(x => x != null && isFinite(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null };
@@ -54,7 +54,7 @@ export async function buildColAngles({ cf, season, log = console.log, prev = nul
   const team = [];
   for (const A of TESTED) { const s = S.filter(x => x["mo_" + A.k] != null).sort((a, b) => b["mo_" + A.k] - a["mo_" + A.k])[0]; if (!s) continue;
     if ((A.bet === "tot-under" || A.bet === "tt-over") && s.ou == null) continue;
-    const bet = A.bet === "ats-me" ? { t: "ats", side: s.t, line: r2(-s.sp) } : A.bet === "ats-other" ? { t: "ats", side: s.o, line: r2(s.sp) } : A.bet === "tot-under" ? { t: "tot", dir: "under", line: r2(s.ou) } : { t: "tt", side: s.t, dir: "over", line: r2(s.imp) };
+    const bet = A.bet === "ats-me" ? { t: "ats", side: s.t, line: r2(-s.sp) } : A.bet === "ats-other" ? { t: "ats", side: s.o, line: r2(s.sp) } : A.bet === "tot-under" ? { t: "tot", dir: "under", line: r2(s.ou) } : { t: "tt", side: s.t, dir: "over", line: Math.round(s.imp * 2) / 2 };
     team.push({ k: A.k + "-" + A.bet, lab: A.lab, gid: s.g.id, team: s.t, opp: s.o, bet, why: why(A.k, s), hit: A.hit, h: A.h }) }
   /* grade earlier weeks */
   const past = Object.assign({}, (prev && prev.past) || {});

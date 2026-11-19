@@ -157,9 +157,9 @@ def run(reg, log, D):
     out = []
     try: cfb(log, out)
     except Exception as e:
-        import traceback; out.append(f'CFB failed: {traceback.format_exc()[-1200:]}')
+        import traceback; out.append('CFB failed: ' + ' / '.join(l.strip() for l in traceback.format_exc().splitlines() if 'hunt79' in l or 'Error' in l)[-1500:])
     try: cbb(log, out)
     except Exception as e:
-        import traceback; out.append(f'CBB failed: {traceback.format_exc()[-1200:]}')
+        import traceback; out.append('CBB failed: ' + ' / '.join(l.strip() for l in traceback.format_exc().splitlines() if 'hunt79' in l or 'Error' in l)[-1500:])
     for o in out: log(o)
     s_ = ' ‖ '.join(out); [print(f'::notice title=hunt79 {i + 1}::{s_[i * 3900:(i + 1) * 3900]}') for i in range((len(s_) + 3899) // 3900)]

@@ -46,8 +46,8 @@ export function parseNbaStops(w, curNba) {
   w = String(w || "").replace(/<ref[^>]*\/>/g, "").replace(/<ref[\s\S]*?<\/ref>/g, "");
   /* {{nbay|2012|start}} is the 2012–13 season, {{nbay|2012|end}} its end (2013), {{nbay|2013|full=y}} that one season: each becomes «season's end year» */
   w = w.replace(/\{\{\s*nbay\s*\|\s*(\d{4})[^{}]*\}\}/gi, (m, y) => `«${+y + 1}»`);
-  for (let k = 0; k < 4; k++) w = w.replace(/\{\{[^{}]*\}\}/g, "");
-  const clean = s => String(s || "").replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1").replace(/<[^>]+>/g, "").replace(/'{2,3}/g, "").trim();
+  /* other templates come out line by line — stripped from the whole page they took the infobox itself with them (the first run kept no stops) */
+  const clean = s => { s = String(s || ""); for (let k = 0; k < 4; k++) s = s.replace(/\{\{[^{}]*\}\}/g, ""); return s.replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1").replace(/<[^>]+>/g, "").replace(/'{2,3}/g, "").trim() };
   const line = k => { const m = w.match(new RegExp("\\|\\s*" + k + "\\s*=\\s*([^\\n]*)")); return m ? m[1] : "" };
   const out = []; for (let i = 1; i <= 30; i++) { const yrs = clean(line("coach_years" + i)), tm0 = clean(line("coach_team" + i)); if (!tm0) continue;
     const role = (tm0.match(/\(([^)]*)\)\s*$/) || [])[1] || "", tm = cityTeam(tm0.replace(/\s*\([^)]*\)\s*$/, "")); if (!tm) continue;
@@ -65,11 +65,11 @@ export async function buildNbaCoaches(K, names, log, curNba) {
   K.coh = K.coh || {}; K.cohMiss = K.cohMiss || []; if (K.cohV !== 2 && K.cohV !== 3) { K.cohMiss = []; K.cohV = 2 } if (K.cohV === 2) K.cohV = 3;   /* v2: the GP-wins-losses template is read — coaches missed before get another look; v3 (Nov 18): each page read once more for its stops (st) */
   let added = 0, tried = 0, errs = 0;
   for (const [nm, teams] of Object.entries(names)) {
-    const have = K.coh[nm]; if (have && have.st && !(teams.cur && Math.max(...have.r.map(r => r[0])) < curNba)) continue; if (!have && K.cohMiss.includes(nm)) continue;
+    const have = K.coh[nm]; if (have && have.stv === 2 && !(teams.cur && Math.max(...have.r.map(r => r[0])) < curNba)) continue; if (!have && K.cohMiss.includes(nm)) continue;
     tried++; let got = null, gotSt = null;
     for (const title of [nm, nm + " (basketball)", nm + " (basketball coach)"]) { const w = await wikiText(title); if (w == null) { got = "ERR"; break } if (!w || /may refer to|\{\{\s*(disambiguation|hndis)/i.test(w)) continue;
       const R = parseNbaRecord(w); if (R.length && (!teams.list.length || R.some(r => teams.list.includes(r[1])))) { got = R; gotSt = parseNbaStops(w, curNba); break } }
-    if (got === "ERR") { errs++; continue } if (got) { K.coh[nm] = { r: got, st: gotSt || [], at: Date.now() }; added++ } else if (!K.cohMiss.includes(nm)) K.cohMiss.push(nm);
+    if (got === "ERR") { errs++; continue } if (got) { K.coh[nm] = { r: got, st: gotSt || [], stv: 2, at: Date.now() }; added++ } else if (!K.cohMiss.includes(nm)) K.cohMiss.push(nm);
     await new Promise(z => setTimeout(z, 700)) }
   log(`nbastats: NBA coach records — ${tried} looked up, ${added} kept, ${errs} to retry next run (Wikipedia busy), ${Object.keys(K.coh).length} on file`) }
 export { teamOf, kk };

@@ -7,10 +7,9 @@
    No CBBD call: reads this season's game logs and games packs (job/cbbgames.mjs) after they're written.
    Output: pack "pYYYY_cbb-angles" = { t, v, season, day, games, team: [ { k, lab, gid, team, opp, bet, why, hit, h } ], past: { day: { team } } } */
 
+/* hunt 80 (Nov 19): walking forward only three-point defense held (284–244, 53.8%); rebounding (201–198) and forced turnovers (249–245) came off */
 const TESTED = [
-  { k: "reb", side: "o", bet: "tt-over", hit: 54.0, h: [55, 53], lab: "Rebounding" },
-  { k: "tov", side: "d", bet: "tt-over", hit: 53.2, h: [54, 53], lab: "Forced turnovers" },
-  { k: "m3", side: "d", bet: "ats-other", hit: 53.6, h: [53, 54], lab: "Three-point defense" }];
+  { k: "m3", side: "d", bet: "ats-other", hit: 53.8, h: [284, 244], lab: "Three-point defense" }];
 const r1 = v => v == null || !isFinite(v) ? null : Math.round(v * 10) / 10;
 const etDay = d => { try { return new Date(d).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) } catch { return String(d).slice(0, 10) } };
 

@@ -7,13 +7,14 @@
    Output: pack "pYYYY_colang" = { t, v, season, week, games, team: [ { k, lab, gid, team, opp, bet, why, hit, h } ], past: { week: [...] } } */
 import { gzipSync } from "node:zlib";
 
+/* hunt 80 (Nov 19 — the owner, 5:04 pm: "1 & 2 you have the go ahead to do both"): walking forward — each season's rules picked from the seasons
+   before only — these held; hit = how they did in the seasons after they were picked (h = won, lost). Yards a pass → other side covers went 21–23 and came off. */
 const TESTED = [
-  { k: "give", bet: "ats-me", hit: 63.5, h: [67, 61], lab: "Ball security" },
-  { k: "give", bet: "tt-over", hit: 57.9, h: [57, 59], lab: "Ball security" },
-  { k: "ypc", bet: "tot-under", hit: 57.9, h: [62, 55], lab: "Yards a carry" },
-  { k: "pf", bet: "tot-under", hit: 57.7, h: [62, 54], lab: "Points" },
-  { k: "ypa", bet: "tot-under", hit: 55.6, h: [58, 53], lab: "Yards a pass" },
-  { k: "ypa", bet: "ats-other", hit: 55.2, h: [56, 55], lab: "Yards a pass" }];
+  { k: "give", bet: "ats-me", hit: 61.7, h: [82, 51], lab: "Ball security" },
+  { k: "give", bet: "tt-over", hit: 58.7, h: [61, 43], lab: "Ball security" },
+  { k: "ypc", bet: "tot-under", hit: 54.8, h: [57, 47], lab: "Yards a carry" },
+  { k: "pf", bet: "tot-under", hit: 54.3, h: [57, 48], lab: "Points" },
+  { k: "ypa", bet: "tot-under", hit: 54.1, h: [73, 62], lab: "Yards a pass" }];
 const M = { pf: 1, ypc: 1, ypa: 1, give: -1 };
 const r2 = v => v == null ? null : Math.round(v * 100) / 100;
 const fbs = x => String(x || "").toLowerCase() === "fbs";

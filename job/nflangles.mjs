@@ -21,14 +21,15 @@ const PBP = ["game_id", "season_type", "home_team", "away_team", "posteam", "def
   "rusher_player_id", "receiver_player_id"];
 /* the tested stats; sign +1 = more is better for an offense */
 const M = { pts: 1, sf: 1, h1: 1, q4: 1, epa: 1, pepa: 1, repa: 1, succ: 1, ypp: 1, expl: 1, sackr: -1, give: -1, third: 1, rztd: 1, longest: 1, fga: 1, nonoff: 1 };
-/* the angles that held in both halves (week's single biggest mismatch, 2017–26, 204 weeks each) — hit rate and the two halves */
+/* the angles that held in both halves (week's single biggest mismatch, 2017–26, 204 weeks each). Nov 19, 5:04 pm: walking forward (docs/checks/walk-forward-2026-11-19.txt)
+   only the two marked fwd held — their hit is the forward rate and h the record; the pages show only those */
 const TEAM_ANG = [
   { k: "nonoff", side: "o", bet: "dst", hit: 22.5, h: [22.6, 22.4], base: 13.0, lab: "Defense & special teams" },
   { k: "epa", side: "o", bet: "ats-other", hit: 57.2, h: [53.3, 61.5], lab: "EPA a play" },
   { k: "q4", side: "o", bet: "ats-other", hit: 56.1, h: [57.4, 54.6], lab: "4th-quarter scoring" },
-  { k: "q4", side: "d", bet: "tot-under", hit: 56.7, h: [56.6, 56.7], lab: "4th-quarter defense" },
+  { k: "q4", side: "d", bet: "tot-under", hit: 54.1, h: [40, 34], fwd: 1, lab: "4th-quarter defense" },
   { k: "third", side: "d", bet: "tot-under", hit: 55.7, h: [55.7, 55.8], lab: "3rd-down defense" },
-  { k: "pts", side: "o", bet: "tt-under", hit: 55.2, h: [56.2, 54.1], lab: "Points" },
+  { k: "pts", side: "o", bet: "tt-under", hit: 54.1, h: [53, 45], fwd: 1, lab: "Points" },
   { k: "sf", side: "d", bet: "tot-under", hit: 54.2, h: [54.7, 53.6], lab: "Score-first defense" },
   { k: "longest", side: "o", bet: "tt-over", hit: 55.9, h: [55.7, 56.1], lab: "Longest play" },
   { k: "fga", side: "o", bet: "tt-over", hit: 54.2, h: [55.7, 52.6], lab: "Field-goal tries" }];

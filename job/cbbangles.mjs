@@ -14,7 +14,9 @@ const TESTED = [
 const r1 = v => v == null || !isFinite(v) ? null : Math.round(v * 10) / 10;
 const etDay = d => { try { return new Date(d).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) } catch { return String(d).slice(0, 10) } };
 
-export async function buildCbbAngles({ getPack, putPack, log = console.log, S, names = {} }) {
+import { pickLine } from "./cbbgames.mjs";
+
+export async function buildCbbAngles({ getPack, putPack, log = console.log, S, names = {}, cb = null }) {
   const [LG, GM, prev] = await Promise.all([getPack(`p${S}_cbb-logs`), getPack(`p${S}_cbb-games`), getPack(`p${S}_cbb-angles`).catch(() => null)]);
   if (!LG || !LG.teams || !GM || !GM.games) throw new Error("no game logs or games for " + S);
   const C = LG.cols.team, ix = Object.fromEntries(C.map((c, i) => [c, i])), nm = id => names[id] || String(id);
@@ -28,6 +30,10 @@ export async function buildCbbAngles({ getPack, putPack, log = console.log, S, n
   /* the next day with games still to play that have a line (a scheduled game carries 0–0 in the pack, so its status decides) */
   const today = etDay(Date.now()), sched = GM.games.filter(g => g.st === "scheduled" && etDay(g.d) >= today), day = sched.length ? sched.map(g => etDay(g.d)).sort()[0] : null;
   /* the test grouped each day's lined games; with fewer than 5 lines posted yet (the 8 am run, before the books open) there's no day to rank */
+  /* the day's lines fresh from CBBD (one call): the games pack only has the lines from the last everyday run, and the books post through the morning */
+  if (day && cb) try { const a = new Date(day + "T05:00:00Z"), b = new Date(a.getTime() + 864e5), F = {};
+    for (const l of await cb("/lines", { season: S, startDateRange: a.toISOString(), endDateRange: b.toISOString() })) { const L = pickLine(l.lines); if (L && L.sp != null) F[l.gameId] = L }
+    let n = 0; for (const g of sched) if (F[g.id]) { g.ln = F[g.id]; n++ } log(`angles: ${n} lines read fresh for ${day}`) } catch (e) { log("angles: fresh lines: " + e.message) }
   const lined = day ? sched.filter(g => etDay(g.d) === day && g.ln && g.ln.sp != null) : [], DG = lined.length >= 5 ? lined : [];
   const Sd = []; for (const g of DG) for (const [t, o, h] of [[g.h, g.a, 1], [g.a, g.h, 0]]) { const L = form(t, day), O = form(o, day); if (!L || !O) continue;
     const sp = h ? g.ln.sp : -g.ln.sp, ou = g.ln.ou != null ? +g.ln.ou : null; Sd.push({ g, t, o, sp, ou, imp: ou != null ? (ou - sp) / 2 : null, L, O }) }
@@ -52,6 +58,8 @@ export async function buildCbbAngles({ getPack, putPack, log = console.log, S, n
   for (const d in past) for (const a of past[d].team || []) { if (a.r === 0 || a.r === 1) continue; const g = byId[a.gid]; if (!g || g.st !== "final" || g.hs == null) continue;
     const pts = id => +id === +g.h ? g.hs : g.as, me = a.bet.t === "ats" ? a.oid : a.tid, them = +me === +g.h ? g.a : g.h;
     a.r = a.bet.t === "ats" ? cmp(pts(me) - pts(them) + a.bet.line, 0) : cmp(pts(me), a.bet.line) }
+  /* never wipe the day's picks: a later run with fewer lines (or none) keeps what an earlier run found for the same day */
+  if (!team.length && prev && prev.day === day && (prev.team || []).length) { log(`angles: kept ${prev.team.length} from the earlier run for ${day}`); return prev }
   const out = { t: Date.now(), v: 1, season: S, day, games: DG.map(g => ({ id: g.id, h: g.h, a: g.a, home: nm(g.h), away: nm(g.a), sp: g.ln.sp, ou: g.ln.ou })), team, past };
   await putPack(`p${S}_cbb-angles`, out);
   log(`angles: ${day || "no day"} · ${DG.length} games with a line · ${Sd.length} sides with 5+ games · ${team.length} angles${team.length ? " — " + team.map(a => `${a.lab}: ${a.bet.side} ${a.bet.t === "tt" ? "over " + a.bet.line : (a.bet.line > 0 ? "+" : "") + a.bet.line}`).join(" | ") : ""} · ${Object.keys(past).length} past days`);

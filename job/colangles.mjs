@@ -63,6 +63,7 @@ export async function buildColAngles({ cf, season, log = console.log, prev = nul
   for (const w in past) for (const a of past[w].team || []) { if (a.r === 0 || a.r === 1) continue; const g = byId[a.gid]; if (!g || g.hs == null) continue; const b = a.bet,
     pts = t => t === g.home ? g.hs : g.as, mg = t => pts(t) - pts(t === g.home ? g.away : g.home);
     a.r = b.t === "ats" ? cmp(mg(b.side) + b.line, 0) : b.t === "tot" ? cmp(b.line, g.hs + g.as) : cmp(pts(b.side), b.line) }
+  if (!team.length && prev && prev.season === season && prev.week === week && (prev.team || []).length) { log(`college angles: kept ${prev.team.length} from the earlier run for week ${week}`); return prev }
   log(`college angles: ${season} week ${week} · ${WK.length} FBS games with a line · ${S.length} sides with 5+ games · ${team.length} angles · ${Object.keys(past).length} past weeks`);
   return { t: Date.now(), v: 1, season, week, games: WK.map(g => ({ id: g.id, home: g.home, away: g.away, sp: lines[g.id].sp, ou: lines[g.id].ou })), team, past };
 }

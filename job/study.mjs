@@ -114,8 +114,9 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
   /* "fromarchive": a batch already kept as study packs is read back from them (no CFBD/CBBD call); "focus:<name>" tells the analysis
      which part to run (job/study3/run.py) */
   const fromArchive = want0.includes("fromarchive"), focus = (want0.find(x => x.startsWith("focus:")) || "").slice(6) || null;
-  const want = want0.filter(x => x !== "noarchive" && x !== "archive" && x !== "fromarchive" && !x.startsWith("focus:"));
-  const FLOOR = +process.env.STUDY_FLOOR || 46000, CAP = +process.env.STUDY_CAP || 20000;
+  const want = want0.filter(x => x !== "noarchive" && x !== "archive" && x !== "fromarchive" && !x.startsWith("focus:") && !x.startsWith("floor:"));
+  /* (Nov 19 — the owner, 5:04 pm: "1 & 2 you have the go ahead to do both") a run may name a lower floor in its batch list ("floor:39000"), only when he's said yes */
+  const FLOOR = +((want0.find(x => /^floor:\d+$/.test(x)) || "").slice(6)) || +process.env.STUDY_FLOOR || 46000, CAP = +process.env.STUDY_CAP || 20000;
   const now = new Date(), cur = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;   // the proxy's season (src/cfbd.js)
   const H = { headers: { Authorization: "Bearer " + token } }, sleep = ms => new Promise(z => setTimeout(z, ms));
   let lastLeft = null;

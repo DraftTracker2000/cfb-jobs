@@ -25,9 +25,10 @@ export async function buildCbbAngles({ getPack, putPack, log = console.log, S, n
   const mean = (A, f) => { const v = A.map(f).filter(x => x != null && isFinite(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null };
   const form = (t, day) => { const A = (H[t] || []).filter(x => x.d < day).slice(-10); if (A.length < 5) return null; const o = { n: A.length };
     for (const m of ["m3", "reb", "tov"]) { o["o_" + m] = mean(A, x => x.o[m]); o["d_" + m] = mean(A, x => x.a[m]) } return o };
-  /* the next day with games still to play that have a line */
-  const today = etDay(Date.now()), open = GM.games.filter(g => g.hs == null && g.st !== "final" && g.ln && g.ln.sp != null && etDay(g.d) >= today);
-  const day = open.length ? open.map(g => etDay(g.d)).sort()[0] : null, DG = day ? open.filter(g => etDay(g.d) === day) : [];
+  /* the next day with games still to play that have a line (a scheduled game carries 0–0 in the pack, so its status decides) */
+  const today = etDay(Date.now()), sched = GM.games.filter(g => g.st === "scheduled" && etDay(g.d) >= today), day = sched.length ? sched.map(g => etDay(g.d)).sort()[0] : null;
+  /* the test grouped each day's lined games; with fewer than 5 lines posted yet (the 8 am run, before the books open) there's no day to rank */
+  const lined = day ? sched.filter(g => etDay(g.d) === day && g.ln && g.ln.sp != null) : [], DG = lined.length >= 5 ? lined : [];
   const Sd = []; for (const g of DG) for (const [t, o, h] of [[g.h, g.a, 1], [g.a, g.h, 0]]) { const L = form(t, day), O = form(o, day); if (!L || !O) continue;
     const sp = h ? g.ln.sp : -g.ln.sp, ou = g.ln.ou != null ? +g.ln.ou : null; Sd.push({ g, t, o, sp, ou, imp: ou != null ? (ou - sp) / 2 : null, L, O }) }
   const z = arr => { const v = arr.filter(x => x != null), m = v.reduce((a, b) => a + b, 0) / (v.length || 1), s = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(1, v.length - 1)) || 1; return arr.map(x => x == null ? null : (x - m) / s) };
@@ -48,7 +49,7 @@ export async function buildCbbAngles({ getPack, putPack, log = console.log, S, n
   const past = Object.assign({}, (prev && prev.past) || {});
   if (prev && prev.day && prev.day !== day && (prev.team || []).length) past[prev.day] = { team: prev.team };
   const byId = Object.fromEntries(GM.games.map(g => [g.id, g])), cmp = (a, b) => a > b ? 1 : a < b ? 0 : null;
-  for (const d in past) for (const a of past[d].team || []) { if (a.r === 0 || a.r === 1) continue; const g = byId[a.gid]; if (!g || g.hs == null) continue;
+  for (const d in past) for (const a of past[d].team || []) { if (a.r === 0 || a.r === 1) continue; const g = byId[a.gid]; if (!g || g.st !== "final" || g.hs == null) continue;
     const pts = id => +id === +g.h ? g.hs : g.as, me = a.bet.t === "ats" ? a.oid : a.tid, them = +me === +g.h ? g.a : g.h;
     a.r = a.bet.t === "ats" ? cmp(pts(me) - pts(them) + a.bet.line, 0) : cmp(pts(me), a.bet.line) }
   const out = { t: Date.now(), v: 1, season: S, day, games: DG.map(g => ({ id: g.id, h: g.h, a: g.a, home: nm(g.h), away: nm(g.a), sp: g.ln.sp, ou: g.ln.ou })), team, past };

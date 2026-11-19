@@ -127,6 +127,12 @@ async function main() {
       if (r.held && r.held.length) console.log("nfl: held back (much smaller than last time): " + r.held.join(", "));
       if (MODE !== "weekly") { await report(!(r.held && r.held.length), `NFL · ${r.packs} packs · ${r.mb.toFixed(1)} MB · seasons ${r.seasons[0]}–${r.seasons[r.seasons.length - 1]}${r.held && r.held.length ? ` · HELD BACK (under 40% of last size): ${r.held.join(", ")}` : ""}`); return }
     } catch (e) { if (MODE !== "weekly") throw e; console.log("nfl: " + e.message) }
+    /* this week's betting angles (Nov 19, job/nflangles.mjs): from nflverse's play-by-play and schedule; never fails the run */
+    try { const { buildAngles, uploadAngles } = await import("./nflangles.mjs"); const pv = await getPack(`p${curYear}_nfl-angles`).catch(() => null);
+      const ang = await buildAngles({ season: curYear, prev: pv && pv.angles, log: x => console.log(x) }); const u = await uploadAngles({ api, season: curYear, data: ang });
+      const rec = Object.values(ang.past || {}).flatMap(w => [...(w.team || []), ...(w.rb || []), ...(w.sched || [])]).filter(x => x.r === 0 || x.r === 1);
+      console.log(`::notice title=angles::${u.name} ${(u.bytes / 1024).toFixed(0)} KB · week ${ang.week} · ${ang.team.length} team angles · ${ang.rb.filter(x => x.best).length} best RB TD matchups · record so far ${rec.filter(x => x.r === 1).length}-${rec.filter(x => x.r === 0).length}`) }
+    catch (e) { console.log("angles: " + e.message) }
   }
   /* college availability reports (job/cavail.mjs): its own quick run Wednesday night to Saturday morning, and the start of every live run */
   if (MODE === "cavail" || MODE === "live") {

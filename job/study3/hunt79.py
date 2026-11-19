@@ -153,6 +153,46 @@ def cbb(log, out):
     X = X.sort_values('dt'); X['p_exp'] = X.groupby(['team', 'season']).exp.shift(1); X['p_m'] = X.groupby(['team', 'season']).margin.shift(1)
     al = X[(X.p_exp >= 10) & (X.p_m < 0)]; out.append(f'CBB after losing as a 10+ favorite n{len(al)}: cover {grade(al, ("cov",), 2021)}')
 
+
+def nba(log, out, D):
+    import glob, gzip, json, os
+    rows = []
+    for f in sorted(glob.glob(os.path.join(D, 'site_nbarefs_*.json.gz'))):
+        y = int(re.search(r'_(\d{4})\.json', f).group(1)); P = json.load(gzip.open(f)); cols = P.get('cols') or []
+        for gid, r in (P.get('g') or {}).items():
+            o = dict(zip(cols, r)); o['gid'] = gid; o['season'] = y; rows.append(o)
+    if not rows: out.append('NBA: no games copied'); return
+    G = pd.DataFrame(rows)
+    for c in ['hs', 'as', 'hF', 'aF', 'hFTA', 'aFTA', 'total', 'spread']: G[c] = num(G[c])
+    G = G.dropna(subset=['hs', 'as']); G['dt'] = pd.to_datetime(G.date, utc=True, errors='coerce')
+    h = pd.DataFrame({'gid': G.gid, 'season': G.season, 'dt': G.dt, 'team': G.home, 'opp': G.away, 'pf': G.hs, 'pa': G['as'], 'fls': G.hF, 'fta': G.hFTA, 'line': G.spread, 'ou': G.total})
+    a = pd.DataFrame({'gid': G.gid, 'season': G.season, 'dt': G.dt, 'team': G.away, 'opp': G.home, 'pf': G['as'], 'pa': G.hs, 'fls': G.aF, 'fta': G.aFTA, 'line': -G.spread, 'ou': G.total})
+    T = pd.concat([h, a], ignore_index=True).dropna(subset=['dt'])
+    T['exp'] = -T.line; T['margin'] = T.pf - T.pa; T['cover'] = T.margin + T.line
+    M = {'pf': 1, 'fta': 1, 'fls': -1}
+    O = T.set_index(['gid', 'team'])
+    for m in M: T['d_' + m] = [O[m].get((g, o), np.nan) for g, o in zip(T.gid, T.opp)]
+    T = rolling(T, M, n=10, minn=5, by_season=True)
+    O = T.set_index(['gid', 'team'])
+    for m in M:
+        T['opp_r_' + m] = [O['r_' + m].get((g, o), np.nan) for g, o in zip(T.gid, T.opp)]
+        T['opp_rd_' + m] = [O['r_d_' + m].get((g, o), np.nan) for g, o in zip(T.gid, T.opp)]
+    T['imp'] = (T.ou + T.exp) / 2
+    T['cov'] = np.where(T.cover > 0, 1.0, np.where(T.cover < 0, 0.0, np.nan))
+    T['tto'] = np.where(T.pf > T.imp, 1.0, np.where(T.pf < T.imp, 0.0, np.nan))
+    T['gov'] = np.where(T.pf + T.pa > T.ou, 1.0, np.where(T.pf + T.pa < T.ou, 0.0, np.nan))
+    T['day'] = T.dt.dt.tz_convert('America/New_York').dt.date.astype(str)
+    X = T[T.line.notna()].copy(); sp = int(X.season.median())
+    log(f'hunt79 NBA: {len(X)} team-games with a line, {X.season.min()}–{X.season.max()}, totals for {X.ou.notna().mean():.2f}, FTA for {X.fta.notna().mean():.2f}')
+    out.append(f'NBA base ({X.season.min()}–{X.season.max()}, halves split at {sp}): all team-games {grade(X, split=sp)}')
+    test_block('NBA', X, M, ['day'], out, sp)
+    X = X.sort_values('dt'); X['prev'] = X.groupby(['team', 'season']).dt.shift(1); X['rest'] = (X.dt - X.prev).dt.total_seconds() / 86400
+    O2 = X.set_index(['gid', 'team']); X['orest'] = [O2.rest.get((g, o), np.nan) for g, o in zip(X.gid, X.opp)]
+    b2b = X[(X.rest < 1.6) & (X.orest >= 1.6)]; out.append(f'NBA on a back-to-back vs a rested team n{len(b2b)}: {grade(b2b, split=sp)}')
+    b2b = X[(X.rest >= 1.6) & (X.orest < 1.6)]; out.append(f'NBA rested vs a team on a back-to-back n{len(b2b)}: {grade(b2b, split=sp)}')
+    X['p_exp'] = X.groupby(['team', 'season']).exp.shift(1); X['p_m'] = X.groupby(['team', 'season']).margin.shift(1)
+    al = X[(X.p_exp >= 10) & (X.p_m < 0)]; out.append(f'NBA after losing as a 10+ favorite n{len(al)}: {grade(al, ("cov",), sp)}')
+
 def run(reg, log, D):
     out = []
     try: cfb(log, out)
@@ -161,5 +201,8 @@ def run(reg, log, D):
     try: cbb(log, out)
     except Exception as e:
         import traceback; out.append('CBB failed: ' + ' / '.join(l.strip() for l in traceback.format_exc().splitlines() if 'hunt79' in l or 'Error' in l)[-1500:])
+    try: nba(log, out, D)
+    except Exception as e:
+        import traceback; out.append('NBA failed: ' + ' / '.join(l.strip() for l in traceback.format_exc().splitlines() if 'hunt79' in l or 'Error' in l)[-1500:])
     for o in out: log(o)
     s_ = ' ‖ '.join(out); [print(f'::notice title=hunt79 {i + 1}::{s_[i * 3900:(i + 1) * 3900]}') for i in range((len(s_) + 3899) // 3900)]

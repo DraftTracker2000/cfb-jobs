@@ -177,6 +177,8 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
       if (okA) { const after = await left(); flush(0); const line = `${n} paths · read ${nA} answers from the study archive (no call) · pool ${before ?? "?"} → ${after ?? "?"} · ${rows} rows`;
         log(`study ${b.name}: ${line}`); LINES.push(`${b.name}: ${line}`); man.batches.push({ name: b.name, fromArchive: true, got: nA, rows, before, after, calls: 0 }); continue }
     }
+    /* (Nov 19) not in the archive after all: a live pull, so the floor and the cap apply again */
+    if (fromArchive && b.archive !== false && ((before != null && before - n < FLOOR) || used + n > CAP)) { log(`::warning title=study ${b.name} skipped::not in the archive, and a live pull would pass the floor or the cap (${before} left)`); man.batches.push({ name: b.name, skipped: "floor" }); continue }
     const doneYear = new Set(); let emptyRun = {};
     for (let i = 0; i < list.length; i += 3) {
       const chunk = list.slice(i, i + 3);
@@ -204,6 +206,9 @@ export async function runStudy({ site, token, job, log = console.log, out = "stu
   /* the site's own packs the analysis needs (read only): basketball head coaches by team and season (ESPN, built by the basketball job) */
   /* (Nov 8, hunt 74) and the college coordinators by team and season (Wikipedia season pages, built for the coach pages) */
   for (const n of ["p2026_cbb-coaches", `p${cur}_coord`]) { try { const r = await fetch(`${site}/api/pack/${n}`, H); if (r.ok) writeFileSync(`${out}/site_${n}.json.gz`, gzipSync(Buffer.from(await r.text()))) } catch (e) { } }
+  /* (Nov 19, hunt 79) "nbarefs": the NBA games with ESPN's closing line, score, fouls and free throws, one pack a season (job/cbbrefhist.mjs), read with the job token */
+  if (want0.includes("nbarefs")) { let n = 0; for (let y = 2003; y <= cur + 1; y++) { try { const r = await fetch(`${site}/api/pack/p${y}_cbb-refraw-n`, { headers: { Authorization: "Bearer " + job } });
+    if (r.ok) { writeFileSync(`${out}/site_nbarefs_${y}.json.gz`, gzipSync(Buffer.from(await r.text()))); n++ } } catch (e) { } } log(`study nbarefs: ${n} seasons copied`) }
   const L1 = await left(); man.left1 = L1; man.used = used; man.cbbdLeft = lastLeft;
   if (Object.keys(IX).length) { for (let k = 0; k < 3; k++) { const r = await fetch(`${site}/api/pack-index`, { method: "PUT", body: JSON.stringify(IX), headers: { Authorization: "Bearer " + job, "Content-Type": "application/json" } }); if (r.ok) break; await sleep(4000) } }
   man.archive = { packs: ARCH.length, mb: +(ARCH.reduce((a, x) => a + x[1], 0) / 1e6).toFixed(1), names: ARCH };

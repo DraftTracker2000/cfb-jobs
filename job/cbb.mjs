@@ -702,8 +702,8 @@ export async function main() {
 
   /* ---------- games: lines, TV, our pick, series, splits, game logs (job/cbbgames.mjs) ---------- */
   const GM = await buildGames({ cb, getPack, putPack, log, S, NEXT, off, G, D1, full, teamList: teamsRaw.filter(t => D1.has(t.id)), adj: H.adj, own: ownOnce });
-  /* today's betting angles (Nov 19, job/cbbangles.mjs): off in the everyday run since 6:10 pm Nov 19 (none clears the bar); MODE=cbbang by hand */
-  if (false) try { const { buildCbbAngles } = await import("./cbbangles.mjs"); await buildCbbAngles({ getPack, putPack, log, S, names: Object.fromEntries(teamsRaw.map(t => [t.id, t.school])), cb }) } catch (e) { log("angles: " + e.message) }
+  /* today's betting angles (Nov 19, job/cbbangles.mjs): from the logs and games just written (off 6:10–6:20 pm Nov 19, back as a slight angle) */
+  if (!off) try { const { buildCbbAngles } = await import("./cbbangles.mjs"); await buildCbbAngles({ getPack, putPack, log, S, names: Object.fromEntries(teamsRaw.map(t => [t.id, t.school])), cb }) } catch (e) { log("angles: " + e.message) }
   { const OWNR = await ownOnce(), SH = OWNR ? (off ? OWNR.finBy(S) : OWNR.by) : null;   /* [off, def, net, tempo, rank, off rank, def rank, games] */
     if (OWNR) for (const id of Object.keys(teams)) { teams[id].own = (SH || {})[id] || null; if (off) teams[id].ownNext = OWNR.by[id] || null } }
   /* coach extras: recruiting classes, transfers in and out, player development, shot diet (job/cbbcoachx.mjs) */

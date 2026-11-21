@@ -246,6 +246,7 @@ export async function main() {
   /* nbawo (Nov 6): NBA "When he's out" from the open player box scores (job/cbbnbawo.mjs) — no ESPN or CBBD calls */
   /* the All-Star picks set from Wikipedia's list once (Nov 15), and again every week with the NBA tables (a new All-Star Game each February) */
   if (MODE === "cbb" || MODE === "nbastats") { try { const { fixAllStars } = await import("./cbbnbatrades.mjs"); await fixAllStars({ getPack, putPack, log, force: MODE === "nbastats" }) } catch (e) { log("all-stars: " + e.message) } }
+  if (MODE === "cbb" || MODE === "nbastats") { try { const { fixMinorAwards } = await import("./cbbnbatrades.mjs"); await fixMinorAwards({ getPack, putPack, log }) } catch (e) { log("minor-league awards: " + e.message) } }   /* Nov 21: G League honors filed as NBA ones, read again once */
   if (MODE === "nbawo") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
     const { buildNbaWo } = await import("./cbbnbawo.mjs"); const R = await buildNbaWo({ putPack, log, curNba });
     await site("PUT", "/api/pack-index", { body: INDEX }); await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: R.msg, started } }).catch(e => log("report failed: " + e.message)); log(R.msg); return }

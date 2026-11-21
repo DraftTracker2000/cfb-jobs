@@ -123,7 +123,8 @@ export function nbaAwards(w) { const k = String(w).search(/\n\s*\|\s*highlights\
   /* Oct 25: link targets dropped first ("[[1951–52 NBA season|1952]]" is 1952), every line has to say NBA (other leagues' Finals MVPs
      were counting), the All-Star Game MVP and conference-finals MVP aren't the MVP or Finals MVP, and the Hall of Fame is its own field */
   if (/\n\s*\|\s*HOF_player\s*=\s*[^\s|}]/i.test(w)) out.push(["hof", 0]);
-  for (const l0 of h.split("\n")) { const l = l0.replace(/\[\[[^\]|]*\|([^\]]*)\]\]/g, "$1"); if (!/^\s*\*/.test(l) || !/NBA/.test(l0) || /NCAA|All-American|college|G League|D-League|WNBA|EuroLeague|FIBA|Olympic|ABA\b/i.test(l)) continue;
+  for (const l00 of h.split("\n")) { const l0 = l00.replace(/\s\|\s*[a-z_]+\s*=.*$/i, "");   /* Nov 21: the next field can sit on the same line ("… MVP (2004) | stats_league = NBA" made a college tournament MVP an NBA one) */
+    const l = l0.replace(/\[\[[^\]|]*\|([^\]]*)\]\]/g, "$1"); if (!/^\s*\*/.test(l) || !/NBA/.test(l0) || /NCAA|All-American|college|G League|D-League|Development League|NBDL|WNBA|EuroLeague|FIBA|Olympic|ABA\b/i.test(l)) continue;
     const kd = AW_KIND.find(([re]) => re.test(l0)); if (!kd || !kd[1]) continue; const kind = kd[1];
     if (kind === "hof") { if (!out.some(x => x[0] === "hof")) out.push(["hof", 0]); continue }
     const par = l.slice(l.indexOf("(") >= 0 ? l.indexOf("(") : l.length); const marks = [];
@@ -167,6 +168,30 @@ export async function fixAllStars({ getPack, putPack, log = console.log, force =
     const rest = (C.aw[nm] || []).filter(x => x[0] !== "allstar"); const nw = rest.concat(want.map(y => ["allstar", y])); if (nw.length) C.aw[nm] = nw; else delete C.aw[nm] }
   C.asv = 1; await putPack("p2000_cbb-nbacareers", C);
   log(`all-stars: list of ${Object.keys(L).length} players · ${changed} counts fixed, ${removed} players' picks taken off (not on the list), ${added} added · ${ex.join(", ")}`) }
+/* G League honors read as NBA ones (Nov 21 — found building Lock It In's NBA side: NBA MVP for Ansu Sesay 2001–02, Tony Allen 2003–04,
+   Matt Carroll 2004–05 and Rookie of the Year for Desmond Penigar 2003–04, James Thomas 2004–05; the owner, 2:50 am: "seems like a no brainer
+   fix"). The highlights line said "NBA Development League", which the reader didn't leave out; it does now. This pass reads again only the
+   pages of players in a season that has two winners of a one-winner award, with the fixed reader, and keeps their All-Star picks as they are
+   (fixAllStars set those from the league's list). */
+export async function fixMinorAwards({ getPack, putPack, log = console.log, force = false }) {
+  const C = await getPack("p2000_cbb-nbacareers"); if (!C || !C.aw) return log("minor-league awards: no careers pack");
+  if (C.mlv === 1 && !force) return;
+  const ONE = ["mvp", "fmvp", "dpoy", "roy", "smoy", "mip", "scoring"], by = {};
+  for (const [nm, aw] of Object.entries(C.aw)) for (const [k, y] of aw) if (ONE.includes(k)) (by[k + "|" + y] = by[k + "|" + y] || []).push(nm);
+  const sus = [...new Set(Object.values(by).filter(L => L.length > 1).flat())]; if (!sus.length) { C.mlv = 1; await putPack("p2000_cbb-nbacareers", C); return log("minor-league awards: nothing to fix") }
+  const now = new Date(), nowStart = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, done = {}, out = [];
+  const tl = sus.flatMap(n => [n, n + " (basketball)"]);
+  /* names the plain title doesn't reach (James Thomas): the search's first few basketball pages */
+  for (const n of sus) { try { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", list: "search", srsearch: `${n} basketball`, srlimit: "3" }), { headers: WUA }); if (r.ok) { const j = await r.json(); for (const x of (j.query && j.query.search) || []) if (String(x.title).replace(/\s*\([^)]*\)\s*$/, "").trim() === n && !tl.includes(x.title)) tl.push(x.title) } } catch (e) { } }
+  for (let k = 0; k < tl.length; k += 20) { const r = await fetch("https://en.wikipedia.org/w/api.php?" + new URLSearchParams({ format: "json", formatversion: "2", action: "query", prop: "revisions", rvprop: "content", rvslots: "main", rvsection: "0", redirects: "1", titles: tl.slice(k, k + 20).join("|") }), { headers: WUA });
+    if (!r.ok) return log("minor-league awards: read failed " + r.status + " — left as it was"); const j = await r.json();
+    for (const pg of (j.query && j.query.pages) || []) { const w = pg.revisions && pg.revisions[0] && pg.revisions[0].slots.main.content; if (!w || !parseNbaCareer(w, nowStart)) continue; const nm = String(pg.title).replace(/\s*\([^)]*\)\s*$/, "").trim(); if (sus.includes(nm) && !done[nm]) done[nm] = nbaAwards(w) }
+    await new Promise(z => setTimeout(z, 400)) }
+  let fixed = 0; for (const nm of sus) { const nw = done[nm]; if (!nw) { out.push(nm + " not read"); continue } const old = C.aw[nm] || [], keepAS = old.filter(x => x[0] === "allstar"), next = nw.filter(x => x[0] !== "allstar").concat(keepAS);
+    const gone = old.filter(x => !next.some(y => y[0] === x[0] && y[1] === x[1])), added = next.filter(x => !old.some(y => y[0] === x[0] && y[1] === x[1]));
+    if (gone.length || added.length) { fixed++; out.push(`${nm}: ${gone.map(x => "−" + x[0] + " " + x[1]).concat(added.map(x => "+" + x[0] + " " + x[1])).join(" ")}`) }
+    if (next.length) C.aw[nm] = next; else delete C.aw[nm] }
+  C.mlv = 1; await putPack("p2000_cbb-nbacareers", C); log(`minor-league awards: ${sus.length} players read again, ${fixed} changed · ${out.join(" · ")}`) }
 /* where a player came from (Oct 26 — the owner: "we have draft data … don't we know where players like luka came from"): the infobox's high
    school, college, the clubs he played for before his first NBA season, nationality and draft line */
 export function nbaOrigin(w) { const f = k => { const m = w.match(new RegExp(`\\n[ \\t]*\\|[ \\t]*${k}[ \\t]*=[ \\t]*([^\\n]*)`, "i")); return m ? m[1].replace(/<ref[^>]*\/>|<ref[^>]*>.*?<\/ref>/g, "").replace(/\{\{[^{}]*\}\}/g, "").replace(/\[\[[^\]|]*\|([^\]]*)\]\]/g, "$1").replace(/\[\[([^\]]*)\]\]/g, "$1").replace(/<br\s*\/?>/g, ", ").replace(/''+/g, "").replace(/\s+/g, " ").trim() : "" };

@@ -403,6 +403,17 @@ export function tsKeys(o) { const dn = num(o.down), tg = num(o.ydstogo), g2g = o
   if (dn === 1 && tg === 10 && !g2g) K.push("d1"); if (dn === 2 && b) K.push("d2" + b); if ((dn === 3 || dn === 4) && b) K.push("d3" + b);
   if (yl != null && yl <= 20) K.push("rz"); if (g2g) K.push("g2g"); if ((q === 2 || q === 4) && hs != null && hs <= 120) K.push("two"); if (q >= 4 && sd != null && sd < 0) K.push("trl");
   return K }
+/* explosive plays and field position by team (Nov 20 — the owner on the idea doc, #38 and #41 "yes for NFL"): for each offense and defense,
+   regular-season snaps (runs and passes, no kneels, spikes or 2-point tries), 20+ yard gains, and where its drives started (the yard line of
+   each drive's first run or pass, as the offense's own yard line). tx.t[team] = { o: [snaps, 20+ gains, drives, start yard sum], d: [same, allowed] } */
+const TX_SEEN = new WeakMap();
+export function txAdd(TX, o) {
+  if (o.season_type !== "REG" || !o.posteam || !o.defteam || o.posteam === "NA" || (o.play_type !== "pass" && o.play_type !== "run") || o.two_point_attempt === "1" || o.qb_kneel === "1" || o.qb_spike === "1") return;
+  const A = TX[o.posteam] = TX[o.posteam] || { o: [0, 0, 0, 0], d: [0, 0, 0, 0] }, B = TX[o.defteam] = TX[o.defteam] || { o: [0, 0, 0, 0], d: [0, 0, 0, 0] }, y = num(o.yards_gained);
+  A.o[0]++; B.d[0]++; if (y != null && y >= 20) { A.o[1]++; B.d[1]++ }
+  let S = TX_SEEN.get(TX); if (!S) TX_SEEN.set(TX, S = new Set()); const k = o.game_id + "|" + o.fixed_drive, yl = num(o.yardline_100);
+  if (o.fixed_drive && !S.has(k) && yl != null) { S.add(k); A.o[2]++; A.o[3] += 100 - yl; B.d[2]++; B.d[3] += 100 - yl } }
+export function txOut(TX) { return { tx: { cols: ["snaps", "20+ gains", "drives", "start yard sum"], t: TX } } }
 export function tsAdd(TS, o) {
   const id = v => v && v !== "NA" ? v : null, rc = id(o.receiver_player_id);
   if (o.season_type !== "REG" || o.play_type !== "pass" || o.two_point_attempt === "1" || o.sack === "1" || !id(o.passer_player_id) || !rc || !o.posteam) return;
@@ -638,7 +649,7 @@ export async function pbp(S, log, POS = null) {
   const df = (id, t) => { const d = DF[id] = DF[id] || { t, P: {}, R: { L: [0, 0], M: [0, 0], R: [0, 0] }, Q: [0, 0, 0, 0, 0, 0], sk: 0, qbh: 0, ff: 0, tfl: 0, g: new Set() }; d.t = t; return d };
   const ids = (o, ks) => { const out = []; for (const k of ks) if (o[k] && o[k] !== "NA" && !out.includes(o[k])) out.push(o[k]); return out };
   const hsF = o => num(o.total_home_score) != null && num(o.total_away_score) != null;
-  const WPS = {}, YACS = [], TD = {}, CH = {}, SX = {}, GX = {}, TS = {}, CS = {}, BT = {};
+  const WPS = {}, YACS = [], TD = {}, CH = {}, SX = {}, GX = {}, TS = {}, CS = {}, BT = {}, TX = {};
   const pl = (M, id) => M[id] = M[id] || { Z: {}, all: line(), late: line(), third: [0, 0], rz: line(), two: line() };
   /* field position of a snap: backed up (own 1–10), own 11 to midfield, their 49–21, red zone 20–11, inside the 10; short yardage = 3rd or 4th and 1–2 */
   const fpos = o => { const y = num(o.yardline_100) || 50; return y >= 90 ? "bk" : y >= 50 ? "own" : y >= 21 ? "opp" : y >= 11 ? "rz2" : "i10" }, shortY = o => num(o.down) >= 3 && (num(o.ydstogo) || 99) <= 2, longY = o => num(o.down) >= 3 && (num(o.ydstogo) || 0) >= 7;   /* 3rd/4th and 7+ (Oct 29, the owner: "for receivers it should really be 3rd and long … who the QBs most reliable receivers are") */
@@ -697,7 +708,7 @@ export async function pbp(S, log, POS = null) {
     const hs = num(o.total_home_score), as = num(o.total_away_score), q = num(o.qtr);
     if (hs != null && as != null) { const m = hs - as, x = G[g] = G[g] || [null, null, 0, 0, o.home_team, o.away_team];
       if (q <= 2) x[0] = m; if (q <= 3) x[1] = m; if (m < x[2]) x[2] = m; if (m > x[3]) x[3] = m }
-    cdAdd(CD, o); tendAdd(TD, o); chAdd(CH, o); if (POS) syAdd(SX, o, POS); gmAdd(GX, o); tsAdd(TS, o); csAdd(CS, o); btAdd(BT, o);
+    cdAdd(CD, o); tendAdd(TD, o); chAdd(CH, o); if (POS) syAdd(SX, o, POS); gmAdd(GX, o); tsAdd(TS, o); csAdd(CS, o); btAdd(BT, o); txAdd(TX, o);
     if (o.two_point_attempt === "1" || o.qb_spike === "1" || o.qb_kneel === "1" || o.aborted_play === "1") return;
     /* pass protection (Oct 1: the best offensive lines): dropbacks, sacks and QB hits, for the offense (prO, and game by game prG)
        and the defense (prD) — so a line's sack rate can be read against the pass rushes it faced */
@@ -883,7 +894,7 @@ export async function pbp(S, log, POS = null) {
   fix(P); fix(R); fix(U); fix(T);
   return { s: S, lineCols: ["att", "cmp", "yds", "td", "int", "sk", "fl", "epa", "fd"], zoneCols: ["att", "cmp", "yds", "td", "int", "epa"], runCols: ["car", "yds", "td", "epa"],
     gameCols: ["half", "q3", "low", "high", "home", "away"], sideAdjCols: ["targets", "yards", "expected yards"], clutchCols: ["opp", "4qc", "gwd"], gapCols: ["car", "yds", "epa", "succ"], advCols: ["cpoeSum", "cpoeN", "airEpa", "yacEpa", "attN", "scrambles", "dropbacks"], proeCols: ["passOeSum", "plays"], tendCols: TEND_COLS, pass: P, rec: R, rush: U, team: T, lgGap: LGD, lgYh: LYH, yhNote: "yh = { yards gained: designed carries } (QB scrambles left out); lgGap[gap] = [carries, yards] on designed runs", game: G, wx: WX, opq: OPQ, inj: INJ, gpl: GPL, bon: BON,
-    dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF, cd: cdOut(CD), ...(POS ? syOut(SX) : {}), ...gmOut(GX), ...tsOut(TS), ...csOut(CS), ...btOut(BT) };
+    dfCols: { P: "zone+side → [catches he tackled, passes defended, INT]", R: "side → [run tackles, stops ≤2 yds]", Q: "[run tackles, yards on them, run stops, catch tackles, yards on them, catch stops]" }, df: DF, cd: cdOut(CD), ...(POS ? syOut(SX) : {}), ...gmOut(GX), ...tsOut(TS), ...csOut(CS), ...btOut(BT), ...txOut(TX) };
 }
 /* rain or snow at kickoff, from the play-by-play's weather line ("Light Rain Temp: 45° F, …"): 0 clear or dry, 1 rain, 2 snow,
    null when there's no weather line. Indoors is always 0. "Chance of rain" is a forecast, not rain. (Sept 29: temp, wind and

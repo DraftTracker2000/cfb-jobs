@@ -176,9 +176,14 @@ export async function fixAllStars({ getPack, putPack, log = console.log, force =
 export async function fixMinorAwards({ getPack, putPack, log = console.log, force = false }) {
   const C = await getPack("p2000_cbb-nbacareers"); if (!C || !C.aw) return log("minor-league awards: no careers pack");
   if (C.mlv === 1 && !force) return;
+  /* by hand first (Nov 21, 12:13 pm — the owner: "why wouldn't you just manually make the changes to the awards"): the five G League awards that were
+     read as NBA ones, checked against each player's page on Nov 21. No Wikipedia needed, so a busy Wikipedia can't stop it */
+  const HAND = [["Ansu Sesay", "mvp", 2001], ["Tony Allen", "mvp", 2003], ["Matt Carroll", "mvp", 2004], ["Desmond Penigar", "roy", 2003], ["James Thomas", "roy", 2004]], hd = [];
+  for (const [nm, k, y] of HAND) { const L = C.aw[nm]; if (!L) continue; const i = L.findIndex(x => x[0] === k && x[1] === y); if (i < 0) continue; L.splice(i, 1); hd.push(`${nm} −${k} ${y}`); if (!L.length) delete C.aw[nm] }
+  if (hd.length) log("minor-league awards by hand: " + hd.join(" · "));
   const ONE = ["mvp", "fmvp", "dpoy", "roy", "smoy", "mip", "scoring"], by = {};
   for (const [nm, aw] of Object.entries(C.aw)) for (const [k, y] of aw) if (ONE.includes(k)) (by[k + "|" + y] = by[k + "|" + y] || []).push(nm);
-  const sus = [...new Set(Object.values(by).filter(L => L.length > 1).flat())]; if (!sus.length) { C.mlv = 1; await putPack("p2000_cbb-nbacareers", C); return log("minor-league awards: nothing to fix") }
+  const TIES = new Set(["roy|1970", "roy|1994", "roy|1999"]), sus = [...new Set(Object.entries(by).filter(([k, L]) => L.length > 1 && !TIES.has(k)).flatMap(([, L]) => L))]; if (!sus.length) { C.mlv = 1; await putPack("p2000_cbb-nbacareers", C); return log("minor-league awards: nothing to fix") }
   const now = new Date(), nowStart = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, done = {}, out = [];
   const tl = sus.flatMap(n => [n, n + " (basketball)"]);
   /* names the plain title doesn't reach (James Thomas): the search's first few basketball pages */

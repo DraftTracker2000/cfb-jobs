@@ -24,6 +24,9 @@ const CHECK = () => {
   const vis = e => { if (!e.offsetParent && getComputedStyle(e).position !== "fixed") return false; const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 };
   const nm = e => { let s = e.tagName.toLowerCase(); if (e.id) s += "#" + e.id; else if (e.classList.length) s += "." + [...e.classList].slice(0, 2).join("."); return s };
   const where = e => { const t = (e.textContent || "").replace(/\s+/g, " ").trim(); return nm(e) + (t ? " “" + t.slice(0, 60) + "”" : "") };
+  /* (refined Nov 23, 6:55 pm) pinned layers (the bottom bar, the "What's new" pop-up) sit over the page on purpose; a word's lines are measured line by line */
+  const pinned = e => { for (let p = e; p && p !== document.body; p = p.parentElement) { const ps = getComputedStyle(p).position; if (ps === "fixed" || ps === "sticky") return true } return false };
+  const ownLines = e => { const tops = new Set(); let w = 0; for (const n of e.childNodes) { if (n.nodeType !== 3 || !n.nodeValue.trim()) continue; const rg = document.createRange(); rg.selectNodeContents(n); for (const r of rg.getClientRects()) { if (r.width > 1) { tops.add(Math.round(r.top / 4)); w = Math.max(w, r.width) } } } return { lines: tops.size, w } };
   const inScroller = e => { for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { const o = getComputedStyle(p).overflowX; if ((o === "auto" || o === "scroll") && p.scrollWidth > p.clientWidth + 2) return true } return false };
   /* words */
   const txt = (() => { const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentElement && n.parentElement.closest("script,style,noscript,template") ? 2 : 1 }); let s = ""; while (w.nextNode()) { const p = w.currentNode.parentElement; if (p && vis(p)) s += w.currentNode.nodeValue + " " } return s.replace(/\s+/g, " ") })();
@@ -34,16 +37,16 @@ const CHECK = () => {
   const all = [...root.querySelectorAll("*")].filter(vis);
   for (const e of all) {
     const cs = getComputedStyle(e), own = [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim());
-    if (own && (cs.overflow === "hidden" || cs.overflowX === "hidden" || cs.textOverflow === "ellipsis") && e.scrollWidth > e.clientWidth + 2 && !inScroller(e)) out.push(["clipped", where(e)]);
-    if (e.tagName === "BUTTON" && own && parseFloat(cs.lineHeight) > 0 && (e.textContent || "").trim().length < 30) { const ch = e.getBoundingClientRect().height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - parseFloat(cs.borderTopWidth) - parseFloat(cs.borderBottomWidth); if (ch > parseFloat(cs.lineHeight) * 1.55) out.push(["button wraps", where(e)]) }
+    if (own && (cs.overflow === "hidden" || cs.overflowX === "hidden" || cs.textOverflow === "ellipsis") && e.scrollWidth > e.clientWidth + 2 && !inScroller(e)) { const inner = e.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight); if (ownLines(e).w > inner + 1) out.push([cs.textOverflow === "ellipsis" ? "cut short (…)" : "clipped", where(e)]) }
+    if (e.tagName === "BUTTON" && own && (e.textContent || "").trim().length < 30 && !pinned(e) && !e.querySelector("br,svg,img") && ownLines(e).lines > 1) out.push(["button wraps", where(e)]);
     if (PH_) { const r = e.getBoundingClientRect(); if (r.right > Wd + 2 && !inScroller(e) && !e.closest("[data-offscreen-ok]")) out.push(["off the edge", where(e) + ` (${Math.round(r.right - Wd)} px)`]) }
   }
   /* overlap: two runs of words drawn over each other — text nodes only (a select's options and hidden copies don't count) */
   const shown = e => { try { return e.checkVisibility ? e.checkVisibility({ opacityProperty: true, visibilityProperty: true }) : true } catch (x) { return true } };
   const clipBox = e => { let r = { left: -1e9, top: -1e9, right: 1e9, bottom: 1e9 }; for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { const cs = getComputedStyle(p); if (cs.overflow !== "visible" || cs.overflowX !== "visible") { const b = p.getBoundingClientRect(); r = { left: Math.max(r.left, b.left), top: Math.max(r.top, b.top), right: Math.min(r.right, b.right), bottom: Math.min(r.bottom, b.bottom) } } } return r };
   const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => !n.nodeValue.trim() || !n.parentElement || n.parentElement.closest("script,style,noscript,template,select,option,datalist,textarea") ? 2 : 1 });
-  const leaves = []; while (tw.nextNode() && leaves.length < 1500) { const e = tw.currentNode.parentElement; if (!vis(e) || !shown(e) || inScroller(e)) continue; const rg = document.createRange(); rg.selectNodeContents(tw.currentNode); const r0 = rg.getBoundingClientRect(), c = clipBox(e);
-    const r = { left: Math.max(r0.left, c.left), top: Math.max(r0.top, c.top), right: Math.min(r0.right, c.right), bottom: Math.min(r0.bottom, c.bottom) }; r.width = r.right - r.left; r.height = r.bottom - r.top; if (r.width > 2 && r.height > 2) leaves.push({ e, r }) }
+  const leaves = []; while (tw.nextNode() && leaves.length < 1500) { const e = tw.currentNode.parentElement; if (!vis(e) || !shown(e) || inScroller(e) || pinned(e)) continue; const rg = document.createRange(); rg.selectNodeContents(tw.currentNode); const c = clipBox(e);
+    for (const r0 of rg.getClientRects()) { const r = { left: Math.max(r0.left, c.left), top: Math.max(r0.top, c.top), right: Math.min(r0.right, c.right), bottom: Math.min(r0.bottom, c.bottom) }; r.width = r.right - r.left; r.height = r.bottom - r.top; if (r.width > 2 && r.height > 2) leaves.push({ e, r }) } }
   const B = new Map(); for (const [i, x] of leaves.entries()) { const k = Math.floor(x.r.top / 60); if (!B.has(k)) B.set(k, []); B.get(k).push(i) }
   const seen = new Set();
   for (const [k, ids] of B) for (const i of ids) for (const j of [...(B.get(k) || []), ...(B.get(k + 1) || [])]) {
@@ -51,11 +54,11 @@ const CHECK = () => {
     const ix = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left), iy = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
     if (ix > .4 * Math.min(a.r.width, b.r.width) && iy > .45 * Math.min(a.r.height, b.r.height) && ix > 3 && iy > 3) { const key = where(a.e) + "|" + where(b.e); if (!seen.has(key)) { seen.add(key); out.push(["overlap", where(a.e) + "  ⟷  " + where(b.e)]) } } }
   /* crunch: card-like siblings too close; text against its card's edge */
-  const card = e => { const cs = getComputedStyle(e); return (cs.borderRadius !== "0px" && (cs.backgroundColor !== "rgba(0, 0, 0, 0)" || cs.boxShadow !== "none" || cs.borderTopWidth !== "0px")) && e.getBoundingClientRect().width > 60 && e.getBoundingClientRect().height > 30 };
+  const card = e => { const cs = getComputedStyle(e); return (cs.borderRadius !== "0px" && (cs.backgroundColor !== "rgba(0, 0, 0, 0)" || cs.boxShadow !== "none" || (cs.borderLeftWidth !== "0px" && cs.borderRightWidth !== "0px"))) && e.getBoundingClientRect().width > 60 && e.getBoundingClientRect().height > 30 && !pinned(e) };
   const cards = all.filter(card);
   for (const c of cards) { const p = c.parentElement; if (!p) continue; const sib = [...p.children].filter(x => x !== c && cards.includes(x));
-    for (const s of sib) { const a = c.getBoundingClientRect(), b = s.getBoundingClientRect(); if (b.left >= a.right - 1 && b.left - a.right < 4 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 10) out.push(["crunched side by side", where(c).slice(0, 50) + " | " + where(s).slice(0, 50) + ` (${Math.round(b.left - a.right)} px)`]);
-      if (b.top >= a.bottom - 1 && b.top - a.bottom < 4 && Math.min(a.right, b.right) - Math.max(a.left, b.left) > 30) out.push(["crunched stacked", where(c).slice(0, 50) + " | " + where(s).slice(0, 50) + ` (${Math.round(b.top - a.bottom)} px)`]) }
+    for (const s of sib) { const a = c.getBoundingClientRect(), b = s.getBoundingClientRect(); if (b.left - a.right >= 1 && b.left - a.right < 4 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 10) out.push(["crunched side by side", where(c).slice(0, 50) + " | " + where(s).slice(0, 50) + ` (${Math.round(b.left - a.right)} px)`]);
+      if (b.top - a.bottom >= 1 && b.top - a.bottom < 4 && Math.min(a.right, b.right) - Math.max(a.left, b.left) > 30) out.push(["crunched stacked", where(c).slice(0, 50) + " | " + where(s).slice(0, 50) + ` (${Math.round(b.top - a.bottom)} px)`]) }
     const cr = c.getBoundingClientRect(); for (const x of leaves) { if (!c.contains(x.e)) continue; const d = Math.min(x.r.left - cr.left, cr.right - x.r.right); if (d < 3 && d > -1 && x.r.width < cr.width - 8) { out.push(["text against the edge", where(x.e) + " in " + nm(c)]); break } } }
   /* tables */
   for (const t of root.querySelectorAll("table")) { if (!vis(t)) continue; const hr = t.tHead && t.tHead.rows[t.tHead.rows.length - 1], hc = hr ? [...hr.cells].reduce((s, c) => s + (c.colSpan || 1), 0) : 0;
@@ -73,6 +76,7 @@ const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: W, height: PH ? 844 : 900 }, deviceScaleFactor: 1, isMobile: PH, hasTouch: PH, extraHTTPHeaders: { "x-site-check": "1" } });
 await ctx.addCookies([{ name: "cfbs", value: ss.token, url: F }]);
 await ctx.addInitScript(t => { try { localStorage.setItem("cfbTok", t) } catch (e) { } const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return /^cfbTour|^cfbPT_|^cfbH2hHint/.test(k) ? "1" : g.call(this, k) };
+  document.addEventListener("DOMContentLoaded", () => { const st = document.createElement("style"); st.textContent = "#wn{display:none!important}"; document.head.appendChild(st) });   /* the "What's new" pop-up lay over every view in the first runs */
   window.__auditErr = []; addEventListener("error", e => window.__auditErr.push(String(e.message).slice(0, 160))); addEventListener("unhandledrejection", e => window.__auditErr.push("unhandled: " + String(e.reason && e.reason.message || e.reason).slice(0, 160))) }, ss.token);
 const p = await ctx.newPage(); p.on("pageerror", e => errs.push(e.message));
 const site = PAGE.startsWith("/cbb") ? "bb" : "fb";

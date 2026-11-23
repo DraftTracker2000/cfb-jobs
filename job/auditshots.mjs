@@ -38,14 +38,18 @@ const CHECK = () => {
     if (e.tagName === "BUTTON" && own && e.getBoundingClientRect().height > parseFloat(cs.lineHeight || 0) * 1.9 && parseFloat(cs.lineHeight) > 0 && (e.textContent || "").trim().length < 30) out.push(["button wraps", where(e)]);
     if (PH_) { const r = e.getBoundingClientRect(); if (r.right > Wd + 2 && !inScroller(e) && !e.closest("[data-offscreen-ok]")) out.push(["off the edge", where(e) + ` (${Math.round(r.right - Wd)} px)`]) }
   }
-  /* overlap: text boxes drawn over each other */
-  const leaves = all.filter(e => [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim()) && !inScroller(e)).slice(0, 900).map(e => { const rg = document.createRange(); rg.selectNodeContents(e); const r = rg.getBoundingClientRect(); return { e, r } }).filter(x => x.r.width > 2 && x.r.height > 2);
-  const B = new Map(); for (const [i, x] of leaves.entries()) { const k = Math.floor(x.r.top / 80); for (const kk of [k - 1, k, k + 1]) { if (!B.has(kk)) B.set(kk, []); } B.get(k).push(i) }
+  /* overlap: two runs of words drawn over each other — text nodes only (a select's options and hidden copies don't count) */
+  const shown = e => { try { return e.checkVisibility ? e.checkVisibility({ opacityProperty: true, visibilityProperty: true }) : true } catch (x) { return true } };
+  const clipBox = e => { let r = { left: -1e9, top: -1e9, right: 1e9, bottom: 1e9 }; for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { const cs = getComputedStyle(p); if (cs.overflow !== "visible" || cs.overflowX !== "visible") { const b = p.getBoundingClientRect(); r = { left: Math.max(r.left, b.left), top: Math.max(r.top, b.top), right: Math.min(r.right, b.right), bottom: Math.min(r.bottom, b.bottom) } } } return r };
+  const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => !n.nodeValue.trim() || !n.parentElement || n.parentElement.closest("script,style,noscript,template,select,option,datalist,textarea") ? 2 : 1 });
+  const leaves = []; while (tw.nextNode() && leaves.length < 1500) { const e = tw.currentNode.parentElement; if (!vis(e) || !shown(e) || inScroller(e)) continue; const rg = document.createRange(); rg.selectNodeContents(tw.currentNode); const r0 = rg.getBoundingClientRect(), c = clipBox(e);
+    const r = { left: Math.max(r0.left, c.left), top: Math.max(r0.top, c.top), right: Math.min(r0.right, c.right), bottom: Math.min(r0.bottom, c.bottom) }; r.width = r.right - r.left; r.height = r.bottom - r.top; if (r.width > 2 && r.height > 2) leaves.push({ e, r }) }
+  const B = new Map(); for (const [i, x] of leaves.entries()) { const k = Math.floor(x.r.top / 60); if (!B.has(k)) B.set(k, []); B.get(k).push(i) }
   const seen = new Set();
   for (const [k, ids] of B) for (const i of ids) for (const j of [...(B.get(k) || []), ...(B.get(k + 1) || [])]) {
-    if (j <= i) continue; const a = leaves[i], b = leaves[j]; if (a.e.contains(b.e) || b.e.contains(a.e)) continue;
+    if (j <= i) continue; const a = leaves[i], b = leaves[j]; if (a.e === b.e || a.e.contains(b.e) || b.e.contains(a.e)) continue;
     const ix = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left), iy = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
-    if (ix > 3 && iy > 3 && ix * iy > .25 * Math.min(a.r.width * a.r.height, b.r.width * b.r.height)) { const key = where(a.e) + "|" + where(b.e); if (!seen.has(key)) { seen.add(key); out.push(["overlap", where(a.e) + "  ⟷  " + where(b.e)]) } } }
+    if (ix > 3 && iy > 3 && ix * iy > .3 * Math.min(a.r.width * a.r.height, b.r.width * b.r.height)) { const key = where(a.e) + "|" + where(b.e); if (!seen.has(key)) { seen.add(key); out.push(["overlap", where(a.e) + "  ⟷  " + where(b.e)]) } } }
   /* crunch: card-like siblings too close; text against its card's edge */
   const card = e => { const cs = getComputedStyle(e); return (cs.borderRadius !== "0px" && (cs.backgroundColor !== "rgba(0, 0, 0, 0)" || cs.boxShadow !== "none" || cs.borderTopWidth !== "0px")) && e.getBoundingClientRect().width > 60 && e.getBoundingClientRect().height > 30 };
   const cards = all.filter(card);
@@ -81,7 +85,7 @@ async function view(name) {
   for (const e of pe) probs.push(["script error", e]);
   try { const h = await p.evaluate(() => Math.min(5000, document.documentElement.scrollHeight));
     await p.screenshot({ path: `${OUT}/${file}`, type: "jpeg", quality: 55, fullPage: true, clip: { x: 0, y: 0, width: W, height: Math.max(PH ? 844 : 900, h) } }) } catch (e) { probs.push(["picture failed", e.message.slice(0, 80)]) }
-  RES.push({ n, name, file, probs }); LOG.push(`${n} ${name}: ${probs.length} ${probs.slice(0, 3).map(x => x[0] + ": " + x[1]).join(" · ").slice(0, 200)}`); console.log(LOG[LOG.length - 1]);
+  RES.push({ n, name, file, probs }); console.log("AUD|" + JSON.stringify({ n, name, probs: probs.slice(0, 40) })); LOG.push(`${n} ${name}: ${probs.length} ${probs.slice(0, 3).map(x => x[0] + ": " + x[1]).join(" · ").slice(0, 200)}`); console.log(LOG[LOG.length - 1]);
 }
 await p.goto(`${F}${PAGE}?ro=1`, { waitUntil: "domcontentloaded", timeout: 90000 });
 for (let i = 0; i < 90; i++) { await p.waitForTimeout(500); if (await p.evaluate(() => typeof NAV !== "undefined" && typeof navGo === "function" && !!document.getElementById("n2nav")).catch(() => false)) break }

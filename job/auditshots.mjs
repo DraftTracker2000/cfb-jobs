@@ -35,7 +35,7 @@ const CHECK = () => {
   for (const e of all) {
     const cs = getComputedStyle(e), own = [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim());
     if (own && (cs.overflow === "hidden" || cs.overflowX === "hidden" || cs.textOverflow === "ellipsis") && e.scrollWidth > e.clientWidth + 2 && !inScroller(e)) out.push(["clipped", where(e)]);
-    if (e.tagName === "BUTTON" && own && e.getBoundingClientRect().height > parseFloat(cs.lineHeight || 0) * 1.9 && parseFloat(cs.lineHeight) > 0 && (e.textContent || "").trim().length < 30) out.push(["button wraps", where(e)]);
+    if (e.tagName === "BUTTON" && own && parseFloat(cs.lineHeight) > 0 && (e.textContent || "").trim().length < 30) { const ch = e.getBoundingClientRect().height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - parseFloat(cs.borderTopWidth) - parseFloat(cs.borderBottomWidth); if (ch > parseFloat(cs.lineHeight) * 1.55) out.push(["button wraps", where(e)]) }
     if (PH_) { const r = e.getBoundingClientRect(); if (r.right > Wd + 2 && !inScroller(e) && !e.closest("[data-offscreen-ok]")) out.push(["off the edge", where(e) + ` (${Math.round(r.right - Wd)} px)`]) }
   }
   /* overlap: two runs of words drawn over each other — text nodes only (a select's options and hidden copies don't count) */
@@ -49,7 +49,7 @@ const CHECK = () => {
   for (const [k, ids] of B) for (const i of ids) for (const j of [...(B.get(k) || []), ...(B.get(k + 1) || [])]) {
     if (j <= i) continue; const a = leaves[i], b = leaves[j]; if (a.e === b.e || a.e.contains(b.e) || b.e.contains(a.e)) continue;
     const ix = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left), iy = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
-    if (ix > 3 && iy > 3 && ix * iy > .3 * Math.min(a.r.width * a.r.height, b.r.width * b.r.height)) { const key = where(a.e) + "|" + where(b.e); if (!seen.has(key)) { seen.add(key); out.push(["overlap", where(a.e) + "  ⟷  " + where(b.e)]) } } }
+    if (ix > .4 * Math.min(a.r.width, b.r.width) && iy > .45 * Math.min(a.r.height, b.r.height) && ix > 3 && iy > 3) { const key = where(a.e) + "|" + where(b.e); if (!seen.has(key)) { seen.add(key); out.push(["overlap", where(a.e) + "  ⟷  " + where(b.e)]) } } }
   /* crunch: card-like siblings too close; text against its card's edge */
   const card = e => { const cs = getComputedStyle(e); return (cs.borderRadius !== "0px" && (cs.backgroundColor !== "rgba(0, 0, 0, 0)" || cs.boxShadow !== "none" || cs.borderTopWidth !== "0px")) && e.getBoundingClientRect().width > 60 && e.getBoundingClientRect().height > 30 };
   const cards = all.filter(card);

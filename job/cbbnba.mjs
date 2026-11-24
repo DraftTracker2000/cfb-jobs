@@ -359,7 +359,8 @@ export async function buildNbaGames({ getPack, putPack, log, S, curNba, players,
       if (!r.ok) continue; const L = await r.json(); if (!Array.isArray(L) || L.length < 300) continue; const PN = ["", "PG", "SG", "SF", "PF", "C"];
       for (const x of L) { const k = PN[x.defaultPositionId]; if (k) p5[String(x.id)] = k } log(`nba positions (ESPN fantasy ${yy}): ${Object.keys(p5).length}`); break } catch (e) { log("nba positions: " + e.message) } }
   for (const [id, X] of Object.entries(allp)) if (p5[id]) X.p5 = p5[id];
-  await putPack(`p${S}_cbb-nbagames`, { season: curNba, zSeason: Z ? zSeason : null, zAvg: Z ? Z.avg : null, pz, allp, p5, series, seriesCols: ["season", "date", "home", "away", "hs", "as"], teams: T, games, cols: ["id", "date", "home", "away", "hs", "as", "state", "tv", "pHome", "ourMargin", "playoffs"], rosCols: ["espnId", "name", "pos", "ht", "exp", "collegeCbbdId", "ppgLast", "outcome", "gamesLast"] });
+  const leg = nbaLegacyRows(allp);
+  await putPack(`p${S}_cbb-nbagames`, { leg, legCols: ["rank", "score", "car", "peak", "po", "g", "n", "first"], season: curNba, zSeason: Z ? zSeason : null, zAvg: Z ? Z.avg : null, pz, allp, p5, series, seriesCols: ["season", "date", "home", "away", "hs", "as"], teams: T, games, cols: ["id", "date", "home", "away", "hs", "as", "state", "tv", "pHome", "ourMargin", "playoffs"], rosCols: ["espnId", "name", "pos", "ht", "exp", "collegeCbbdId", "ppgLast", "outcome", "gamesLast"] });
   log(`nba games: ${games.length} games, ${Object.keys(T).length} teams`);
   return true;
 }
@@ -375,3 +376,20 @@ export async function refreshNbaOnCourt({ getPack, putPack, log, curNba, packNam
     let n = 0; for (const [id, P] of Object.entries(last.players)) { if (!P.dz || P.dz.reduce((a, z) => a + z[1], 0) < 300) continue; G.pz[id] = { ...(G.pz[id] || { tm: P.tm, z: P.z, ast: P.ast, cl: P.cl }), dz: P.dz }; n++ }
     await putPack(nm, G); log(`nba on-court: ${n} players' opponent shots added to ${nm}`); return }
 }
+
+/* NBA LegacyScore worked out here (Nov 24 — weights off the members' page, task #59; the owner, Nov 5: "yes a"): the basketball page's
+   nbaLegacy, the same formula — value above 7 a game per season (points + .8 reb + 1.1 ast + 1.5 (stl + blk) − 1.2 tov − .5 missed FG −
+   .3 missed FT), career sum .5, best three seasons .35, playoff value .15 (z-scores among players with 100+ games), ranked onto 1–99.
+   Saved in the games pack as leg: { id: [rank, score, car, peak, po, g, n, first] }; the page reads it and works it out itself only when
+   it's missing. */
+export function nbaLegacyRows(allp) {
+  const val = r => r[5] + .8 * r[6] + 1.1 * r[7] + 1.5 * (r[8] + r[9]) - 1.2 * r[10] - .5 * (r[12] - r[11]) - .3 * (r[16] - r[15]);
+  const L = Object.entries(allp || {}).map(([id, p]) => { const S = (p.s || []).filter(r => r[2] > 0), vars = S.map(r => Math.max(0, val(r) - 7 * r[2])), car = vars.reduce((a, b) => a + b, 0), peak = [...vars].sort((a, b) => b - a).slice(0, 3).reduce((a, b) => a + b, 0);
+    const po = S.reduce((a, r) => a + ((Array.isArray(r[17]) ? r[17][3] : 0) || 0), 0), g = S.reduce((a, r) => a + r[2], 0); return { id, car, peak, po, g, n: S.length, first: S.length ? S[0][0] : null } }).filter(x => x.g >= 100);
+  const z = k => { const v = L.map(x => x[k]), m = v.reduce((a, b) => a + b, 0) / Math.max(1, v.length), sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(1, v.length)) || 1; for (const x of L) x["z" + k] = (x[k] - m) / sd };
+  ["car", "peak", "po"].forEach(z); for (const x of L) x.raw = .5 * x.zcar + .35 * x.zpeak + .15 * x.zpo; L.sort((a, b) => b.raw - a.raw);
+  const r1 = v => Math.round(v * 10) / 10, out = {};
+  L.forEach((x, i) => { out[x.id] = [i + 1, Math.max(1, Math.round(99 - 98 * i / Math.max(1, L.length - 1))), r1(x.car), r1(x.peak), r1(x.po), x.g, x.n, x.first] });
+  return out;
+}
+

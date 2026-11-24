@@ -25,18 +25,20 @@ async function frame(cap, sel) { await p.waitForTimeout(500); const ok = await p
   const b = await p.screenshot({ type: "jpeg", quality: 62 }); await p.evaluate(() => document.querySelectorAll(".__cap").forEach(x => x.remove())).catch(() => { });
   return { cap, img: "data:image/jpeg;base64," + b.toString("base64"), ring: ok } }
 const go = async (url) => { await p.goto(F + url, { waitUntil: "domcontentloaded", timeout: 90000 }) };
-const fbReady = () => ready(() => typeof NAV !== "undefined" && typeof navGo === "function" && !!document.getElementById("n2nav") && typeof D !== "undefined" && !!D.pool);
+const fbReady = () => ready(() => typeof NAV !== "undefined" && typeof navGo === "function" && !!document.getElementById("n2nav"));
 const run = async (js, ms = 3500) => { try { await p.evaluate(js) } catch (e) { errs.push(String(e.message).slice(0, 120)) } await p.waitForTimeout(ms) };
 const STARS = `(()=>{const ids=Object.keys(D.pool).filter(k=>D.pool[k].elig).slice(0,8);for(const id of ids){STAR.add(id);if(!ORDER.includes(id))ORDER.push(id)}})()`;
 const CAPS = [
   { id: "college-pros", title: "Follow your school's players all the way to the pros", line: "Star a college player once — he stays on your board through the draft and into his NFL career.", async shots() {
     await go("/?ro=1"); await fbReady(); const F0 = [];
-    await run(`navGo("col","PLAYERS","board")`); F0.push(await frame("Tap ☆ beside any college player", "#tb tr[data-id] td:nth-child(2), #tb tr[data-id] .st, #tb tr[data-id] td"));
+    await run(`navGo("col","PLAYERS","board")`, 3000); await ready(() => typeof D !== "undefined" && !!D.pool && !!document.querySelector("#tb tr[data-id]")); F0.push(await frame("Tap ☆ beside any college player", "#tb tr[data-id] td.st"));
     await run(`(()=>{const k=Object.keys(D.pool).find(k=>D.pool[k].pos==="WR"&&D.pool[k].elig)||Object.keys(D.pool)[0];profile(k)})()`, 6000); F0.push(await frame("His grade, his comps and his whole college career", "#md .phero, #md h2"));
     await run(`(async()=>{try{closeP()}catch(e){}const P=await nflPlayers();const k=Object.keys(P).find(k=>P[k].name==="Jaxon Smith-Njigba")||Object.keys(P).find(k=>P[k].pos==="WR"&&P[k].team);nflProfile(k)})()`, 7000); F0.push(await frame("…then the same player in the NFL, college line and all", "#md .phero, #md h2"));
     return F0 } },
   { id: "bigboard", title: "Build your own draft-day big board", line: "Drag your players into your order, draw tier lines, and play This or That to settle the close ones.", async shots() {
-    await go("/?ro=1"); await fbReady(); await run(STARS, 500); const F0 = [];
+    await go("/?ro=1"); await fbReady(); const F0 = [];
+    /* the board's players load with the board: open it first, then star a few in memory */
+    await run(`navGo("col","PLAYERS","board")`, 3000); await ready(() => typeof D !== "undefined" && !!D.pool && Object.keys(D.pool).length > 100); await run(STARS, 500);
     await run(`navGo("col","REPORT","my")`); F0.push(await frame("★ My Board: your players, your order", "#tb tr[data-id]"));
     F0.push(await frame("Press and drag to move a player", "#tb tr[data-id] td.hd, #tb tr[data-id] [data-drag]"));
     F0.push(await frame("Tier lines and This or That for the tough calls", "#addTier, #totBtn"));

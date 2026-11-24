@@ -30,7 +30,9 @@ export async function buildNflRecords({ getPack, cur, first = 1999, log = consol
         if (s === cur) act.add(g) }
       through = Math.max(through, s) } }
   /* active: on a team this season (a game in this season's logs) or listed active / on a reserve list in the players files */
-  for (const F of [PL, DP]) if (F && F.p && F.cols) { const iS = F.cols.indexOf("status"), iL = F.cols.indexOf("last");
+  /* once this season has games, "still playing" means played this season (Nov 24: Philip Rivers, last game 2025, was marked by the roster status);
+     before the first game, the players files' status stands in */
+  if (!act.size) for (const F of [PL, DP]) if (F && F.p && F.cols) { const iS = F.cols.indexOf("status"), iL = F.cols.indexOf("last");
     for (const [g, r] of Object.entries(F.p)) if (/^(ACT|RES|INA|DEV|EXE)$/.test(r[iS] || "") && +r[iL] >= cur - 1) act.add(g) }
   const st = {};
   for (const [bag, LIST, side, car] of [[seasonO, OFF, "off", careerO], [seasonD, DEF, "def", careerD]]) {

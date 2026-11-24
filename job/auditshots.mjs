@@ -53,6 +53,22 @@ const CHECK = () => {
     if (j <= i) continue; const a = leaves[i], b = leaves[j]; if (a.e === b.e || a.e.contains(b.e) || b.e.contains(a.e)) continue;
     const ix = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left), iy = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
     if (ix > .4 * Math.min(a.r.width, b.r.width) && iy > .45 * Math.min(a.r.height, b.r.height) && ix > 3 && iy > 3) { const key = where(a.e) + "|" + where(b.e); if (!seen.has(key)) { seen.add(key); out.push(["overlap", where(a.e) + "  ⟷  " + where(b.e)]) } } }
+  /* (Nov 23, 10:11 pm — the owner's phone screenshots: an icon button under the ‹ button, a score running out of its card in the score strip,
+     both missed because only words were compared and scrollers were skipped) controls drawn over controls, icon buttons included, and
+     words running past the card they sit in — inside scrollers too, judged against the card, not the screen */
+  { const ctl = all.filter(e => e.matches("button,a[href],input,select,[role=button],[role=tab]") && shown(e) && !pinned(e)).slice(0, 1500);
+    const CB = new Map(); for (const [i, e] of ctl.entries()) { const r = e.getBoundingClientRect(); if (r.width < 4 || r.height < 4) continue; const k = Math.floor(r.top / 60); if (!CB.has(k)) CB.set(k, []); CB.get(k).push([i, r]) }
+    const sn = new Set();
+    for (const [k, L] of CB) for (const [i, a] of L) for (const [j, b] of [...(CB.get(k) || []), ...(CB.get(k + 1) || [])]) {
+      if (j <= i) continue; const A = ctl[i], Bx = ctl[j]; if (A.contains(Bx) || Bx.contains(A)) continue;
+      const ix = Math.min(a.right, b.right) - Math.max(a.left, b.left), iy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      if (ix > 3 && iy > 3) { const key = where(A) + "|" + where(Bx); if (!sn.has(key)) { sn.add(key); out.push(["controls overlap", where(A).slice(0, 60) + "  ⟷  " + where(Bx).slice(0, 60) + ` (${Math.round(ix)} px)`]) } } } }
+  { const cardOf = e => { for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { const cs = getComputedStyle(p); if (cs.borderRadius !== "0px" && (cs.backgroundColor !== "rgba(0, 0, 0, 0)" || (cs.borderLeftWidth !== "0px" && cs.borderRightWidth !== "0px")) && p.getBoundingClientRect().width > 40) return p } return null };
+    const tw2 = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => !n.nodeValue.trim() || !n.parentElement || n.parentElement.closest("script,style,noscript,template,select,option,datalist,textarea") ? 2 : 1 });
+    const sn2 = new Set(); let k2 = 0;
+    while (tw2.nextNode() && k2++ < 4000) { const e = tw2.currentNode.parentElement; if (!vis(e) || !shown(e) || pinned(e)) continue; const c = cardOf(e); if (!c) continue;
+      const cr = c.getBoundingClientRect(), rg = document.createRange(); rg.selectNodeContents(tw2.currentNode);
+      for (const r of rg.getClientRects()) { const d = Math.max(r.right - cr.right, cr.left - r.left); if (r.width > 2 && d > 1) { const key = where(e); if (!sn2.has(key)) { sn2.add(key); out.push(["runs out of its card", where(e).slice(0, 70) + " in " + nm(c) + ` (${Math.round(d)} px)`]) } break } } } }
   /* crunch: card-like siblings too close; text against its card's edge */
   const card = e => { const cs = getComputedStyle(e); return (cs.borderRadius !== "0px" && (cs.backgroundColor !== "rgba(0, 0, 0, 0)" || cs.boxShadow !== "none" || (cs.borderLeftWidth !== "0px" && cs.borderRightWidth !== "0px"))) && e.getBoundingClientRect().width > 60 && e.getBoundingClientRect().height > 30 && !pinned(e) };
   const cards = all.filter(card);

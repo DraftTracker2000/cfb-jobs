@@ -27,6 +27,7 @@
    Every line is a plain array to keep the files small; the column lists sit at the top of each pack ("cols"). */
 
 import { nflCoachScoresOf } from "./nflco.mjs";
+import { nflGmScoresOf } from "./nflgm.mjs";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { fixCoaches } from "./staff.mjs";
 import { pickPack } from "./picks.mjs";
@@ -1460,6 +1461,12 @@ export async function buildNfl({ api, getPack, getIndex, curYear, all = false, s
   { const hc = {}; for (const [t, v] of Object.entries(staff || {})) if (v.hc) hc[t] = { hc: v.hc, since: v.hcSince, interim: v.hcInterim }; fixCoaches(G, Y, hc, log) }
   /* Nov 5 (5:24 pm, #61): CoachScore is worked out here and only the scores ride on the games pack (job/nflco.mjs) */
   try { G.co = nflCoachScoresOf(G); log(`nfl: CoachScore for ${Object.keys(G.co).length} coaches`) } catch (e) { log(`nfl: CoachScore failed: ${e.message}`) }
+  /* Nov 24 (#59): GMScore the same way (job/nflgm.mjs) — the staff list the page reads (admin edits included), the GM hire dates and the last
+     published draft grades; only the scores ride on the games pack */
+  try { const SF = (await api("GET", "/api/nflstaff").catch(() => null)) || {}, STF = SF.teams && Object.keys(SF.teams).length >= 28 ? SF.teams : staff;
+    const GH = await fetch((process.env.FOOTBALL_URL || "https://mycfbbigboard.com").replace(/\/+$/, "") + "/data/nfl-gm-hires.json").then(r => r.ok ? r.json() : null).catch(() => null);
+    let DR = null; try { DR = getPack ? (await getPack(P("draft"))) || (await getPack(`p${Y - 1}_nfl-draft`)) : null } catch { }
+    G.gm = nflGmScoresOf(G, STF, GH, DR, Y); log(`nfl: GMScore for ${Object.keys(G.gm).length} GMs${DR ? "" : " (no draft pack: drafting at average)"}`) } catch (e) { log(`nfl: GMScore failed: ${e.message}`) }
   await put(P("games"), G);
   const POS = {}, PLN = {}; let JN0 = [0, 0, 0, 0], jnAfter = [0, 0, 0, 0];
   let DRAFTED = [], ESPN = {}, KP = {}, PLP = {};

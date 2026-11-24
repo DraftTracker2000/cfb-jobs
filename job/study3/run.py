@@ -55,6 +55,8 @@ if FOCUS == 'hunt56':   # this season's college pick-term tags (Nov 7)
     import hunt56; step('hunt56', hunt56.run, reg, log, D); print('hunt56 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt57':   # this season's college hoops coach notes (Nov 7)
     import hunt57; step('hunt57', hunt57.run, reg, log, D); print('hunt57 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'tiers4':   # tier lines, part 4 (Nov 23, rule 15): hunt 51's basketball development tests by high-major / rest
+    import tiers4; step('tiers4', tiers4.run, reg, log, D); print('tiers4 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'tiers3':   # tier lines, part 3 (Nov 23, rule 15): the college player-role tests by tier
     import tiers3; step('tiers3', tiers3.run, reg, log, D); print('tiers3 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'tiers2':   # tier lines for Data Busters (Nov 23, rule 15): the play-by-play momentum tests by tier

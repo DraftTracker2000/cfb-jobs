@@ -81,5 +81,13 @@ for (const C of CAPS) { let fr = []; try { fr = await C.shots() } catch (e) { er
   const r = await fetch(F + `/api/pack/p2000_cap-${C.id}`, { method: "PUT", headers: { Authorization: "Bearer " + JOB, "Content-Type": "application/json" }, body }); console.log(`  PUT ${r.status} ${(body.length / 1024).toFixed(0)} KB`);
   out.push({ id: C.id, title: C.title, line: C.line, n: fr.length }) }
 const r = await fetch(F + "/api/pack/p2000_caps", { method: "PUT", headers: { Authorization: "Bearer " + JOB, "Content-Type": "application/json" }, body: JSON.stringify({ at: Date.now(), caps: out }) }); console.log(`caps index PUT ${r.status}: ${out.length} capabilities`);
+/* sample posts: the post studio's "What the site can do" post for each one (wide for X, square for Instagram), drawn by the studio itself in the
+   Lab (the probe can open /lab/), saved as p2000_cap-samples for the capabilities page */
+try { const SP = { "college-pros": "cfb", bigboard: "cfb", dynasty: "nfl", startsit: "nfl", scout: "cfb", map: "nfl", busters: "cfb", hoops: "nba" }, samples = [];
+  await go("/lab/?studio&cap=" + (out[0] && out[0].id || "")); await ready(() => window.STUDIO && window.STUDIO.state && window.STUDIO.state.type === "caps" && window.STUDIO.state.L.length > 0);
+  for (const c of out) { for (const size of ["w", "s"]) { const img = await p.evaluate(async ([id, sp, size]) => { const S = window.STUDIO, ST = S.state, T = S.TYPES.find(t => t.id === "caps"), i = ST.L.findIndex(x => x.id === id && x.i === (id === "college-pros" ? 0 : ST.L.filter(y => y.id === id).length > 1 ? 1 : 0)), M = ST.L[i >= 0 ? i : ST.L.findIndex(x => x.id === id)]; if (!M) return null;
+      ST.sport = sp; ST.F = T.fill(M); await new Promise(r => { const im = new Image(); im.onload = r; im.onerror = r; im.src = M.img }); const cv = document.createElement("canvas"); S.render(cv, size); await new Promise(r => setTimeout(r, 300)); S.render(cv, size); return cv.toDataURL("image/jpeg", .82) }, [c.id, SP[c.id] || "nfl", size]).catch(e => { errs.push("sample " + c.id + ": " + String(e.message).slice(0, 100)); return null });
+      if (img) samples.push({ id: c.id, size, img }) } }
+  const body = JSON.stringify({ at: Date.now(), samples }); const r = await fetch(F + "/api/pack/p2000_cap-samples", { method: "PUT", headers: { Authorization: "Bearer " + JOB, "Content-Type": "application/json" }, body }); console.log(`samples PUT ${r.status}: ${samples.length} posts, ${(body.length / 1024).toFixed(0)} KB`) } catch (e) { errs.push("samples: " + String(e.message).slice(0, 120)) }
 console.log("errors: " + JSON.stringify(errs.slice(0, 20)));
 await browser.close();

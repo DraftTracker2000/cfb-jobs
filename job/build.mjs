@@ -303,6 +303,10 @@ async function main() {
     const now = new Date(), last = (now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1) - 1, spec = (process.env.PROBE || "").trim(), years = [];
     if (/^\d{4}-\d{4}$/.test(spec)) { const [a, b] = spec.split("-").map(Number); for (let y = a; y <= Math.min(b, last); y++) years.push(y) }
     else if (/^\d{4}(,\d{4})*$/.test(spec)) years.push(...spec.split(",").map(Number).filter(y => y <= last));
+    else if (/^check:/.test(spec)) { const { checkCfbHoles } = await import("./cfbholes.mjs"); const [a, b] = spec.slice(6).split("-").map(Number); const ys = []; for (let y = a; y <= (b || a); y++) ys.push(y);
+      const L = await checkCfbHoles({ site: SITE, token: sess.token, years: ys, log: x => console.log(x) });
+      for (let i = 0, k = 0; i < L.length && k < 10; k++) { let s2 = ""; while (i < L.length && (s2 + L[i]).length < 5800) s2 += L[i++] + " | "; console.log(`::notice title=holes check ${k + 1}::${s2}`) }
+      await report(true, `college stat holes check · ${ys.join(",")}`); return }
     else for (let y = 2004; y <= last; y++) years.push(y);
     const d = await buildCfbHoles({ site: SITE, token: sess.token, years, log: x => console.log(x) });
     const up = process.env.PREFETCH_DRY === "1" ? { bytes: 0, packs: 0 } : await uploadCfbHoles({ api, out: d.out });

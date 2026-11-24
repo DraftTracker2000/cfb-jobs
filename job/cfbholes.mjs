@@ -61,3 +61,20 @@ export async function uploadCfbHoles({ api, out }) {
     if (r && r.sha) idx[name] = { sha: r.sha, bytes: r.bytes, at: Date.now() }; bytes += gz.length }
   if (Object.keys(idx).length) await api("PUT", "/api/pack-index", { body: idx });
   return { bytes, packs: Object.keys(idx).length } }
+
+/* read-only check (Nov 24: 2004-2008 filled 2,000-5,000 lines a season vs ~50-470 later): per season and category, how many players CFBD's own
+   season totals list, how many the fill adds, the biggest added lines, and any added player whose last name matches a listed player on the
+   same team (a possible double under a different first-name spelling). No writes. MODE=cfbholes, PROBE=check:2004-2008 */
+export async function checkCfbHoles({ site, token, years, log = console.log }) {
+  const raw = { headers: { Authorization: "Bearer " + token, "x-raw": "1" } }, mer = { headers: { Authorization: "Bearer " + token } };
+  const get = async (p, H) => { const r = await fetch(site + "/api/cfbd?path=" + encodeURIComponent(p), H); return r.ok ? r.json() : [] };
+  const last = s => nm(String(s || "").split(" ").slice(-1)[0] === "" ? s : String(s).replace(/\s+(jr|sr|ii|iii|iv)\.?$/i, "").split(" ").slice(-1)[0]);
+  const out = [];
+  for (const y of years) for (const cat of ["passing", "rushing", "receiving", "defensive"]) {
+    const p = `/stats/player/season?year=${y}&category=${cat}&seasonType=regular`, A = await get(p, raw), B = await get(p, mer);
+    const ids = new Set(A.map(r => String(r.playerId))), add = B.filter(r => !ids.has(String(r.playerId)));
+    const stat = cat === "defensive" ? "TOT" : "YDS", big = add.filter(r => r.statType === stat).sort((a, b) => b.stat - a.stat);
+    const lastT = new Set(A.map(r => r.team + "|" + last(r.player))), twin = big.filter(r => lastT.has(r.team + "|" + last(r.player)));
+    const line = `${y} ${cat}: CFBD lists ${ids.size} players · fill adds ${new Set(add.map(r => r.playerId)).size} · biggest: ${big.slice(0, 6).map(r => `${r.player} (${r.team}) ${r.stat}`).join(", ")} · same team + last name as a listed player: ${twin.length}${twin.length ? " (" + twin.slice(0, 6).map(r => `${r.player} ${r.team} ${r.stat}`).join(", ") + ")" : ""}`;
+    out.push(line); log(line) }
+  return out }

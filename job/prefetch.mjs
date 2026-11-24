@@ -39,7 +39,7 @@ export function prefetchPaths(cur) {
   for (let y = 2014; y <= 2025; y++) { for (const w of REG) add("plays", y, `/plays?year=${y}&week=${w}&seasonType=regular`, "r" + w); add("plays", y, `/plays?year=${y}&week=1&seasonType=postseason`, "p1") }
   for (let y = 2021; y <= 2025; y++) { for (const w of REG) add("gp", y, `/games/players?year=${y}&week=${w}&seasonType=regular`, "r" + w); add("gp", y, `/games/players?year=${y}&week=1&seasonType=postseason`, "p1") }
   for (let y = 2011; y <= 2025; y++) {
-    for (const c of ["passing", "rushing", "receiving", "defensive", "interceptions", "fumbles"]) add("def", y, `/stats/player/season?year=${y}&category=${c}`, c);
+    for (const c of ["passing", "rushing", "receiving", "defensive", "interceptions", "fumbles"]) add("def", y, `/stats/player/season?year=${y}&category=${c}&seasonType=both`, c);
     add("def", y, `/records?year=${y}`, "records"); add("def", y, `/rankings?year=${y}&seasonType=regular`, "rankings");
     add("def", y, `/roster?year=${y}`, "roster"); add("def", y, `/recruiting/players?year=${y}&classification=HighSchool`, "recruits") }
   return L.map(x => ({ ...x, pack: bcPackName(x.path, cur) }));

@@ -798,4 +798,14 @@ out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(",
     const R0=csv(await (await fetch("https://github.com/nflverse/nflverse-data/releases/download/players/players.csv",{redirect:"follow"})).text()),Hh=R0[0],c=k=>Hh.indexOf(k),P={};for(const x of R0.slice(1))P[x[c("gsis_id")]]=[x[c("display_name")],x[c("position")],x[c("latest_team")]];
     const out=[];for(const y in IH.d)for(const g in IH.d[y]){const R=IH.d[y][g];for(let k=1;k<R.length;k++){const r=R[k],pr=R[k-1];if(r[2]===4&&pr[2]!==4&&r[1]===pr[1]&&r[1]>=0&&r[0]-pr[0]>2){let j=k;while(j<R.length&&R[j][2]===4&&R[j][1]===r[1])j++;const q=P[g]||["","",""];out.push(["IRL",y,g,q[0],q[1],q[2],pr[0],r[0],R[j-1][0],IH.inj[r[1]],j-k].join("\\t"))}}}
     for(const l of out)console.log(l);return {rows:out.length}` },
+  /* (Nov 24, 6:31 pm — the owner: "he's been on the sixers all season so there's something wrong in the nba data") read-only: what the map's NBA
+     lists say about LeBron, and how many players' roster team (the birth list) and last career span (nbacareers) disagree */
+  { name: "nbanow", node: `const H={headers:{Authorization:"Bearer "+TOKEN}};const B=await (await fetch(SITE+"/api/birth",H)).json();const nba=B.nba||{};
+    const IX=await (await fetch(SITE+"/api/pack-index",H)).json();const ks=Object.keys(IX.packs||IX).filter(k=>/^p\\d{4}_cbb-nbacareers$/.test(k)).sort();const ck=ks[ks.length-1];
+    const C=ck?await (await fetch(SITE+"/api/pack/"+ck,H)).json():null;const P=(C&&C.p)||{};
+    const lb=Object.entries(nba).filter(([id,r])=>/lebron/i.test(r[0]));const lk=Object.keys(P).filter(k=>/lebron/i.test(k));
+    const teams={};for(const r of Object.values(nba))teams[r[1]]=(teams[r[1]]||0)+1;
+    const nk=s=>String(s).toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/[^a-z]/g,"");const byN={};for(const k in P)byN[nk(k)]=P[k];
+    let both=0,diff=[];for(const r of Object.values(nba)){const c=byN[nk(r[0])];if(!c||!c.length)continue;both++;const last=c.slice().sort((a,b)=>a[1]-b[1]||a[2]-b[2]).pop();if(last[0]!==r[1])diff.push(r[0]+" roster "+r[1]+" / careers "+last.join(" "))}
+    return {ok:true,birthAt:new Date(B.at).toISOString(),nbaPlayers:Object.keys(nba).length,teams,careersPack:ck,careersAt:IX.packs?(IX.packs[ck]||{}).at:(IX[ck]||{}).at,lebronBirth:lb,lebronCareers:lk.map(k=>[k,P[k]]),matched:both,disagree:diff.length,sample:diff.slice(0,40)}` },
 ];

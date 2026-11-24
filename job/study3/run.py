@@ -55,6 +55,10 @@ if FOCUS == 'hunt56':   # this season's college pick-term tags (Nov 7)
     import hunt56; step('hunt56', hunt56.run, reg, log, D); print('hunt56 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt57':   # this season's college hoops coach notes (Nov 7)
     import hunt57; step('hunt57', hunt57.run, reg, log, D); print('hunt57 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'tiers11':   # tier lines, part 11 (Nov 23, rule 15): hunt 36's player splits by power vs Group of 5
+    import tiers11; step('tiers11', tiers11.run, reg, log, D); print('tiers11 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'tiers10':   # tier line, part 10 (Nov 23, rule 15): untested offenses vs good defenses (hunt 50), power vs Group of 5
+    import tiers10; step('tiers10', tiers10.run, reg, log, D); print('tiers10 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'tiers9':   # tier line, part 9 (Nov 23, rule 15): upset coaches with the ball at the end, power vs Group of 5
     import tiers9; step('tiers9', tiers9.run, reg, log, D); print('tiers9 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'tiers8':   # tier line, part 8 (Nov 23, rule 15): elite basketball rosters, how many were high-majors

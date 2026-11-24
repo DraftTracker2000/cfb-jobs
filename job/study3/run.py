@@ -55,6 +55,8 @@ if FOCUS == 'hunt56':   # this season's college pick-term tags (Nov 7)
     import hunt56; step('hunt56', hunt56.run, reg, log, D); print('hunt56 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt57':   # this season's college hoops coach notes (Nov 7)
     import hunt57; step('hunt57', hunt57.run, reg, log, D); print('hunt57 errors:', errors); sys.exit(1 if errors else 0)
+if FOCUS == 'tiers2':   # tier lines for Data Busters (Nov 23, rule 15): the play-by-play momentum tests by tier
+    import tiers2; step('tiers2', tiers2.run, reg, log, D); print('tiers2 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt80':   # the walk-forward prediction test of hunt 79's college angles (Nov 19 — the owner: "not leading anyone astray")
     import hunt80; step('hunt80', hunt80.run, reg, log, D); print('hunt80 errors:', errors); sys.exit(1 if errors else 0)
 if FOCUS == 'hunt79':   # the NFL betting-angle tests on college football and college basketball (Nov 19 — the owner: "i don't know why you can't access the lines")

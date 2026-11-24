@@ -68,17 +68,17 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad", "colang"];
+const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad", "colang", "fproj"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const NOFRESH = ["probe", "look", "crawl", "study", "release"].includes(MODE) || /test$/.test(MODE);
-const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest", "prefetch", "pbpfill", "nflpick", "cfbpick", "colang"];   // these write packs only; the shared data version is unchanged
+const PACKS_ONLY = ["extras", "honors", "coaches", "cdef", "dgtest", "oltest", "grtest", "prefetch", "pbpfill", "nflpick", "cfbpick", "colang", "fproj"];   // these write packs only; the shared data version is unchanged
 /* the Sunday-afternoon catch-up is a "live" run that also rebuilds this season's player files and the coaches/teams data,
    so it gets far longer than a game-day run */
 const SUNDAY_CATCHUP = MODE === "live" && process.env.CATCHUP === "1";
-const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, crawl: 75, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflpick: 20, cfbpick: 25, colang: 20, nflstad: 15, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180, study: 300, pbpfill: 300 }[MODE];
+const LIMIT_MIN = SUNDAY_CATCHUP ? 120 : { cavail: 10, crawl: 75, probe: 40, extras: 30, honors: 30, live: 45, weekly: 150, history: 340, views: 200, qb: 120, avail: 30, coaches: 150, cdef: 90, dgtest: 60, oltest: 90, grtest: 60, nfl: 30, nflpick: 20, cfbpick: 25, fproj: 15, colang: 20, nflstad: 15, nflhistory: 120, nfldraft: 60, colgap: 150, punt: 60, prefetch: 180, study: 300, pbpfill: 300 }[MODE];
 /* prefetch always runs on the Lab page: the hook it needs (window.__PREFETCH) is a Lab builder */
-const PAGE = MODE === "prefetch" || MODE === "pbpfill" || MODE === "cfbpick" ? "/lab/" : ["/", "/lab/", "/lab/?nav2"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
+const PAGE = MODE === "prefetch" || MODE === "pbpfill" || MODE === "cfbpick" || MODE === "fproj" ? "/lab/" : ["/", "/lab/", "/lab/?nav2"].includes(process.env.PAGE_PATH) ? process.env.PAGE_PATH : "/";                                  // the lab page (/lab/) can be used here to try a builder before it's pushed
 if (PAGE.includes("?") && MODE !== "crawl" && MODE !== "look") { console.error(`PAGE_PATH ${PAGE} (the new header) is for the look check and the crawl only`); process.exit(1) }   /* Nov 10 */
 const started = Date.now();
 
@@ -362,7 +362,7 @@ async function main() {
   /* a page without the prefetch hook would take "prefetch" for an ordinary build — stop before it starts */
   /* a page-only builder the page doesn't know yet (Nov 5: the first cfbpick run reached the Lab page before the deploy carried its hook, fell
      through to the full build and spent 640 CFBD calls): stop before anything is uploaded */
-  if (["nflpick", "cfbpick"].includes(MODE)) { await page.waitForFunction(() => typeof go === "function", null, { timeout: 60000 }).catch(() => null);
+  if (["nflpick", "cfbpick", "fproj"].includes(MODE)) { await page.waitForFunction(() => typeof go === "function", null, { timeout: 60000 }).catch(() => null);
     if (!(await page.evaluate(m => typeof go === "function" && go.toString().includes('BUILDER==="' + m + '"'), MODE).catch(() => false))) { await browser.close(); throw new Error(`${MODE}: ${PAGE} has no ${MODE} builder yet — is the change deployed?`) } }
   if (MODE === "prefetch" && !(await page.evaluate(() => window.__PREFETCH_V === 1))) { await browser.close(); throw new Error(`prefetch: ${PAGE} has no prefetch hook (window.__PREFETCH_V) — is the Lab change live?`) }
   if (MODE === "pbpfill" && !(await page.evaluate(() => window.__PBPFILL_V === 1))) { await browser.close(); throw new Error(`pbpfill: ${PAGE} has no fill hook (window.__PBPFILL_V) — is the Lab change live?`) }

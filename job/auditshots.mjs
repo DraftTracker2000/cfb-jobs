@@ -61,6 +61,8 @@ const CHECK = () => {
     const sn = new Set();
     for (const [k, L] of CB) for (const [i, a] of L) for (const [j, b] of [...(CB.get(k) || []), ...(CB.get(k + 1) || [])]) {
       if (j <= i) continue; const A = ctl[i], Bx = ctl[j]; if (A.contains(Bx) || Bx.contains(A)) continue;
+      const ov = x => { for (let q = x; q && q !== document.body; q = q.parentElement) { const ps = getComputedStyle(q).position; if (ps === "absolute") return true } return false };
+      if ((inScroller(A) && ov(Bx)) || (inScroller(Bx) && ov(A))) continue;   /* a strip's ‹ › arrows sit over the cards on purpose */
       const ix = Math.min(a.right, b.right) - Math.max(a.left, b.left), iy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
       if (ix > 3 && iy > 3) { const key = where(A) + "|" + where(Bx); if (!sn.has(key)) { sn.add(key); out.push(["controls overlap", where(A).slice(0, 60) + "  ⟷  " + where(Bx).slice(0, 60) + ` (${Math.round(ix)} px)`]) } } } }
   { const cardOf = e => { for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { const cs = getComputedStyle(p); if (cs.borderRadius !== "0px" && (cs.backgroundColor !== "rgba(0, 0, 0, 0)" || (cs.borderLeftWidth !== "0px" && cs.borderRightWidth !== "0px")) && p.getBoundingClientRect().width > 40) return p } return null };

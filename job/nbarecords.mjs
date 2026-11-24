@@ -36,5 +36,6 @@ export async function buildNbaRecords({ curNba, first = 2002, log = console.log 
     const ss = Object.values(S).filter(s => s.v[key] > 0).sort((a, b) => b.v[key] - a.v[key]).slice(0, 10).map(s => [s.id, nm[s.id], s.y, Object.entries(s.tm).sort((a, b) => b[1] - a[1])[0][0], s.v[key]]);
     const cr = Object.entries(C).filter(([, v]) => v[key] > 0).sort((a, b) => b[1][key] - a[1][key]).slice(0, 10).map(([id, v]) => [id, nm[id], v[key], span[id][0], span[id][1]]);
     st[key] = { l, side: "all", ss, cr } }
-  const actIn = [...new Set(Object.values(st).flatMap(x => x.cr.map(r => r[0])))].filter(id => act.has(id));
+  /* active: played in the latest season on file (this season's file can be empty early on — Nov 24: 2026-27 had no games in it yet) */
+  const actIn = [...new Set(Object.values(st).flatMap(x => x.cr.map(r => r[0])))].filter(id => act.has(id) || span[id][1] === through);
   return { through, first: from ?? first, act: actIn, st } }

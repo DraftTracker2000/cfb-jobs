@@ -68,7 +68,7 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "cfbholes", "nflrec", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad", "colang", "fproj"];
+const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "cfbholes", "nflrec", "cfbrec", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad", "colang", "fproj"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const NOFRESH = ["probe", "look", "crawl", "study", "release"].includes(MODE) || /test$/.test(MODE);
@@ -286,6 +286,12 @@ async function main() {
   /* MODE=colgap: college missed-game check from box scores (job/colgap.mjs, Oct 24) */
   /* college season-stat holes (Nov 24 — the owner 3:17 pm: "data run is fine"): players CFBD's season totals leave out, rebuilt from its box
      scores, one pack per past season (job/cfbholes.mjs); the proxy adds them back. PROBE = seasons, e.g. 2010 or 2004-2025 (empty = 2004 to last season) */
+  if (MODE === "cfbrec") { const { buildCfbRecords } = await import("./cfbrecords.mjs"); const { gzipSync } = await import("node:zlib");
+    const now = new Date(), cur = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+    const R = await buildCfbRecords({ site: SITE, token: sess.token, cur, log: x => console.log(x) });
+    const u = await api("PUT", "/api/pack/p2000_cfb-records", { raw: true, body: gzipSync(Buffer.from(JSON.stringify(R))), headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+    await api("PUT", "/api/pack-index", { body: { "p2000_cfb-records": { sha: u.sha, bytes: u.bytes, at: Date.now() } } });
+    const msg = `college records · ${Object.keys(R.st).length} stats · ${R.first}–${R.through} · ${R.act.length} active in the career top 10s · ${(u.bytes / 1024).toFixed(0)} KB`; console.log(`::notice title=college records::${msg}`); await report(true, msg); return }
   if (MODE === "nflrec") { const { buildNflRecords } = await import("./nflrecords.mjs"); const { gzipSync } = await import("node:zlib");
     const now = new Date(), cur = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
     const getPack = async n => { const r = await fetch(SITE + "/api/pack/" + n, { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? r.json() : null };

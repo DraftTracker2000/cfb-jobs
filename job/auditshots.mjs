@@ -57,7 +57,7 @@ const CHECK = () => {
      both missed because only words were compared and scrollers were skipped) controls drawn over controls, icon buttons included, and
      words running past the card they sit in — inside scrollers too, judged against the card, not the screen */
   { const ctl = all.filter(e => e.matches("button,a[href],input,select,[role=button],[role=tab]") && shown(e) && !pinned(e)).slice(0, 1500);
-    const CB = new Map(); for (const [i, e] of ctl.entries()) { const r = e.getBoundingClientRect(); if (r.width < 4 || r.height < 4) continue; const k = Math.floor(r.top / 60); if (!CB.has(k)) CB.set(k, []); CB.get(k).push([i, r]) }
+    const CB = new Map(); for (const [i, e] of ctl.entries()) { const r0 = e.getBoundingClientRect(), cb = clipBox(e), r = { left: Math.max(r0.left, cb.left), top: Math.max(r0.top, cb.top), right: Math.min(r0.right, cb.right), bottom: Math.min(r0.bottom, cb.bottom) }; r.width = r.right - r.left; r.height = r.bottom - r.top;   /* the part you can see: a card half under a scroller's edge is cut there */ if (r.width < 4 || r.height < 4) continue; const k = Math.floor(r.top / 60); if (!CB.has(k)) CB.set(k, []); CB.get(k).push([i, r]) }
     const sn = new Set();
     for (const [k, L] of CB) for (const [i, a] of L) for (const [j, b] of [...(CB.get(k) || []), ...(CB.get(k + 1) || [])]) {
       if (j <= i) continue; const A = ctl[i], Bx = ctl[j]; if (A.contains(Bx) || Bx.contains(A)) continue;

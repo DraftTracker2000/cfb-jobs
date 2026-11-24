@@ -28,6 +28,7 @@ export async function buildCfbRecords({ site, token, cur, first = 2004, log = co
   for (const [key, l, side] of all) {
     const ss = Object.values(S).filter(s => s.v[key] > 0).sort((a, b) => b.v[key] - a.v[key]).slice(0, 10).map(s => [s.id, nm[s.id], s.y, s.t, Math.round(s.v[key] * 10) / 10]);
     const cr = Object.entries(C).filter(([, v]) => v[key] > 0).sort((a, b) => b[1][key] - a[1][key]).slice(0, 10).map(([id, v]) => [id, nm[id], Math.round(v[key] * 10) / 10, span[id][0], span[id][1], span[id][2]]);
-    out[key] = { l, side, ss, cr } }
-  const actIn = [...new Set(Object.values(out).flatMap(x => x.cr.map(r => r[0])))].filter(id => act.has(id));
+    const ca = Object.entries(C).filter(([id, v]) => v[key] > 0 && act.has(id)).sort((a, b) => b[1][key] - a[1][key]).slice(0, 10).map(([id, v]) => [id, nm[id], Math.round(v[key] * 10) / 10, span[id][0], span[id][1], span[id][2]]);
+    out[key] = { l, side, ss, cr, ca } }
+  const actIn = [...new Set(Object.values(out).flatMap(x => [...x.ss, ...x.cr, ...x.ca].map(r => r[0])))].filter(id => act.has(id));
   return { through, first, act: actIn, st: out } }

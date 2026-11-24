@@ -15,6 +15,7 @@ export async function buildNflRecords({ getPack, cur, first = 1999, log = consol
   const P = n => `p${cur}_nfl-${n}`;
   const PL = await getPack(P("players")), DP = await getPack(P("dplayers"));
   const name = g => (PL && PL.p && PL.p[g] && PL.p[g][0]) || (DP && DP.p && DP.p[g] && DP.p[g][0]) || g;
+  const iP = F => F && F.cols ? F.cols.indexOf("pos") : -1, pos = g => (PL && PL.p && PL.p[g] && PL.p[g][iP(PL)]) || (DP && DP.p && DP.p[g] && DP.p[g][iP(DP)]) || "";
   const seasonO = {}, seasonD = {}, careerO = {}, careerD = {}, span = {}, act = new Set();
   const add = (bag, g, s, team, row, LIST) => { const k = g + "|" + s, x = bag[k] = bag[k] || { g, s, team: {}, v: {} }; x.team[team] = (x.team[team] || 0) + 1;
     for (const [key, , f] of LIST) x.v[key] = (x.v[key] || 0) + (+f(row) || 0) };
@@ -39,6 +40,9 @@ export async function buildNflRecords({ getPack, cur, first = 1999, log = consol
         .map(x => [x.g, name(x.g), x.s, Object.entries(x.team).sort((a, b) => b[1] - a[1])[0][0], Math.round(x.v[key] * 10) / 10]);
       const cr = Object.entries(car).filter(([, v]) => v[key] > 0).sort((a, b) => b[1][key] - a[1][key]).slice(0, 10)
         .map(([g, v]) => [g, name(g), Math.round(v[key] * 10) / 10, span[g][0], span[g][1]]);
-      st[key] = { l, side, ss, cr } } }
-  const actIn = [...new Set(Object.values(st).flatMap(x => x.cr.map(r => r[0])))].filter(g => act.has(g));
-  return { through, first, act: actIn, st } }
+      /* still playing: the career top 10 among active players only (Nov 24 — "highlight the ones that are still active") */
+      const ca = Object.entries(car).filter(([g, v]) => v[key] > 0 && act.has(g)).sort((a, b) => b[1][key] - a[1][key]).slice(0, 10)
+        .map(([g, v]) => [g, name(g), Math.round(v[key] * 10) / 10, span[g][0], span[g][1]]);
+      st[key] = { l, side, ss, cr, ca } } }
+  const shown = [...new Set(Object.values(st).flatMap(x => [...x.ss, ...x.cr, ...x.ca].map(r => r[0])))];
+  return { through, first, act: shown.filter(g => act.has(g)), pos: Object.fromEntries(shown.map(g => [g, pos(g)])), st } }

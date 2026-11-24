@@ -250,6 +250,12 @@ export async function main() {
   if (MODE === "nbawo") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
     const { buildNbaWo } = await import("./cbbnbawo.mjs"); const R = await buildNbaWo({ putPack, log, curNba });
     await site("PUT", "/api/pack-index", { body: INDEX }); await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: R.msg, started } }).catch(e => log("report failed: " + e.message)); log(R.msg); return }
+  /* NBA records (Nov 24 — the owner 3:47 pm): season and career top 10s from every NBA box score on file (job/nbarecords.mjs); also weekly with "cbb" on Mondays */
+  if (MODE === "nbarec" || (MODE === "cbb" && now.getUTCDay() === 1)) { try { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
+      const { buildNbaRecords } = await import("./nbarecords.mjs"); const R = await buildNbaRecords({ curNba, log }); await putPack("p2000_nba-records", R);
+      const msg = `NBA records · ${R.first}–${R.through} · ${Object.keys(R.st).length} stats · ${R.act.length} active in the career top 10s`; log(msg);
+      if (MODE === "nbarec") { await site("PUT", "/api/pack-index", { body: INDEX }); await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: msg, started } }).catch(e => log("report failed: " + e.message)); return } }
+    catch (e) { if (MODE === "nbarec") throw e; log("nba records: " + e.message) } }
   if (MODE === "gdate") { const nbaLive = (M >= 10 && now.getUTCDate() >= 20) || M >= 11 || M <= 6, curNba = M >= 10 ? (nbaLive ? Yr + 1 : Yr) : Yr;
     const { gdate } = await import("./cbbgdate.mjs"); const R = await gdate({ getPack, putPack, log, curNba });
     await site("PUT", "/api/pack-index", { body: INDEX }); await site("POST", "/api/job/report", { body: { kind: MODE, ok: true, message: R.msg, started } }).catch(e => log("report failed: " + e.message)); log(R.msg); return }

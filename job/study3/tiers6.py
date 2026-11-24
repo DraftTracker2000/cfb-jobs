@@ -57,6 +57,7 @@ BLOCK = r'''
         x = P_[P_.hm == hm]; g = x.groupby('coach').agg(n=('rel', 'size'), rel=('rel', 'mean'), srel=('srel', 'mean'), ret=('ret', 'mean'), st=('st', 'mean')); g = g[g.n >= 3].sort_values('rel', ascending=False)
         log(f'T6-3 PORTAL ERA KEEPERS · {"HIGH-MAJOR" if hm else "REST"} ({len(g)} coaches, 3+ seasons): top: ' + ' | '.join(f'{c} {100 * r.ret:.0f}% of minutes back ({100 * r.rel:+.0f} vs level), top-5 back {100 * r.st:.0f}% ({int(r.n)} seasons)' for c, r in g.head(15).iterrows()))
         log(f'T6-3 PORTAL ERA KEEPERS · {"HIGH-MAJOR" if hm else "REST"} bottom: ' + ' | '.join(f'{c} {100 * r.ret:.0f}% ({100 * r.rel:+.0f})' for c, r in g.tail(8).iterrows()))
+        import json as _js; _k = max(1, round(len(g) * .15)); log('T6-KEEP ' + _js.dumps({'hm': bool(hm), 'n': len(g), 'list': [[c, round(float(r.rel), 3), round(float(r.ret), 3), round(float(r.st), 3), int(r.n)] for c, r in g.head(_k).iterrows()]}))
         if hm: log('T6-3 PORTAL ERA KEEPERS · HIGH-MAJOR named: ' + ' | '.join(f'{c} {100 * g.loc[c].ret:.0f}% ({100 * g.loc[c].rel:+.0f} vs level, top-5 {100 * g.loc[c].st:.0f}%, {int(g.loc[c].n)})' if c in g.index else f'{c} –' for c in NAMED))
     # prediction first: a coach's minutes-back beyond his level in earlier seasons (2+ seasons, portal era) → the next season
     from scipy import stats as _st

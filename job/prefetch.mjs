@@ -61,12 +61,12 @@ export function planLines(P) {
   return out;
 }
 
-/* the defender pulls are also kept in a built form by the builders that use them (awYear → p{y}_bc-aw4, 40 days; dgTestBuild → p{y}_bc-dgro1
+/* the defender pulls are also kept in a built form by the builders that use them (awYear → p{y}_bc-aw5 since Nov 24 (aw4 before), 40 days; dgTestBuild → p{y}_bc-dgro1
    roster and p{y}_bc-dgrc1 recruits, 30 days). While those are fresh the builders don't ask for the raw answers, so the raw packs above can
    be missing even though the data is on file; this says which built ones exist and how old they are */
 export function derivedLine(idx, from = 2011, to = 2025, now = Date.now()) {
   const out = [];
-  for (const [k, ttl] of [["aw4", 40], ["dgro1", 30], ["dgrc1", 30]]) {
+  for (const [k, ttl] of [["aw5", 40], ["dgro1", 30], ["dgrc1", 30]]) {
     const have = [], stale = [], none = [];
     for (let y = from; y <= to; y++) { const e = idx && idx[`p${y}_bc-${k}`]; if (!e) none.push(y); else if (e.at && now - e.at > ttl * 864e5) stale.push(y); else have.push(y) }
     out.push(`${k}: ${have.length} fresh${stale.length ? ` · ${stale.length} past ${ttl} days (${stale.join(" ")})` : ""}${none.length ? ` · none for ${none.join(" ")}` : ""}`) }

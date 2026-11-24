@@ -278,6 +278,17 @@ async function main() {
     let d; try { d = await buildNflHof({ putPack, putIndex, extra, snubYears, pbCands, dry: process.env.PREFETCH_DRY === "1", log: x => console.log(x) }) } catch (e) { console.log(`::warning title=nfl hof failed::${String(e && e.stack || e).replace(/[\r\n]+/g, " ").slice(0, 3000)}`); throw e }
     await report(true, `nfl hof · ${d.nh} Hall of Famers + ${d.n - d.nh} not yet eligible + ${d.ns} snubs · ${d.reads} Wikipedia reads${process.env.PREFETCH_DRY === "1" ? " · dry run" : ""}`); return }
   /* MODE=colgap: college missed-game check from box scores (job/colgap.mjs, Oct 24) */
+  /* college season-stat holes (Nov 24 — the owner 3:17 pm: "data run is fine"): players CFBD's season totals leave out, rebuilt from its box
+     scores, one pack per past season (job/cfbholes.mjs); the proxy adds them back. PROBE = seasons, e.g. 2010 or 2004-2025 (empty = 2004 to last season) */
+  if (MODE === "cfbholes") { const { buildCfbHoles, uploadCfbHoles } = await import("./cfbholes.mjs");
+    const now = new Date(), last = (now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1) - 1, spec = (process.env.PROBE || "").trim(), years = [];
+    if (/^\d{4}-\d{4}$/.test(spec)) { const [a, b] = spec.split("-").map(Number); for (let y = a; y <= Math.min(b, last); y++) years.push(y) }
+    else if (/^\d{4}(,\d{4})*$/.test(spec)) years.push(...spec.split(",").map(Number).filter(y => y <= last));
+    else for (let y = 2004; y <= last; y++) years.push(y);
+    const d = await buildCfbHoles({ site: SITE, token: sess.token, years, log: x => console.log(x) });
+    const up = process.env.PREFETCH_DRY === "1" ? { bytes: 0, packs: 0 } : await uploadCfbHoles({ api, out: d.out });
+    for (let i = 0, k = 0; i < d.sum.length && k < 8; k++) { let s = ""; while (i < d.sum.length && (s + d.sum[i]).length < 5800) s += d.sum[i++] + " | "; console.log(`::notice title=college stat holes ${k + 1}::${s}`) }
+    await report(true, `college stat holes · ${Object.keys(d.out).length} seasons · ${d.calls} calls · ${up.packs} packs, ${(up.bytes / 1024).toFixed(0)} KB`); return }
   if (MODE === "colgap") { const { buildColGap, uploadColGap } = await import("./colgap.mjs");
     let hand = []; try { hand = (await (await fetch(SITE + "/data/col-injuries.json")).json()).p || [] } catch { }
     let d; try { d = await buildColGap({ site: SITE, token: sess.token, hand }) } catch (e) { console.log(`::warning title=college gaps failed::${String(e && e.stack || e).slice(0, 3000)}`); throw e }

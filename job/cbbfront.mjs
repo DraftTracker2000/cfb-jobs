@@ -44,5 +44,38 @@ export async function buildNbaFront({ getPack, putPack, log, S, curNba }) {
   log(`nba contracts: ${carried} carried over from last season's records`);
   log(`nba contracts: ${ok} of ${ids.length} players (ESPN, ${curNba - 1}–${String(curNba).slice(2)})`);
   const out = { v: 3, at: Date.now(), season: curNba, gms, gmsAt, con: ok >= 200 ? con : (old && old.con) || con };
+  try { out.gmsc = await nbaGmScoresJob({ getPack, S, G, gms }); log(`nba GMScore: ${Object.keys(out.gmsc).length} GMs`) } catch (e) { log("nba GMScore: " + e.message) }
   await putPack(`p${S}_cbb-nbafront`, out); return out;
 }
+
+/* NBA GMScore worked out here (Nov 24 — weights off the members' page, task #59): the basketball page's nbaGmScores, the same formula —
+   drafting half (each graded class's first-four-season NBA minutes against what its slots usually get, 2008+ drafts with four seasons
+   behind them), winning a third, playoff wins the rest, a new GM pulled toward average; 60 = an average GM. Saved as gmsc in the front-office
+   pack; the page reads it and works it out itself only when it's missing. */
+const NBA_OLDNM = { "Seattle SuperSonics": "OKC", "New Jersey Nets": "BKN", "Charlotte Bobcats": "CHA", "New Orleans Hornets": "NO", "New Orleans/Oklahoma City Hornets": "NO", "Vancouver Grizzlies": "MEM", "LA Clippers": "LAC", "Los Angeles Clippers": "LAC" };
+const ENT = { "&amp;": "&", "&#39;": "'", "&apos;": "'", "&quot;": '"', "&lt;": "<", "&gt;": ">" };
+const pNk = nm => String(nm || "").replace(/&(amp|#39|apos|quot|lt|gt);/g, m => ENT[m]).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/\bronald\b/g, "ron").replace(/[^a-z]/g, "");
+export async function nbaGmScoresJob({ getPack, S, G, gms }) {
+  const [TH, N0, ALL, D] = await Promise.all([getPack("p2000_cbb-nbateamhist").catch(() => null), getPack(`p${S}_cbb-nba`).catch(() => null), getPack(`p${S}_cbb-nbaall`).catch(() => ({ p: {} })), getPack(`p${S}_cbb-draft`).catch(() => null)]);
+  const N = N0 || { players: {} }; if (!D || !D.picks) throw new Error("no draft pack");
+  const T = G.teams, nmAb = { ...NBA_OLDNM }; for (const [ab, t] of Object.entries(T)) nmAb[t.nm] = ab;
+  const cid2e = {}; for (const [e, x] of Object.entries(N.players || {})) if (x.cid) cid2e[x.cid] = e; const byNm = {}; for (const [e, a] of Object.entries(G.allp || {})) if (a.nm) byNm[pNk(a.nm)] = a.s || []; for (const [e, a] of Object.entries((ALL && ALL.p) || {})) if (a.nm && !byNm[pNk(a.nm)]) byNm[pNk(a.nm)] = a.s || [];
+  const rowsOf = d => { const e = d.id && cid2e[d.id]; if (e && N.players[e]) return N.players[e].seasons || []; return byNm[pNk(d.nm)] || [] };
+  const lastY = Math.max(...Object.keys((TH && TH.s) || { 2026: 1 }).map(Number)), gradeTo = lastY - 4;
+  const val = d => rowsOf(d).filter(r => r[0] > d.y && r[0] <= d.y + 4).reduce((a, r) => a + (+r[4] || 0), 0);
+  const P = D.picks.map(d => ({ ...d, v: val(d), ab: nmAb[d.nba] || null })), base = {}; for (const d of P) if (d.y >= 2008 && d.y <= gradeTo) (base[d.pk] = base[d.pk] || []).push(d.v);
+  const avg = A => A && A.length ? A.reduce((a, b) => a + b, 0) / A.length : 0, exp = pk => { const A = []; for (let k = pk - 2; k <= pk + 2; k++) if (base[k]) A.push(...base[k]); return Math.max(150, avg(A)) };
+  const out = {};
+  for (const [ab, [nm, since]] of Object.entries(gms || {})) { if (!T[ab] || !since) continue;
+    const mine = P.filter(d => d.ab === ab && d.y >= since), graded = mine.filter(d => d.y >= 2008 && d.y <= gradeTo), cls = {};
+    for (const d of graded) { const c = cls[d.y] = cls[d.y] || [0, 0, []]; c[0] += d.v; c[1] += exp(d.pk); c[2].push(d) }
+    const C = Object.entries(cls).map(([y, c]) => ({ y: +y, r: c[0] / c[1], picks: c[2] })), sv = C.reduce((a, c) => a + cls[c.y][0], 0), se = C.reduce((a, c) => a + cls[c.y][1], 0), dr = C.length ? sv / se : null;
+    const tid = T[ab].id, S0 = Object.entries((TH && TH.s) || {}).filter(([y]) => +y > since).map(([, o]) => o[tid]).filter(Boolean);
+    const w = S0.reduce((a, r) => a + r[0], 0), l = S0.reduce((a, r) => a + r[1], 0), pw = S0.reduce((a, r) => a + (r[6] || 0), 0), ns = S0.length;
+    const d1 = dr == null ? 1 : 1 + (dr - 1) * C.length / (C.length + 2), w1 = ns ? .5 + (w / Math.max(1, w + l) - .5) * ns / (ns + 2) : .5, p1 = ns ? 2 + (pw / ns - 2) * ns / (ns + 2) : 2;
+    const sc = Math.round(Math.max(1, Math.min(99, 60 + 32 * (.5 * (d1 - 1) / .3 + .33 * (w1 - .5) / .15 + .17 * (p1 - 2) / 4))));
+    const hits = graded.filter(d => d.v >= 1.15 * exp(d.pk)).length, miss = graded.filter(d => d.v < .85 * exp(d.pk)).length;
+    out[ab] = { nm, since, sc, dr, C, n: graded.length, all: mine.length, hits, miss, w, l, pw, ns, still: mine.filter(d => { const e = d.id && cid2e[d.id]; const a = e && G.allp[e]; return a && a.tm === ab }).length } }
+  return out;
+}
+

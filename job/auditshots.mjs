@@ -67,7 +67,7 @@ const CHECK = () => {
     const tw2 = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => !n.nodeValue.trim() || !n.parentElement || n.parentElement.closest("script,style,noscript,template,select,option,datalist,textarea") ? 2 : 1 });
     const sn2 = new Set(); let k2 = 0;
     while (tw2.nextNode() && k2++ < 4000) { const e = tw2.currentNode.parentElement; if (!vis(e) || !shown(e) || pinned(e)) continue; const c = cardOf(e); if (!c) continue;
-      let sc = false; for (let q = e; q && q !== c; q = q.parentElement) { const qs = getComputedStyle(q); if (qs.overflowX !== "visible") { sc = true; break } } if (sc) continue;   /* a table that scrolls inside its card is meant to */
+      let sc = false; for (let q = e; q && q !== c.parentElement; q = q.parentElement) { const qs = getComputedStyle(q); if (qs.overflowX !== "visible") { sc = true; break } } if (sc) continue;   /* a table that scrolls inside its card is meant to */
       const cr = c.getBoundingClientRect(), rg = document.createRange(); rg.selectNodeContents(tw2.currentNode);
       for (const r of rg.getClientRects()) { const d = Math.max(r.right - cr.right, cr.left - r.left); if (r.width > 2 && d > 2) { const key = where(e); if (!sn2.has(key)) { sn2.add(key); out.push(["runs out of its card", where(e).slice(0, 70) + " in " + nm(c) + ` (${Math.round(d)} px)`]) } break } } } }
   /* crunch: card-like siblings too close; text against its card's edge */

@@ -288,7 +288,14 @@ async function main() {
      scores, one pack per past season (job/cfbholes.mjs); the proxy adds them back. PROBE = seasons, e.g. 2010 or 2004-2025 (empty = 2004 to last season) */
   if (MODE === "cfbrec") { const { buildCfbRecords } = await import("./cfbrecords.mjs"); const { gzipSync } = await import("node:zlib");
     const now = new Date(), cur = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
-    const R = await buildCfbRecords({ site: SITE, token: sess.token, cur, log: x => console.log(x) });
+    /* PROBE: "games" adds the single-game lists (week-by-week box scores, slow); "dry" builds and compares with the saved pack, uploads nothing */
+    const PF = (process.env.PROBE || "").split(",").map(x => x.trim()), getPackC = async n => { const r = await fetch(SITE + "/api/pack/" + n, { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? r.json() : null };
+    const O0 = await getPackC("p2000_cfb-records");
+    const R = await buildCfbRecords({ site: SITE, token: sess.token, cur, games: PF.includes("games"), log: x => console.log(x) });
+    if (!PF.includes("games") && O0 && O0.st) for (const [k, x] of Object.entries(R.st)) if (O0.st[k] && O0.st[k].gm && !x.gm) x.gm = O0.st[k].gm;   /* a plain weekly run keeps the single games the slow run made */
+    if (PF.includes("dry")) { const diff = []; for (const k of Object.keys(R.st)) for (const f of ["ss", "cr", "ca"]) if (JSON.stringify((O0 && O0.st && O0.st[k] && O0.st[k][f]) || null) !== JSON.stringify(R.st[k][f] || null)) diff.push(k + "." + f);
+      for (const [k, x] of Object.entries(R.st)) console.log(`cfbrec dry: ${k} · game ${x.gm && x.gm[0] ? x.gm[0][1] + " " + x.gm[0][4] + " (" + x.gm[0][3] + " " + x.gm[0][2] + " wk " + x.gm[0][5] + " v " + x.gm[0][6] + ")" : "-"}${x.club ? ` · club ${x.club.at}: ${x.club.L.length}` : ""}${x.pace ? ` · pace ${x.pace.map(r => r[1] + " " + r[5]).join(", ")}` : ""}`);
+      const msg = `college records dry · lists already on the page that would change: ${diff.length ? diff.join(", ") : "none"} · ${(JSON.stringify(R).length / 1024).toFixed(0)} KB raw`; console.log(`::notice title=college records dry::${msg}`); await report(true, msg); return }
     const u = await api("PUT", "/api/pack/p2000_cfb-records", { raw: true, body: gzipSync(Buffer.from(JSON.stringify(R))), headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
     await api("PUT", "/api/pack-index", { body: { "p2000_cfb-records": { sha: u.sha, bytes: u.bytes, at: Date.now() } } });
     const msg = `college records · ${Object.keys(R.st).length} stats · ${R.first}–${R.through} · ${R.act.length} active in the career top 10s · ${(u.bytes / 1024).toFixed(0)} KB`; console.log(`::notice title=college records::${msg}`); await report(true, msg); return }

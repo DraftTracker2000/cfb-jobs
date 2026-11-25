@@ -12,10 +12,11 @@ const DEF = [["tkl", "Tackles", r => r.solo + r.ast], ["dsk", "Sacks", r => r.sk
   ["dint", "Interceptions", r => r.int], ["pd", "Passes defended", r => r.pd], ["ff", "Forced fumbles", r => r.ff], ["fr", "Fumbles recovered", r => r.fr], ["dtd", "Defensive TDs", r => r.td]];
 
 /* By hand (Nov 24 — the owner, 8:08 pm: "Check all, then fix"; docs/research/records-check-nov24.md): official season totals where our game logs are off.
-   Brees 2011: Week 13 vs Detroit reads 29/39, 401 in the logs (official 26/36, 342 — CBS game story). Faulk 1999: the logs miss the Week 1 game
-   (Ravens at Rams — one of three games missing from 1999–2000), official 1,381 rushing + 1,048 receiving (Hall of Fame). Lewis 2003: 2,066 yards
+   Brees 2011: Week 13 vs Detroit reads 29/39, 401 in the logs (official 26/36, 342 — CBS game story). (Faulk 1999 came off this list Nov 24, 11:20 pm:
+   the logs now have the three games nflverse leaves out, from ESPN's box scores — job/nfl.mjs gapGames — and add up to the official 253 for 1,381 and
+   87 for 1,048.) Lewis 2003: 2,066 yards
    (Hall of Fame). Turner 2008: 376 carries (StatMuse). The game logs themselves stay as they are; only these record totals change. */
-const BY_HAND = { "00-0020531|2011": { pyd: 5476, cmp: 468 }, "00-0005092|1999": { ryd: 1381, yds: 1048 }, "00-0019693|2003": { ryd: 2066, car: 387 }, "00-0022821|2008": { car: 376 } };
+const BY_HAND = { "00-0020531|2011": { pyd: 5476, cmp: 468 }, "00-0019693|2003": { ryd: 2066, car: 387 }, "00-0022821|2008": { car: 376 } };
 export async function buildNflRecords({ getPack, cur, first = 1999, log = console.log }) {
   const P = n => `p${cur}_nfl-${n}`;
   const PL = await getPack(P("players")), DP = await getPack(P("dplayers"));

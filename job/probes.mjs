@@ -427,7 +427,7 @@ return {ok:true,firstVsLast:n,thisSeason:cur,offRule:od,defense:dd,coaches,sampl
   /* Nov 5 (item 9, read only): the live page's own NFL picks (worked out on the page) against the saved picks file the Lab now reads */
   /* #59 (Nov 24, read only): the dynasty values worked out on the page vs asked of the server (/api/dyn, the members' copy's way) — the same
      made-up league (12 teams, PPR, dynasty) run twice in the full page, the second time with the page's model code hidden */
-  { name: "dyncmp", page: "/", widths: [1280], settle: 6000, run: `const out={};for(const sc of ["ppr","half"]){FLG.on=true;FLG.fmt="dynasty";FLG.sc=sc;FLG.n=12;FLG.qb="1";FLG.tep=0;
+  { name: "dyncmp", page: "/", widths: [1280], ready: "body", settle: 9000, run: `await new Promise(r=>{const t=Date.now(),k=()=>typeof flAnalyze==="function"&&typeof flGenModel==="function"?r():Date.now()-t>60000?r():setTimeout(k,500);k()});`+ `const out={};for(const sc of ["ppr","half"]){FLG.on=true;FLG.fmt="dynasty";FLG.sc=sc;FLG.n=12;FLG.qb="1";FLG.tep=0;
  const M=await flGenModel(),A1=await flAnalyze(M,null),K=Object.keys(M.P).filter(k=>["QB","RB","WR","TE"].includes(A1.pos(k))&&A1.tm(k)),v1={},f1={};for(const k of K){v1[k]=A1.value(k);f1[k]=(A1.val(k).dynF||[]).join()}
  const keep=window.flDynSeason,t0=performance.now();let A2,bytes=0;const of=window.fetch;window.fetch=function(u,o){if(String(u).includes("/api/dyn"))bytes=(o&&o.body||"").length;return of.apply(this,arguments)};
  try{window.flDynSeason=undefined;A2=await flAnalyze(M,null)}finally{window.flDynSeason=keep;window.fetch=of}const ms=Math.round(performance.now()-t0);

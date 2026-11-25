@@ -40,7 +40,7 @@ export async function buildCfbRecords({ site, token, cur, first = 2004, games = 
   /* single games: every FBS player's box score line, week by week (the proxy keeps finished seasons), the top 10 per stat */
   if (games) { const G = {}, MAPG = { passing: { YDS: "pyd", TD: "ptd" }, rushing: { YDS: "ryd", TD: "rtd", CAR: "car" }, receiving: { REC: "rec", YDS: "yds", TD: "td" },
       defensive: { TOT: "tkl", SACKS: "dsk", TFL: "tfl", PD: "pd" }, interceptions: { INT: "dint", TD: "pick6" } };
-    let calls = 0, lines = 0;
+    let calls = 0, lines = 0, cut = 0;
     for (let y = first; y <= cur; y++) { const fbs = new Set(((await cf(`/teams/fbs?year=${y}`)) || []).map(t => t.school));
       for (const [st, wk] of [...Array.from({ length: 16 }, (_, i) => ["regular", i + 1]), ["postseason", 1]]) {
         const L = await cf(`/games/players?year=${y}&week=${wk}&seasonType=${st}`); calls++; if (!L || !L.length) continue;
@@ -49,7 +49,8 @@ export async function buildCfbRecords({ site, token, cur, first = 2004, games = 
             for (const c of t.categories || []) { const M = MAPG[c.name]; if (!M) continue; for (const ty of c.types || []) { const k = M[ty.name]; if (!k) continue;
               for (const a of ty.athletes || []) { const v = +a.stat; if (!(v > 0) || !a.id || +a.id < 0) continue; const p = P[a.id] = P[a.id] || { n: a.name, v: {} }; p.v[k] = (p.v[k] || 0) + v } } }
             for (const [id, p] of Object.entries(P)) { p.v.scr = (p.v.ryd || 0) + (p.v.yds || 0); p.v.stdn = (p.v.rtd || 0) + (p.v.td || 0); lines++;
-              for (const [k, v] of Object.entries(p.v)) if (v > 0 && out[k]) { const A = G[k] = G[k] || []; A.push([String(id), p.n, y, t.team, r1(v), st === "postseason" ? "bowl" : wk, opp]); if (A.length > 400) { A.sort((a, b) => b[4] - a[4]); A.length = 10 } } } } } }
+              const sv = S[String(id) + "|" + y];   /* a game line can't be more than his season total (CFBD's box scores have bad lines: 8 sacks in a 61–39 loss, New Mexico 2024) */
+              for (const [k, v] of Object.entries(p.v)) if (v > 0 && out[k] && !(sv && sv.v[k] != null && v > sv.v[k] + 0.01) && !(sv && sv.v[k] == null && ["dsk", "tkl", "tfl", "pd", "dint"].includes(k))) { const A = G[k] = G[k] || []; A.push([String(id), p.n, y, t.team, r1(v), st === "postseason" ? "bowl" : wk, opp]); if (A.length > 400) { A.sort((a, b) => b[4] - a[4]); A.length = 10 } } } } } }
       log(`college records: single games through ${y}`) }
     for (const [k, x] of Object.entries(out)) x.gm = (G[k] || []).sort((a, b) => b[4] - a[4]).slice(0, 10);
     log(`college records: single games · ${calls} week files · ${lines} player-game lines`) }

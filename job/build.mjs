@@ -68,7 +68,7 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "cfbholes", "nflrec", "cfbrec", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad", "colang", "fproj", "recmap", "awhist"];
+const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "cfbholes", "nflrec", "cfbrec", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad", "colang", "fproj", "recmap", "awhist", "nfledge"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const NOFRESH = ["probe", "look", "crawl", "study", "release"].includes(MODE) || /test$/.test(MODE);
@@ -315,6 +315,22 @@ async function main() {
     const msg = `NFL records · ${Object.keys(R.st).length} stats · 1999–${R.through} · ${R.act.length} active in the career top 10s · ${(u.bytes / 1024).toFixed(0)} KB`; console.log(`::notice title=NFL records::${msg}`); await report(true, msg); return }
   /* the college map's national view (Nov 24 — the owner, 9:25 pm): every high-school signee by hometown, all schools (job/colrecmap.mjs). PROBE = "dry" builds without uploading */
   /* award winners' seasons (Nov 24 — the owner, 11:36 pm, yes to the awards ideas): each past winner's season line and team (job/awhist.mjs); PROBE = "dry" builds without uploading */
+  /* EDGE as its own group (Nov 25 — the owner, 12:42 am: "the ap split is fine"): who plays on the edge, from the depth charts (job/nfledge.mjs) — a new pack the live page doesn't read */
+  if (MODE === "nfledge") { const { buildNflEdge } = await import("./nfledge.mjs"); const { gzipSync } = await import("node:zlib");
+    const now = new Date(), cur = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+    const getPack = async n => { const r = await fetch(SITE + "/api/pack/" + n, { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? r.json() : null };
+    const R = await buildNflEdge({ getPack, cur, log: x => console.log(x) });
+    const DP = await getPack(`p${cur}_nfl-dplayers`), iP = DP.cols.indexOf("pos"), iL = DP.cols.indexOf("last"), nmI = 0, E = new Set(R.edge);
+    const lab = {}, act = {}; for (const g of R.edge) { const r = DP.p[g]; if (!r) continue; lab[r[iP]] = (lab[r[iP]] || 0) + 1; if (+r[iL] >= cur) act[r[iP]] = (act[r[iP]] || 0) + 1 }
+    const byName = {}; for (const [g, r] of Object.entries(DP.p)) (byName[r[nmI]] = byName[r[nmI]] || []).push(g);
+    for (const n of ["Myles Garrett", "T.J. Watt", "Micah Parsons", "Khalil Mack", "Nick Bosa", "Brian Burns", "Nik Bonitto", "Von Miller", "DeMarcus Ware", "Jared Allen", "Fred Warner", "Roquan Smith", "Bobby Wagner", "Cameron Heyward", "Aaron Donald", "Lavonte David", "Shaquille Leonard", "Haason Reddick", "Leonard Floyd", "Chandler Jones"])
+      for (const g of byName[n] || []) { const x = R.p[g]; console.log(`edge check: ${n} · ${DP.p[g][iP]} → ${E.has(g) ? "EDGE" : "stays"} · ${x ? `edge ${x[0]} / off ${x[1]} / interior ${x[2]} weeks · ${x[3]} sacks in ${x[4]} games` : "no chart weeks"}`) }
+    const viaSacks = R.edge.filter(g => { const x = R.p[g], n = x[0] + x[1] + x[2]; return x[0] / n < 0.5 });
+    console.log(`edge: by the sacks check: ${viaSacks.map(g => (DP.p[g] || [g])[0]).join(", ")}`);
+    const u = await api("PUT", "/api/pack/p2000_nfl-edge", { raw: true, body: gzipSync(Buffer.from(JSON.stringify(R))), headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+    await api("PUT", "/api/pack-index", { body: { "p2000_nfl-edge": { sha: u.sha, bytes: u.bytes, at: Date.now() } } });
+    const msg = `NFL edge · ${R.edge.length} edge players ${R.first}–${R.through} (roster ${Object.entries(lab).map(([k, v]) => k + " " + v).join(", ")}) · this season ${Object.entries(act).map(([k, v]) => k + " " + v).join(", ")} · ${viaSacks.length} by the sacks check · ${(u.bytes / 1024).toFixed(0)} KB`;
+    console.log(`::notice title=NFL edge::${msg}`); await report(true, msg); return }
   if (MODE === "awhist") { const { buildAwHist } = await import("./awhist.mjs"); const { gzipSync } = await import("node:zlib");
     const now = new Date(), cur = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
     const getPack = async n => { const r = await fetch(SITE + "/api/pack/" + n, { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? r.json() : null };

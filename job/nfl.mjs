@@ -54,7 +54,7 @@ async function get(path, log) {
    James Thompson Jr., Anthony Lucas, Gary Smith III, Fred Davis II, Marlon Jones). An id whose player started 20+ years before this
    season, or one that isn't a gsis id at all, is swapped for the only recent player (rookie season in the last 4) with that exact name. */
 const nkJ = x => String(x || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "");
-async function depthIdFix(path, txt, log) {
+export async function depthIdFix(path, txt, log) {
   const S = +((path.match(/_(\d{4})\.csv/) || [])[1]); if (!txt || !S || !/^dt,/.test(txt)) return txt;
   const pt = await get0("players/players.csv", log); if (!pt) return txt;
   const P = {}, recent = {}; rows(pt, ["gsis_id", "display_name", "rookie_season"], o => { if (!o.gsis_id) return; const r = num(o.rookie_season); P[o.gsis_id] = r;

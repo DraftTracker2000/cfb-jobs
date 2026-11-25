@@ -68,7 +68,7 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "cfbholes", "nflrec", "cfbrec", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad", "colang", "fproj"];
+const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "cfbholes", "nflrec", "cfbrec", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad", "colang", "fproj", "recmap"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const NOFRESH = ["probe", "look", "crawl", "study", "release"].includes(MODE) || /test$/.test(MODE);
@@ -299,6 +299,13 @@ async function main() {
     const u = await api("PUT", "/api/pack/p2000_nfl-records", { raw: true, body: gzipSync(Buffer.from(JSON.stringify(R))), headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
     await api("PUT", "/api/pack-index", { body: { "p2000_nfl-records": { sha: u.sha, bytes: u.bytes, at: Date.now() } } });
     const msg = `NFL records · ${Object.keys(R.st).length} stats · 1999–${R.through} · ${R.act.length} active in the career top 10s · ${(u.bytes / 1024).toFixed(0)} KB`; console.log(`::notice title=NFL records::${msg}`); await report(true, msg); return }
+  /* the college map's national view (Nov 24 — the owner, 9:25 pm): every high-school signee by hometown, all schools (job/colrecmap.mjs). PROBE = "dry" builds without uploading */
+  if (MODE === "recmap") { const { buildColRecMap, uploadColRecMap } = await import("./colrecmap.mjs");
+    const now = new Date(), to = now.getUTCMonth() >= 7 ? now.getUTCFullYear() + 1 : now.getUTCFullYear();
+    const b = await buildColRecMap({ site: SITE, token: sess.token, from: 2002, to, log: x => console.log(x) });
+    const up = (process.env.PROBE || "").trim() === "dry" ? { bytes: 0 } : await uploadColRecMap({ api, d: b.d });
+    const msg = `college recruit map · ${b.d.r.length} signees · ${b.d.sch.length} schools · ${b.d.from}–${b.d.to} · left out ${b.noSch} with no school, ${b.noLoc} with no coordinates · ${b.calls} CFBD calls · ${(up.bytes / 1024).toFixed(0)} KB · by year ${JSON.stringify(b.per)}`;
+    console.log(`::notice title=recmap::${msg}`); await report(true, msg); return }
   if (MODE === "cfbholes") { const { buildCfbHoles, uploadCfbHoles } = await import("./cfbholes.mjs");
     const now = new Date(), last = (now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1) - 1, spec = (process.env.PROBE || "").trim(), years = [];
     if (/^\d{4}-\d{4}$/.test(spec)) { const [a, b] = spec.split("-").map(Number); for (let y = a; y <= Math.min(b, last); y++) years.push(y) }

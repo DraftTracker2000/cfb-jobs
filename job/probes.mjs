@@ -875,4 +875,46 @@ out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(",
       out.traits[tr]={heldOut:[h1,h5],weights:picks.join(","),inSample:Object.fromEntries(WG.map(w=>[w,sum(SEAS,tr,w).join("/")]))}}
     out.winners=SEAS.map(S=>{const c=S.C.find(c=>c.w);return S.y+" "+(S.win||"?")+(c?" sig "+c.t.sig.toFixed(2)+" vr "+c.t.vr.toFixed(2)+" late "+c.t.late.toFixed(2)+" gp "+c.t.gp:" (not in our top 25)")});
     return {ok:true,...out}` },
+  { name: "cawfit", node: `const H={headers:{Authorization:"Bearer "+TOKEN}};const api=async p=>{for(let k=0;k<4;k++){try{const r=await fetch(SITE+"/api/cfbd?path="+encodeURIComponent(p),H);if(r.ok)return r.json();if(r.status===429)await new Promise(r=>setTimeout(r,4000))}catch(e){}await new Promise(r=>setTimeout(r,1200))}return []};
+    const AW=await (await fetch(SITE+"/data/col-awards.json",H)).json(),WIN=Object.fromEntries((AW.national["Heisman Trophy"]||[]).map(r=>[r[0],r]));
+    const W=[2.05,1.102,0.523,1.898,1.81,1.413,1.006],P4=["SEC","Big Ten","Big 12","ACC","Pac-12"],FLOOR=.68,CARRY=.45;
+    const nk=s=>String(s||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLowerCase().replace(/\\b(jr|sr|ii|iii|iv)\\b\\.?/g,"").replace(/[^a-z]/g,"");
+    const POS0=p=>p==="QB"?"QB":/^(RB|FB|HB)$/.test(p)?"RB":p==="WR"?"WR":p==="TE"?"TE":null,POSX=x=>POS0(x.pos)||((x.s.passing_ATT||0)>=150?"QB":(x.s.rushing_CAR||0)>=100?"RB":(x.s.receiving_REC||0)>=30?"WR":null);
+    const prodS=(N,g)=>g==="QB"?N("passing_YDS")+20*N("passing_TD")-45*N("passing_INT")+N("rushing_YDS")+20*N("rushing_TD"):g==="RB"?N("rushing_YDS")+N("receiving_YDS")+20*(N("rushing_TD")+N("receiving_TD")):N("receiving_YDS")+20*N("receiving_TD")+3*N("receiving_REC");
+    const effS=(N,g)=>g==="QB"?(N("passing_ATT")?(N("passing_YDS")+20*N("passing_TD")-45*N("passing_INT"))/N("passing_ATT"):0):g==="RB"?(N("rushing_CAR")?N("rushing_YDS")/N("rushing_CAR"):0):(N("receiving_REC")?N("receiving_YDS")/N("receiving_REC"):0);
+    const volOK=(N,g)=>g==="QB"?N("passing_ATT")>=150:g==="RB"?N("rushing_CAR")>=100:g==="WR"?N("receiving_REC")>=30:N("receiving_REC")>=20;
+    const ms=v=>{const m=v.reduce((a,b)=>a+b,0)/(v.length||1),s=Math.sqrt(v.reduce((a,b)=>a+(b-m)**2,0)/(v.length||1))||1;return[m,s]};
+    const SEAS=[],REC={};const RK=[["pyd",N=>N("passing_YDS")],["ptd",N=>N("passing_TD")],["ryd",N=>N("rushing_YDS")],["rtd",N=>N("rushing_TD")],["cyd",N=>N("receiving_YDS")],["ctd",N=>N("receiving_TD")],["scr",N=>N("rushing_YDS")+N("receiving_YDS")],["std",N=>N("rushing_TD")+N("receiving_TD")],["tot",N=>N("passing_YDS")+N("rushing_YDS")]];
+    for(let y=2004;y<=2025;y++){const cats=["passing","rushing","receiving","defensive","interceptions"];const R=await Promise.all([...cats.map(c=>api("/stats/player/season?year="+y+"&category="+c+"&seasonType=both")),api("/records?year="+y),api("/rankings?year="+y+"&seasonType=regular")]);
+      const fbs={};for(const r of R[5]||[])if(r.classification==="fbs")fbs[r.team]={w:r.total.wins,g:r.total.games,conf:r.conference};
+      let last=null;for(const w of R[6]||[])if(!last||w.week>last.week)last=w;const ap={};if(last){const p=(last.polls||[]).find(x=>/AP Top 25/.test(x.poll))||(last.polls||[])[0];for(const r of (p&&p.ranks)||[])ap[r.school]=r.rank}
+      const P={};cats.forEach((c,i)=>{for(const r of R[i]||[]){if(!fbs[r.team])continue;const x=P[r.playerId]=P[r.playerId]||{id:String(r.playerId),n:r.player,t:r.team,pos:r.position,s:{}};x.s[c+"_"+r.statType]=+r.stat||0}});
+      /* record seasons: above every earlier season since 2004 in that stat (counted from 2008, so 4+ seasons before it) */
+      const best={};for(const x of Object.values(P)){const N=k=>+(x.s[k]||0);for(const [k,f] of RK){const v=f(N);if(!best[k]||v>best[k])best[k]=v}}
+      const recOf=x=>{const N=k=>+(x.s[k]||0),o=[];for(const [k,f] of RK)if(REC[k]!=null&&f(N)>REC[k])o.push(k);return o};
+      if(y>=2008){const TT={};for(const x of Object.values(P)){const t=TT[x.t]=TT[x.t]||{p:0,r:0,c:0,td:0};t.p+=x.s.passing_YDS||0;t.r+=x.s.rushing_YDS||0;t.c+=x.s.receiving_YDS||0;t.td+=(x.s.rushing_TD||0)+(x.s.receiving_TD||0)}
+      const C=[];for(const x of Object.values(P)){const g=POSX(x);if(!g)continue;const tm=fbs[x.t],N=k=>+(x.s[k]||0);if(!tm||!volOK(N,g))continue;const win=tm.g?tm.w/tm.g:0,tot=(TT[x.t].p+TT[x.t].r)||1,mine=g==="QB"?N("passing_YDS")+N("rushing_YDS"):N("rushing_YDS")+N("receiving_YDS");
+        if(tm.g>=6&&win<FLOOR&&!(mine/tot>=CARRY))continue;const dprod=4*N("defensive_SACKS")+2*N("defensive_TFL")+2*N("defensive_PD")+6*N("interceptions_INT")+.25*N("defensive_TOT");
+        const scrSh=g==="QB"?0:(N("rushing_YDS")+N("receiving_YDS"))/((TT[x.t].r+TT[x.t].c)||1),tdSh=g==="QB"?0:(N("rushing_TD")+N("receiving_TD"))/(TT[x.t].td||1);
+        C.push({x,g,prod:prodS(N,g)+20*dprod,eff:effS(N,g),win,ap:ap[x.t]?(26-ap[x.t])/25:0,qb:g==="QB"?1:0,p4:(P4.includes(tm.conf)&&!(tm.conf==="Pac-12"&&y>=2024))||x.t==="Notre Dame"?1:0,sh:mine/tot,bsh:(scrSh+tdSh)/2,rec:recOf(x)})}
+      const Z={};for(const g of ["QB","RB","WR","TE"]){const A=Object.values(P).filter(x=>POSX(x)===g&&fbs[x.t]&&volOK(k=>+(x.s[k]||0),g));Z[g]={p:ms(A.map(x=>prodS(k=>+(x.s[k]||0),g))),e:ms(A.map(x=>effS(k=>+(x.s[k]||0),g)))}}
+      for(const c of C){const z=Z[c.g];c.zp=(c.prod-z.p[0])/z.p[1];c.ze=(c.eff-z.e[0])/z.e[1];c.parts=[W[0]*c.zp,W[1]*c.ze,W[2]*c.win,W[3]*c.ap,W[4]*c.qb,W[5]*c.p4,W[6]*c.sh];c.sc=c.parts.reduce((a,b)=>a+b,0)}
+      C.sort((a,b)=>b.sc-a.sc);const top=C.slice(0,40),wr=WIN[y];
+      const bz=ms(top.filter(c=>c.g!=="QB").map(c=>c.bsh));
+      SEAS.push({y,win:wr&&wr[1],C:top.map(c=>({n:c.x.n,t:c.x.t,g:c.g,p4:c.p4,sc:c.sc,win:c.parts[2],ap:c.parts[3],bz:c.g==="QB"?0:(c.bsh-bz[0])/bz[1],rec:c.rec,rb:c.g==="RB"?1:0,w:wr&&nk(c.x.n)===nk(wr[1])?1:0}))})}
+      for(const [k,v] of Object.entries(best))REC[k]=Math.max(REC[k]||0,v)}
+    /* the fittings: team record (win share and AP rank) scaled; a back's share of his team's scrimmage yards and TDs; a record-season bonus (any stat / backs only) */
+    const F={teamRec:(c,w)=>(w-1)*(c.win+c.ap),winOnly:(c,w)=>(w-1)*c.win,backShare:(c,w)=>w*c.bz,recAny:(c,w)=>w*(c.rec.length?1:0),recBack:(c,w)=>w*(c.rb&&c.rec.some(k=>["ryd","rtd","scr","std"].includes(k))?1:0)};
+    const GR={teamRec:[0,.25,.5,.75,1,1.25,1.5,2],winOnly:[0,.5,1,1.5,2,3],backShare:[0,.25,.5,1,1.5,2],recAny:[0,.25,.5,1,1.5,2,3],recBack:[0,.25,.5,1,1.5,2,3]};
+    const hit=(S,f,w)=>{const s=S.C.map(c=>c.sc+(f?F[f](c,w):0)),o=s.map((v,i)=>[v,i]).sort((a,b)=>b[0]-a[0]),r=o.findIndex(([,i])=>S.C[i].w);return [r===0?1:0,r>=0&&r<5?1:0]};
+    const sum=(L,f,w)=>L.reduce((a,S)=>{const h=hit(S,f,w);return[a[0]+h[0],a[1]+h[1]]},[0,0]);
+    const base0={teamRec:1,winOnly:1,backShare:0,recAny:0,recBack:0};
+    const out={base:sum(SEAS,null,0),seasons:SEAS.length,winnersInPool:SEAS.filter(S=>S.C.some(c=>c.w)).length,fits:{}};
+    for(const f in F){let h1=0,h5=0;const picks=[];for(const S of SEAS){const rest=SEAS.filter(x=>x!==S),w=GR[f].reduce((b,w)=>{const a=sum(rest,f,w),c=sum(rest,f,b);return a[0]>c[0]||(a[0]===c[0]&&a[1]>c[1])?w:b},base0[f]);picks.push(w);const h=hit(S,f,w);h1+=h[0];h5+=h[1]}
+      out.fits[f]={heldOut:[h1,h5],weights:picks.join(","),inSample:Object.fromEntries(GR[f].map(w=>[w,sum(SEAS,f,w).join("/")]))}}
+    /* tiers (bylaw 15): where the winners and the top 5 come from */
+    out.tier={winnersPower:SEAS.filter(S=>S.C.some(c=>c.w&&c.p4)).length,winnersRest:SEAS.filter(S=>S.C.some(c=>c.w&&!c.p4)).length,top5Power:SEAS.reduce((a,S)=>a+S.C.slice(0,5).filter(c=>c.p4).length,0),top5All:SEAS.length*5};
+    out.records=SEAS.map(S=>S.y+": "+S.C.filter(c=>c.rec.length).slice(0,4).map(c=>c.n+" ("+c.rec.join("/")+")"+(c.w?" WON":"")).join(", ")).filter(x=>!/: $/.test(x));
+    out.misses=SEAS.map(S=>{const o=S.C.map((c,i)=>[c.sc,i]).sort((a,b)=>b[0]-a[0]),r=o.findIndex(([,i])=>S.C[i].w);return r===0?null:S.y+" "+(S.win||"?")+" our #"+(r+1)+" (#1 "+S.C[o[0][1]].n+")"}).filter(Boolean);
+    return {ok:true,...out}` },
 ];

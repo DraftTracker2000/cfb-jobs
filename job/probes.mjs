@@ -425,6 +425,15 @@ return {ok:d===0&&pd===0,season:{games:Object.keys(A.g).length,teams:T.length,ep
   { name: "xfermore3", page: "/lab/", widths: [1280], settle: 8000, run: `const C=await coTrxAll();let n=0,cur=0,coaches=0,od=0,dd=0;const L=[];for(const k in C){const R=C[k].filter(x=>x.kind==="more");if(R.length)coaches++;for(const x of R){if(x.oc){od++;continue}if(x.df){dd++;continue}n++;if(x.y===CURYEAR)cur++;L.push(x.p+" "+x.pos+" → "+x.to+" "+x.y+" +"+(x.me-x.was).toFixed(2)+" z "+x.z.toFixed(2))}}
 return {ok:true,firstVsLast:n,thisSeason:cur,offRule:od,defense:dd,coaches,sample:L.slice(0,25)}` },
   /* Nov 5 (item 9, read only): the live page's own NFL picks (worked out on the page) against the saved picks file the Lab now reads */
+  /* #59 (Nov 24, read only): the dynasty values worked out on the page vs asked of the server (/api/dyn, the members' copy's way) — the same
+     made-up league (12 teams, PPR, dynasty) run twice in the full page, the second time with the page's model code hidden */
+  { name: "dyncmp", page: "/", widths: [1280], settle: 6000, run: `const out={};for(const sc of ["ppr","half"]){FLG.on=true;FLG.fmt="dynasty";FLG.sc=sc;FLG.n=12;FLG.qb="1";FLG.tep=0;
+ const M=await flGenModel(),A1=await flAnalyze(M,null),K=Object.keys(M.P).filter(k=>["QB","RB","WR","TE"].includes(A1.pos(k))&&A1.tm(k)),v1={},f1={};for(const k of K){v1[k]=A1.value(k);f1[k]=(A1.val(k).dynF||[]).join()}
+ const keep=window.flDynSeason,t0=performance.now();let A2,bytes=0;const of=window.fetch;window.fetch=function(u,o){if(String(u).includes("/api/dyn"))bytes=(o&&o.body||"").length;return of.apply(this,arguments)};
+ try{window.flDynSeason=undefined;A2=await flAnalyze(M,null)}finally{window.flDynSeason=keep;window.fetch=of}const ms=Math.round(performance.now()-t0);
+ let n=0,d=0,mx=0,fd=0,ex=[];for(const k of K){const a=v1[k],b=A2.value(k),e=Math.abs(a-b);n++;if(e>1e-9){d++;if(ex.length<5)ex.push(A1.nm(k)+" "+a.toFixed(3)+" vs "+b.toFixed(3))}mx=Math.max(mx,e);if(f1[k]!==(A2.val(k).dynF||[]).join())fd++}
+ const top=K.sort((a,b)=>v1[b]-v1[a]).slice(0,5).map(k=>A1.nm(k)+" "+v1[k].toFixed(1));out[sc]={players:n,differ:d,maxDiff:+mx.toExponential(2),dynFdiffer:fd,ex,top,postKB:Math.round(bytes/1024),ms}}
+ return {ok:Object.values(out).every(x=>x.players>200&&!x.differ&&!x.dynFdiffer),...out}` },
   { name: "pickcmp", page: "/", widths: [1280], settle: 6000, run: `const G=await nflGames();await nflQbOutLoad().catch(()=>{});const r=await fetch("/api/pack/p"+CURYEAR+"_nfl-picks",{headers:{Authorization:"Bearer "+TOKEN}});if(!r.ok)return {ok:false,st:r.status};const P=await r.json();
 let n=0,d=0,mx=0,ex=[];for(const g of G){if(P.g[g.id]==null)continue;n++;const v=nflPickP(G,g),e=Math.abs(v-P.g[g.id]);if(e>0.0006){d++;if(ex.length<6)ex.push(g.id+" "+v.toFixed(4)+" vs "+P.g[g.id])}mx=Math.max(mx,e)}
 let pn=0,pd=0;const T=Object.keys(P.h);for(const a of T)for(const b of T)if(a!==b){pn++;const v=nflPickP(G,{home:a,away:b,neutral:false,date:null,season:CURYEAR});if(Math.abs(v-P.h[a][b])>0.0006)pd++}

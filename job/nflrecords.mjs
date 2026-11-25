@@ -11,6 +11,11 @@ const OFF = [["pyd", "Passing yards", r => r.pyd], ["ptd", "Passing TDs", r => r
 const DEF = [["tkl", "Tackles", r => r.solo + r.ast], ["dsk", "Sacks", r => r.sk], ["tfl", "Tackles for loss", r => r.tfl], ["qbh", "QB hits", r => r.qbh],
   ["dint", "Interceptions", r => r.int], ["pd", "Passes defended", r => r.pd], ["ff", "Forced fumbles", r => r.ff], ["fr", "Fumbles recovered", r => r.fr], ["dtd", "Defensive TDs", r => r.td]];
 
+/* By hand (Nov 24 — the owner, 8:08 pm: "Check all, then fix"; docs/research/records-check-nov24.md): official season totals where our game logs are off.
+   Brees 2011: Week 13 vs Detroit reads 29/39, 401 in the logs (official 26/36, 342 — CBS game story). Faulk 1999: the logs miss the Week 1 game
+   (Ravens at Rams — one of three games missing from 1999–2000), official 1,381 rushing + 1,048 receiving (Hall of Fame). Lewis 2003: 2,066 yards
+   (Hall of Fame). Turner 2008: 376 carries (StatMuse). The game logs themselves stay as they are; only these record totals change. */
+const BY_HAND = { "00-0020531|2011": { pyd: 5476, cmp: 468 }, "00-0005092|1999": { ryd: 1381, yds: 1048 }, "00-0019693|2003": { ryd: 2066, car: 387 }, "00-0022821|2008": { car: 376 } };
 export async function buildNflRecords({ getPack, cur, first = 1999, log = console.log }) {
   const P = n => `p${cur}_nfl-${n}`;
   const PL = await getPack(P("players")), DP = await getPack(P("dplayers"));
@@ -34,6 +39,7 @@ export async function buildNflRecords({ getPack, cur, first = 1999, log = consol
      before the first game, the players files' status stands in */
   if (!act.size) for (const F of [PL, DP]) if (F && F.p && F.cols) { const iS = F.cols.indexOf("status"), iL = F.cols.indexOf("last");
     for (const [g, r] of Object.entries(F.p)) if (/^(ACT|RES|INA|DEV|EXE)$/.test(r[iS] || "") && +r[iL] >= cur - 1) act.add(g) }
+  for (const [k, v] of Object.entries(BY_HAND)) { const x = seasonO[k]; if (!x) continue; for (const [stat, val] of Object.entries(v)) x.v[stat] = val; x.v.scr = x.v.ryd + x.v.yds; x.v.stdn = x.v.rtd + x.v.td; x.hand = 1 }
   const st = {};
   for (const [bag, LIST, side, car] of [[seasonO, OFF, "off", careerO], [seasonD, DEF, "def", careerD]]) {
     for (const x of Object.values(bag)) { const C = car[x.g] = car[x.g] || {}; for (const [k, v] of Object.entries(x.v)) C[k] = (C[k] || 0) + v }
@@ -47,4 +53,4 @@ export async function buildNflRecords({ getPack, cur, first = 1999, log = consol
         .map(([g, v]) => [g, name(g), Math.round(v[key] * 10) / 10, span[g][0], span[g][1]]);
       st[key] = { l, side, ss, cr, ca } } }
   const shown = [...new Set(Object.values(st).flatMap(x => [...x.ss, ...x.cr, ...x.ca].map(r => r[0])))];
-  return { through, first, act: shown.filter(g => act.has(g)), pos: Object.fromEntries(shown.map(g => [g, pos(g)])), st } }
+  return { through, first, hand: Object.keys(BY_HAND), act: shown.filter(g => act.has(g)), pos: Object.fromEntries(shown.map(g => [g, pos(g)])), st } }

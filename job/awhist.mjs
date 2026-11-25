@@ -10,7 +10,7 @@
    team|"", pos|"", line|null]] }, miss: [...] }. line = { stat: value } with only the stats he has. Nothing else is read or changed. */
 
 const nk = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "");
-const ALIAS = { "Mike Vick": "Michael Vick", "Pat Surtain II": "Patrick Surtain II", "Odell Beckham Jr.": "Odell Beckham" };
+const ALIAS = { "Patrick Surtain II": "Pat Surtain II" };
 
 export async function buildAwHist({ site, token, getPack, cur, log = console.log }) {
   const H = { headers: { Authorization: "Bearer " + token } }, miss = [];
@@ -31,6 +31,9 @@ export async function buildAwHist({ site, token, getPack, cur, log = console.log
   const col = {};
   for (const [aw, L] of Object.entries(CA.national)) col[aw] = L.map(([y, n, sch, pos]) => { let line = null;
     if (SY[y]) { const k = nk(n) + "|" + sch; let x = SY[y][k]; if (!x) { const c = Object.entries(SY[y]).filter(([kk]) => kk.startsWith(nk(n) + "|")); if (c.length === 1) x = c[0][1] }
+      /* a different first name in CFBD's list (Cam → Cameron Ward, Ugo → Ugochukwu Amadi, KC → Kevin Concepcion): the same school and last name, when only one fits */
+      if (!x) { const ln = w => nk(String(w).replace(/\b(Jr|Sr|II|III|IV|V)\b\.?/g, "").trim().split(/\s+/).pop()), want = ln(n), alt = { "Miami (FL)": "Miami", "Miami (OH)": "Miami (OH)" };
+        const c = Object.values(SY[y]).filter(v => (v.t === sch || v.t === alt[sch]) && ln(v.n) === want); if (c.length === 1) x = c[0] }
       if (x) line = Object.fromEntries(Object.entries(x.v).filter(([, v]) => v).map(([k, v]) => [k, Math.round(v * 10) / 10])); else miss.push(`col ${aw} ${y} ${n} (${sch})`) }
     return [y, n, sch, pos || "", line, (REC[y] && REC[y][sch]) || ""] });
 

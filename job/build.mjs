@@ -296,6 +296,13 @@ async function main() {
     const now = new Date(), cur = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
     const getPack = async n => { const r = await fetch(SITE + "/api/pack/" + n, { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? r.json() : null };
     const R = await buildNflRecords({ getPack, cur, log: x => console.log(x) });
+    /* PROBE = "dry": build and compare with the saved pack (the lists already on the page must come out the same), upload nothing */
+    if ((process.env.PROBE || "").trim() === "dry") { const O = await getPack("p2000_nfl-records"), diff = [];
+      for (const k of Object.keys(R.st)) for (const f of ["ss", "cr", "ca"]) if (JSON.stringify((O && O.st && O.st[k] && O.st[k][f]) || null) !== JSON.stringify(R.st[k][f] || null)) diff.push(k + "." + f);
+      const cnt = f => Object.values(R.st).filter(x => x[f] && (f === "club" ? x[f].L.length : x[f].length)).length;
+      for (const [k, x] of Object.entries(R.st)) console.log(`nflrec dry: ${k} · game ${x.gm[0] ? x.gm[0][1] + " " + x.gm[0][4] + " (" + x.gm[0][2] + " wk " + x.gm[0][5] + " v " + x.gm[0][6] + ")" : "-"} · rookie ${x.rk[0] ? x.rk[0][1] + " " + x.rk[0][4] + " (" + x.rk[0][2] + ")" : "-"} · playoffs ${x.ps[0] ? x.ps[0][1] + " " + x.ps[0][4] + " (" + x.ps[0][2] + ")" : "-"} · playoff career ${x.pc[0] ? x.pc[0][1] + " " + x.pc[0][2] : "-"}${x.club ? ` · club ${x.club.at}: ${x.club.L.length}` : ""}${x.pace ? ` · pace ${x.pace.map(r => r[1] + " " + r[5]).join(", ")}` : ""}`);
+      const msg = `NFL records dry · lists already on the page that would change: ${diff.length ? diff.join(", ") : "none"} · single games ${cnt("gm")}, rookies ${cnt("rk")}, playoffs ${cnt("ps")}/${cnt("pc")}, clubs ${cnt("club")}, pace ${cnt("pace")} stats · ${(JSON.stringify(R).length / 1024).toFixed(0)} KB raw`;
+      console.log(`::notice title=NFL records dry::${msg}`); await report(true, msg); return }
     const u = await api("PUT", "/api/pack/p2000_nfl-records", { raw: true, body: gzipSync(Buffer.from(JSON.stringify(R))), headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
     await api("PUT", "/api/pack-index", { body: { "p2000_nfl-records": { sha: u.sha, bytes: u.bytes, at: Date.now() } } });
     const msg = `NFL records · ${Object.keys(R.st).length} stats · 1999–${R.through} · ${R.act.length} active in the career top 10s · ${(u.bytes / 1024).toFixed(0)} KB`; console.log(`::notice title=NFL records::${msg}`); await report(true, msg); return }

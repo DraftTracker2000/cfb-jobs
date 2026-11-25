@@ -228,6 +228,28 @@ async function sleeperSnaps(S, log) {
     log(`nfl: snaps ${S}: ${n} player-games · ${reads} Sleeper reads${quiet ? " (" + dow + ": kept weeks, no reads)" : ""}`); return out;
   } catch (e) { log(`nfl: snaps ${S}: ${e.message}`); return null }
 }
+/* three games nflverse's weekly file leaves out entirely (found Nov 24 while checking the records: 1999 Wk 1 Ravens at Rams — Marshall Faulk's
+   126 missing scrimmage yards; 2000 Wk 3 Chargers at Chiefs; 2000 Wk 6 Bills at Dolphins; every season 2001 on is complete). Their player lines
+   come from ESPN's box score for the game (the game summary the site already reads for NFL box scores), matched to our ids by ESPN id; only a
+   player with no row for that game already is added. Columns nflverse has and ESPN doesn't (targets, first downs, air yards, EPA) stay 0. */
+const GAP_GAMES = { 1999: [[1, "1999_01_BAL_STL", "190912014", { BAL: "BAL", STL: "LA" }]], 2000: [[3, "2000_03_SD_KC", "200917012", { SD: "LAC", KC: "KC" }], [6, "2000_06_BUF_MIA", "201008015", { BUF: "BUF", MIA: "MIA" }]] };
+async function gapGames(S, out, D, log) {
+  const G = GAP_GAMES[S]; if (!G) return; const nb = (x) => { const n = parseFloat(x); return isFinite(n) ? n : 0 }; let addP = 0, addD = 0, miss = 0;
+  for (const [wk, gid, ev, TM] of G) {
+    let B = null; try { const r = await fetch("https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=" + ev); if (r.ok) B = await r.json() } catch (e) { }
+    const teams = B && B.boxscore && B.boxscore.players; if (!teams || teams.length !== 2) { log(`nfl: gap game ${gid}: no ESPN box score`); continue }
+    const ab = teams.map(t => t.team.abbreviation), P = {};
+    for (const t of teams) { const me = t.team.abbreviation, tm = TM[me] || me, opp = TM[ab.find(a => a !== me)] || ab.find(a => a !== me);
+      for (const c of t.statistics || []) for (const a of c.athletes || []) { const id = String(a.athlete.id), q = P[id] = P[id] || { tm, opp, c: {} }, v = {}; (c.labels || []).forEach((l, i) => v[l] = a.stats[i]); q.c[c.name] = v } }
+    for (const [eid, q] of Object.entries(P)) { const g = SNAP_ESPN[eid]; if (!g) { miss++; continue }
+      const pa = q.c.passing || {}, ru = q.c.rushing || {}, re = q.c.receiving || {}, fu = q.c.fumbles || {}, de = q.c.defensive || {}, it = q.c.interceptions || {};
+      const [cmp, att] = String(pa["C/ATT"] || "0/0").split("/").map(nb), sk = nb(String(pa.SACKS || "0-0").split("-")[0]);
+      const pyd = nb(pa.YDS), ptd = nb(pa.TD), int = nb(pa.INT), car = nb(ru.CAR), ryd = nb(ru.YDS), rtd = nb(ru.TD), rec = nb(re.REC), yds = nb(re.YDS), td = nb(re.TD), tgt = nb(re.TGTS), fl = nb(fu.LOST), fum = nb(fu.FUM);
+      if ((att || car || rec) && !(out[g] || []).some(r => r[2] === gid)) { const fp = r1(pyd * .04 + ptd * 4 - int * 2 + ryd * .1 + rtd * 6 + rec + yds * .1 + td * 6 - fl * 2);
+        (out[g] = out[g] || []).push([wk, "R", gid, q.tm, q.opp, cmp, att, pyd, ptd, int, sk, car, ryd, rtd, tgt, rec, yds, td, fl, null, null, 0, fp, null, null, fum, 0, 0, 0, 0, 0, 0, ...new Array(BON_N).fill(0), 0, 0, 0, 0, 0]); addP++ }
+      if ((Object.keys(de).length || Object.keys(it).length) && !(D[g] || []).some(r => r[2] === gid)) { const tot = nb(de.TOT), solo = nb(de.SOLO);
+        (D[g] = D[g] || []).push([wk, "R", gid, q.tm, q.opp, solo, Math.max(0, tot - solo), nb(de.TFL), nb(de.SACKS), nb(de["QB HTS"]), nb(it.INT), nb(de.PD), 0, nb(de.TD) + nb(it.TD), 0]); addD++ } } }
+  log(`nfl: gap games ${S}: +${addP} offense lines, +${addD} defense lines from ESPN box scores · ${miss} players with no ESPN id match`) }
 async function logs(S, log) {
   const t = await get(`stats_player/stats_player_week_${S}.csv`, log); if (!t) return null; const out = {}, D = {};
   rows(t, ["player_id", "position", "week", "season_type", "game_id", "team", "opponent_team", "completions", "attempts", "passing_yards", "passing_tds", "passing_interceptions",
@@ -251,6 +273,7 @@ async function logs(S, log) {
       n("passing_first_downs"), n("rushing_first_downs"), n("receiving_first_downs"), ...new Array(BON_N).fill(0),
       n("passing_air_yards"), n("passing_yards_after_catch"), n("receiving_air_yards"), n("receiving_yards_after_catch"), num(o.passing_cpoe) != null ? r1(num(o.passing_cpoe) * n("attempts")) : 0]);
   });
+  await gapGames(S, out, D, log);
   /* snaps from Sleeper, regular season (2020 on) */
   const SN = await sleeperSnaps(S, log); if (SN) for (const id in out) { const m = SN[id]; if (!m) continue; for (const row of out[id]) { if (row[1] !== "R") continue; const x = m[row[0]]; if (x) { row[23] = x[0]; row[24] = x[1] } } }
   /* Nov 5 (5:27 pm on the clubs, #73: "some players just do 0's. unfortunate we don't have snap counts" · 5:31 pm: "sleeper. no scraping.

@@ -45,6 +45,8 @@ export async function buildNbaFront({ getPack, putPack, log, S, curNba }) {
   log(`nba contracts: ${ok} of ${ids.length} players (ESPN, ${curNba - 1}–${String(curNba).slice(2)})`);
   const out = { v: 3, at: Date.now(), season: curNba, gms, gmsAt, con: ok >= 200 ? con : (old && old.con) || con };
   try { out.gmsc = await nbaGmScoresJob({ getPack, S, G, gms }); log(`nba GMScore: ${Object.keys(out.gmsc).length} GMs`) } catch (e) { log("nba GMScore: " + e.message) }
+  try { const [KS, TH] = await Promise.all([getPack("p2000_cbb-nbastats").catch(() => null), getPack("p2000_cbb-nbateamhist").catch(() => null)]);
+    if (KS && KS.coh && Object.keys(KS.coh).length) { out.cosc = nbaCoachScoresJob(KS, TH, G); log(`nba CoachScore: ${Object.values(out.cosc).filter(x => !x.short).length} coaches scored`) } } catch (e) { log("nba CoachScore: " + e.message) }
   await putPack(`p${S}_cbb-nbafront`, out); return out;
 }
 
@@ -79,3 +81,35 @@ export async function nbaGmScoresJob({ getPack, S, G, gms }) {
   return out;
 }
 
+/* NBA CoachScore worked out here (Nov 25 — weights off the members' page, task #59): the basketball page's nbaCoachScores, the same
+   formula and tags (win % pulled toward .500, playoff wins, titles and Finals, the lift over the team's season before; 60 = an average coach).
+   Saved as cosc in the front-office pack; the page reads it and works it out itself only when it's missing. Keep the two in step
+   (tests/run.mjs checks they give the same answer). */
+export function nbaCoachScoresJob(KS, TH, G) { const coh = (KS && KS.coh) || {}, rec = {};
+  for (const c of Object.values(coh)) for (const r of c.r) { const k = r[1] + "|" + r[0], x = rec[k] = rec[k] || [0, 0]; x[0] += r[2]; x[1] += r[3] }
+  if (TH && TH.s && G && G.teams) { const ab = {}; for (const [a, t] of Object.entries(G.teams)) ab[t.id] = a; for (const [y, T] of Object.entries(TH.s)) for (const [id, v] of Object.entries(T)) if (ab[id]) rec[ab[id] + "|" + y] = [v[0], v[1]] }
+  const pc = x => x && x[0] + x[1] ? x[0] / (x[0] + x[1]) : null, note = r => String(r[6] || "");
+  const out = {}; for (const [nm, c] of Object.entries(coh)) { const R = [...c.r].sort((a, b) => a[0] - b[0]); const w = R.reduce((a, r) => a + r[2], 0), l = R.reduce((a, r) => a + r[3], 0); if (w + l < 82) { out[nm] = { short: 1 }; continue }
+    const pw = R.reduce((a, r) => a + r[4], 0), pl = R.reduce((a, r) => a + r[5], 0), seasons = new Set(R.map(r => r[0])).size;
+    const titles = R.filter(r => /won\s+nba\s+(championship|finals)/i.test(note(r))).length, finals = R.filter(r => /nba finals/i.test(note(r)) && !/won\s+nba/i.test(note(r))).length;
+    const po = new Set(R.filter(r => r[4] + r[5] > 0).map(r => r[0])).size, wins60 = R.filter(r => r[2] >= 60).length;
+    /* stints: consecutive seasons with one team */
+    const st = []; for (const r of R) { const L = st[st.length - 1]; if (L && L.t === r[1] && r[0] - L.y1 <= 1) { L.y1 = r[0]; L.r.push(r) } else st.push({ t: r[1], y0: r[0], y1: r[0], r: [r] }) }
+    const lifts = [], turns = []; for (const S of st) { const before = pc(rec[S.t + "|" + (S.y0 - 1)]); if (before == null) continue; const first = S.r.slice(0, 3), fw = first.reduce((a, r) => a + r[2], 0), fl = first.reduce((a, r) => a + r[3], 0); if (!(fw + fl)) continue;
+      lifts.push([fw / (fw + fl) - before, first.length]); if (before <= .4) { const best = Math.max(...S.r.slice(1, 3).map(r => r[2] / Math.max(1, r[2] + r[3])), 0); if (best - before >= .15) turns.push(S.t) } }
+    /* each stint's lift counts by the seasons it covers (up to 3), pulled toward 0 by six seasons, so two good years can't outweigh a career */
+    const lift = lifts.length ? lifts.reduce((a, [v, n]) => a + v * n, 0) / (lifts.reduce((a, [, n]) => a + n, 0) + 6) : 0;
+    out[nm] = { w, l, pw, pl, seasons, titles, finals, po, wins60, lift, turns, wpS: (w + 61.5) / (w + l + 123), poS: pw / (seasons + 3), tf: titles * 3 + finals } }
+  const F = Object.values(out).filter(x => !x.short), z = k => { const v = F.map(x => x[k]), m = v.reduce((a, b) => a + b, 0) / v.length, sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length) || 1; for (const x of F) x["z_" + k] = (x[k] - m) / sd };
+  ["wpS", "poS", "tf", "lift"].forEach(z);
+  for (const x of F) { const raw = .30 * x.z_wpS + .15 * x.z_poS + .35 * x.z_tf + .20 * x.z_lift; x.raw = raw }
+  const sdR = Math.sqrt(F.reduce((a, x) => a + x.raw ** 2, 0) / F.length) || 1;
+  for (const x of F) x.score = Math.max(1, Math.min(99, Math.round(60 + 14 * x.raw / sdR)));
+  /* tags behind +N */
+  for (const x of F) { const T = []; if (x.finals + x.titles >= 3) T.push(["Finals regular", `${x.finals + x.titles} trips to the NBA Finals`]);
+    if (x.seasons >= 4 && x.po / x.seasons >= .6) T.push(["Playoff regular", `playoffs in ${x.po} of his ${x.seasons} seasons`]);
+    if (x.pw + x.pl >= 20 && x.pw / (x.pw + x.pl) >= .6) T.push(["Big-game coach", `${x.pw}–${x.pl} in the playoffs (${(x.pw / (x.pw + x.pl)).toFixed(3).replace(/^0/, "")})`]);
+    if (x.turns.length) T.push(["Turnaround", `took over ${x.turns.join(", ")} at .400 or worse and was 15+ points better by year 2 or 3`]);
+    if (x.wins60) T.push(["60-win season", `${x.wins60} season${x.wins60 > 1 ? "s" : ""} with 60+ wins`]);
+    x.tags = T }
+  return out }

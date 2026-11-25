@@ -10,7 +10,7 @@ on:
         description: "live · catchup · weekly · look · qb · views · avail · coaches · cdef · nfl · nflhistory · nfldraft · history · full"
         default: live
         type: choice
-        options: [live, boardsum, release, cavail, look, crawl, probe, extras, honors, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, grtest, nfl, nflhistory, nfldraft, history, full, colgap, cfbholes, nflrec, cfbrec, style, punt, prefetch, nflhof, study, pbpfill, nflpick, cfbpick, thisday, nflstad, colang, fproj, recmap]
+        options: [live, boardsum, release, cavail, look, crawl, probe, extras, honors, catchup, weekly, qb, views, avail, coaches, cdef, dgtest, oltest, grtest, nfl, nflhistory, nfldraft, history, full, colgap, cfbholes, nflrec, cfbrec, style, punt, prefetch, nflhof, study, pbpfill, nflpick, cfbpick, thisday, nflstad, colang, fproj, recmap, awhist]
       page:
         description: "Which version of the site runs the build: / (live) or /lab/ · /lab/?nav2 = the new header"
         default: "/"

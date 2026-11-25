@@ -68,7 +68,7 @@ import { buildStaff } from "./staff.mjs";
 const SITE = (process.env.SITE_URL || "").replace(/\/+$/, "");
 const JOB = process.env.JOB_TOKEN || "";
 /* a mode not on this list used to fall through to "live" — Oct 7, a "dgtest" run published a live build from the Lab page. Unknown now fails. */
-const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "cfbholes", "nflrec", "cfbrec", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad", "colang", "fproj", "recmap"];
+const MODES = ["boardsum", "release", "cavail", "look", "crawl", "probe", "extras", "honors", "live", "weekly", "history", "views", "qb", "avail", "coaches", "cdef", "nfl", "nflhistory", "nfldraft", "dgtest", "oltest", "grtest", "colgap", "cfbholes", "nflrec", "cfbrec", "style", "punt", "prefetch", "nflhof", "study", "pbpfill", "nflpick", "cfbpick", "thisday", "nflstad", "colang", "fproj", "recmap", "awhist"];
 if (process.env.MODE && !MODES.includes(process.env.MODE)) { console.error("Unknown MODE " + process.env.MODE); process.exit(1) }
 const MODE = process.env.MODE || "live";
 const NOFRESH = ["probe", "look", "crawl", "study", "release"].includes(MODE) || /test$/.test(MODE);
@@ -300,6 +300,15 @@ async function main() {
     await api("PUT", "/api/pack-index", { body: { "p2000_nfl-records": { sha: u.sha, bytes: u.bytes, at: Date.now() } } });
     const msg = `NFL records · ${Object.keys(R.st).length} stats · 1999–${R.through} · ${R.act.length} active in the career top 10s · ${(u.bytes / 1024).toFixed(0)} KB`; console.log(`::notice title=NFL records::${msg}`); await report(true, msg); return }
   /* the college map's national view (Nov 24 — the owner, 9:25 pm): every high-school signee by hometown, all schools (job/colrecmap.mjs). PROBE = "dry" builds without uploading */
+  /* award winners' seasons (Nov 24 — the owner, 11:36 pm, yes to the awards ideas): each past winner's season line and team (job/awhist.mjs); PROBE = "dry" builds without uploading */
+  if (MODE === "awhist") { const { buildAwHist } = await import("./awhist.mjs"); const { gzipSync } = await import("node:zlib");
+    const now = new Date(), cur = now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+    const getPack = async n => { const r = await fetch(SITE + "/api/pack/" + n, { headers: { Authorization: "Bearer " + sess.token } }); return r.ok ? r.json() : null };
+    const R = await buildAwHist({ site: SITE, token: sess.token, getPack, cur, log: x => console.log(x) });
+    let kb = 0; const DRY = (process.env.PROBE || "").trim() === "dry"; if (!DRY) { const u = await api("PUT", "/api/pack/p2000_awards-hist", { raw: true, body: gzipSync(Buffer.from(JSON.stringify(R))), headers: { "x-encoding": "gzip", "Content-Type": "application/json" } });
+      await api("PUT", "/api/pack-index", { body: { "p2000_awards-hist": { sha: u.sha, bytes: u.bytes, at: Date.now() } } }); kb = u.bytes / 1024 }
+    const msg = `award winners · college ${Object.values(R.col).flat().filter(r => r[4]).length} lines · NFL ${Object.values(R.nfl).flat().filter(r => r[2]).length} matched · ${R.miss.length} missed${DRY ? " · dry run" : ` · ${kb.toFixed(0)} KB`}`;
+    console.log(`::notice title=award winners::${msg}`); await report(true, msg); return }
   if (MODE === "recmap") { const { buildColRecMap, uploadColRecMap } = await import("./colrecmap.mjs");
     const now = new Date(), to = now.getUTCMonth() >= 7 ? now.getUTCFullYear() + 1 : now.getUTCFullYear();
     const b = await buildColRecMap({ site: SITE, token: sess.token, from: 2002, to, log: x => console.log(x) });

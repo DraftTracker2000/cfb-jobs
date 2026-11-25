@@ -436,7 +436,7 @@ return {ok:true,firstVsLast:n,thisSeason:cur,offRule:od,defense:dd,coaches,sampl
  return {ok:Object.values(out).every(x=>x.players>200&&!x.differ&&!x.dynFdiffer),...out}` },
   /* read only (Nov 24): do ESPN's box scores cover the three games our 1999–2000 NFL logs miss (1999 Wk 1 BAL at STL; 2000 Wk 3 SD–KC; 2000 Wk 6 BUF–MIA)? */
   { name: "espn99", node: `const out={};const F=async u=>{try{const r=await fetch(u);return r.ok?r.json():{st:r.status}}catch(e){return {err:String(e.message)}}};
-    for(const [k,d,a,b] of [["99w1","19990912","BAL","STL"],["00w3","20000917","SD","KC"],["00w6","20001008","BUF","MIA"]]){const S=await F("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates="+d);
+    for(const [k,d,a,b] of [["99w1","1999&seasontype=2&week=1","BAL","STL"],["99d13","19990913","BAL","STL"],["99d12b","19990912-19990913","BAL","STL"]]){const S=await F("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates="+d);
       const ev=(S.events||[]).find(e=>{const t=(e.competitions||[{}])[0].competitors||[];const ab=t.map(c=>c.team&&c.team.abbreviation);return ab.includes(a)||ab.includes(b)||ab.includes(a==="SD"?"LAC":a)});
       if(!ev){out[k]={events:(S.events||[]).length,names:(S.events||[]).map(e=>e.shortName).slice(0,16)};continue}
       const B=await F("https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event="+ev.id);const pl=(B.boxscore&&B.boxscore.players)||[];

@@ -824,4 +824,46 @@ out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(",
       for(const r of x.cr){const by=S[r[0]];if(!by){nomap++;continue}let t=0,ok=false;for(const y of Object.keys(by))if(+y>=R.first&&+y<=R.through){const v=val(by,+y,key);if(v!=null){t+=v;ok=true}}if(!ok){nomap++;continue}checked++;if(Math.abs(t-r[2])>.01)out.push(["career",key,r[1],r[3]+"-"+r[4],r[2],t])}}
     for(const l of out)console.log(l.join(" | "));
     return {ok:true,players:ids.size,noEspnId:miss,calls,checked,notComparable:nomap,mismatches:out.length,cats:Object.fromEntries(Object.entries(first).map(([k,v])=>[k,v.join(",")])),list:out.slice(0,120)}` },
+  /* (task #161; Nov 9 study for the NFL: docs/research/award-hunts-nfl.md) read-only: do game-level traits help the Heisman call? The page's Heisman
+     card rebuilt (awCands/awScore, its fitted weights, floor .68 / carry .45) for 2008–2025 from CFBD season stats through the proxy; traits from
+     the regular-season game box scores: signature games (best two vs his average), single best game, vs AP-ranked opponents, November on.
+     Each trait added with its weight picked on the other seasons (each season hidden in turn). Changes nothing. */
+  { name: "cawtraits", node: `const H={headers:{Authorization:"Bearer "+TOKEN}};const api=async p=>{for(let k=0;k<4;k++){try{const r=await fetch(SITE+"/api/cfbd?path="+encodeURIComponent(p),H);if(r.ok)return r.json();if(r.status===429)await new Promise(r=>setTimeout(r,4000))}catch(e){}await new Promise(r=>setTimeout(r,1200))}return []};
+    const AW=await (await fetch(SITE+"/data/col-awards.json",H)).json(),WIN=Object.fromEntries((AW.national["Heisman Trophy"]||[]).map(r=>[r[0],r]));
+    const W=[2.05,1.102,0.523,1.898,1.81,1.413,1.006],P4=["SEC","Big Ten","Big 12","ACC","Pac-12"],FLOOR=.68,CARRY=.45;
+    const nk=s=>String(s||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLowerCase().replace(/\\b(jr|sr|ii|iii|iv)\\b\\.?/g,"").replace(/[^a-z]/g,"");
+    const POS=p=>p==="QB"?"QB":/^(RB|FB|HB)$/.test(p)?"RB":p==="WR"?"WR":p==="TE"?"TE":null;
+    const prodS=(N,g)=>g==="QB"?N("passing_YDS")+20*N("passing_TD")-45*N("passing_INT")+N("rushing_YDS")+20*N("rushing_TD"):g==="RB"?N("rushing_YDS")+N("receiving_YDS")+20*(N("rushing_TD")+N("receiving_TD")):N("receiving_YDS")+20*N("receiving_TD")+3*N("receiving_REC");
+    const effS=(N,g)=>g==="QB"?(N("passing_ATT")?(N("passing_YDS")+20*N("passing_TD")-45*N("passing_INT"))/N("passing_ATT"):0):g==="RB"?(N("rushing_CAR")?N("rushing_YDS")/N("rushing_CAR"):0):(N("receiving_REC")?N("receiving_YDS")/N("receiving_REC"):0);
+    const volOK=(N,g)=>g==="QB"?N("passing_ATT")>=150:g==="RB"?N("rushing_CAR")>=100:g==="WR"?N("receiving_REC")>=30:N("receiving_REC")>=20;
+    const ms=v=>{const m=v.reduce((a,b)=>a+b,0)/(v.length||1),s=Math.sqrt(v.reduce((a,b)=>a+(b-m)**2,0)/(v.length||1))||1;return[m,s]};
+    const SEAS=[];
+    for(let y=2008;y<=2025;y++){const cats=["passing","rushing","receiving","defensive","interceptions"];const R=await Promise.all([...cats.map(c=>api("/stats/player/season?year="+y+"&category="+c+"&seasonType=both")),api("/records?year="+y),api("/rankings?year="+y+"&seasonType=regular")]);
+      const fbs={};for(const r of R[5]||[])if(r.classification==="fbs")fbs[r.team]={w:r.total.wins,g:r.total.games,conf:r.conference};
+      let last=null;for(const w of R[6]||[])if(!last||w.week>last.week)last=w;const ap={};if(last){const p=(last.polls||[]).find(x=>/AP Top 25/.test(x.poll))||(last.polls||[])[0];for(const r of (p&&p.ranks)||[])ap[r.school]=r.rank}
+      const apW={};for(const w of R[6]||[]){const m={};for(const p of w.polls||[])if(/^AP Top 25/i.test(p.poll))for(const r of p.ranks)m[r.school]=r.rank;apW[w.week]=m}
+      const P={};cats.forEach((c,i)=>{for(const r of R[i]||[]){if(!fbs[r.team])continue;const x=P[r.playerId]=P[r.playerId]||{id:String(r.playerId),n:r.player,t:r.team,pos:r.position,s:{}};x.s[c+"_"+r.statType]=+r.stat||0}});
+      const TT={};for(const x of Object.values(P)){const t=TT[x.t]=TT[x.t]||{p:0,r:0};t.p+=x.s.passing_YDS||0;t.r+=x.s.rushing_YDS||0}
+      const C=[];for(const x of Object.values(P)){const g=POS(x.pos);if(!g)continue;const tm=fbs[x.t],N=k=>+(x.s[k]||0);if(!tm||!volOK(N,g))continue;const win=tm.g?tm.w/tm.g:0,tot=(TT[x.t].p+TT[x.t].r)||1,mine=g==="QB"?N("passing_YDS")+N("rushing_YDS"):N("rushing_YDS")+N("receiving_YDS");
+        if(tm.g>=6&&win<FLOOR&&!(mine/tot>=CARRY))continue;const dprod=4*N("defensive_SACKS")+2*N("defensive_TFL")+2*N("defensive_PD")+6*N("interceptions_INT")+.25*N("defensive_TOT");
+        C.push({x,g,prod:prodS(N,g)+20*dprod,eff:effS(N,g),win,ap:ap[x.t]?(26-ap[x.t])/25:0,qb:g==="QB"?1:0,p4:(P4.includes(tm.conf)&&!(tm.conf==="Pac-12"&&y>=2024))||x.t==="Notre Dame"?1:0,sh:mine/tot})}
+      const Z={};for(const g of ["QB","RB","WR","TE"]){const A=Object.values(P).filter(x=>POS(x.pos)===g&&fbs[x.t]&&volOK(k=>+(x.s[k]||0),g));Z[g]={p:ms(A.map(x=>prodS(k=>+(x.s[k]||0),g))),e:ms(A.map(x=>effS(k=>+(x.s[k]||0),g)))}}
+      for(const c of C){const z=Z[c.g];c.zp=(c.prod-z.p[0])/z.p[1];c.ze=(c.eff-z.e[0])/z.e[1];c.sc=W[0]*c.zp+W[1]*c.ze+W[2]*c.win+W[3]*c.ap+W[4]*c.qb+W[5]*c.p4+W[6]*c.sh}
+      C.sort((a,b)=>b.sc-a.sc);const top=C.slice(0,25),ids=new Set(top.map(c=>c.x.id)),G={};
+      const weeks=Object.keys(apW).map(Number).filter(w=>w>=1&&w<=16);const maxW=Math.max(15,...weeks);
+      for(let wk=1;wk<=maxW;wk++){const D=await Promise.all(["passing","rushing","receiving"].map(c=>api("/games/players?year="+y+"&week="+wk+"&seasonType=regular&category="+c)));const apk=apW[wk]||apW[wk-1]||{};
+        for(const L of D)for(const gm of L||[]){const tm=gm.teams||[];if(tm.length!==2)continue;for(let s=0;s<2;s++)for(const c of tm[s].categories||[])for(const t of c.types||[])for(const a of t.athletes||[]){const id=String(a.id);if(!ids.has(id))continue;
+          const gg=(G[id]=G[id]||{})[gm.id]=G[id][gm.id]||{wk,opp:tm[1-s].team,rk:!!apk[tm[1-s].team],s:{}};if(t.name==="C/ATT"){const [cm,at]=String(a.stat).split("/").map(Number);gg.s.passing_COMPLETIONS=cm||0;gg.s.passing_ATT=at||0}else gg.s[c.name+"_"+t.name]=(parseFloat(a.stat)||0)}}}
+      for(const c of top){const g=Object.values(G[c.x.id]||{});const v=g.map(o=>prodS(k=>+(o.s[k]||0),c.g)).sort((a,b)=>b-a),m=v.length?v.reduce((a,b)=>a+b,0)/v.length:0;
+        c.t={sig:v.length>=4&&m>0?(v[0]+v[1])/2/m:1,best:v.length&&m>0?v[0]/m:1,vr:(()=>{const r=g.filter(o=>o.rk).map(o=>prodS(k=>+(o.s[k]||0),c.g));return r.length&&m>0?r.reduce((a,b)=>a+b,0)/r.length/m:1})(),late:(()=>{const r=g.filter(o=>o.wk>=10).map(o=>prodS(k=>+(o.s[k]||0),c.g));return r.length&&m>0?r.reduce((a,b)=>a+b,0)/r.length/m:1})(),gp:v.length}}
+      const wr=WIN[y];SEAS.push({y,win:wr&&wr[1],C:top.map(c=>({n:c.x.n,t:c.x.t,sc:c.sc,t:c.t,w:wr&&nk(c.x.n)===nk(wr[1])?1:0}))})}
+    const TR=["sig","best","vr","late"],WG=[-1,-.5,0,.5,1,1.5,2,3];
+    const zt=(S,tr)=>{const v=S.C.map(c=>c.t[tr]),m=v.reduce((a,b)=>a+b,0)/v.length,s=Math.sqrt(v.reduce((a,b)=>a+(b-m)**2,0)/v.length)||1;return S.C.map(c=>(c.t[tr]-m)/s)};
+    const hit=(S,tr,w)=>{const z=tr?zt(S,tr):S.C.map(()=>0),s=S.C.map((c,i)=>c.sc+w*z[i]),o=s.map((v,i)=>[v,i]).sort((a,b)=>b[0]-a[0]),r=o.findIndex(([,i])=>S.C[i].w);return [r===0?1:0,r>=0&&r<5?1:0]};
+    const sum=(L,tr,w)=>L.reduce((a,S)=>{const h=hit(S,tr,w);return[a[0]+h[0],a[1]+h[1]]},[0,0]);
+    const out={base:sum(SEAS,null,0),seasons:SEAS.length,winnersInPool:SEAS.filter(S=>S.C.some(c=>c.w)).length,traits:{}};
+    for(const tr of TR){let h1=0,h5=0;const picks=[];for(const S of SEAS){const rest=SEAS.filter(x=>x!==S),w=WG.reduce((b,w)=>{const a=sum(rest,tr,w),c=sum(rest,tr,b);return a[0]>c[0]||(a[0]===c[0]&&a[1]>c[1])?w:b},0);picks.push(w);const h=hit(S,tr,w);h1+=h[0];h5+=h[1]}
+      out.traits[tr]={heldOut:[h1,h5],weights:picks.join(","),inSample:Object.fromEntries(WG.map(w=>[w,sum(SEAS,tr,w).join("/")]))}}
+    out.winners=SEAS.map(S=>{const c=S.C.find(c=>c.w);return S.y+" "+(S.win||"?")+(c?" sig "+c.t.sig.toFixed(2)+" vr "+c.t.vr.toFixed(2)+" late "+c.t.late.toFixed(2)+" gp "+c.t.gp:" (not in our top 25)")});
+    return {ok:true,...out}` },
 ];

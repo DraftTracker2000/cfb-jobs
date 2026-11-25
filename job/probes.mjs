@@ -434,6 +434,14 @@ return {ok:true,firstVsLast:n,thisSeason:cur,offRule:od,defense:dd,coaches,sampl
  let n=0,d=0,mx=0,fd=0,ex=[];for(const k of K){const a=v1[k],b=A2.value(k),e=Math.abs(a-b);n++;if(e>1e-9){d++;if(ex.length<5)ex.push(A1.nm(k)+" "+a.toFixed(3)+" vs "+b.toFixed(3))}mx=Math.max(mx,e);if(f1[k]!==(A2.val(k).dynF||[]).join())fd++}
  const top=K.sort((a,b)=>v1[b]-v1[a]).slice(0,5).map(k=>A1.nm(k)+" "+v1[k].toFixed(1));out[sc]={players:n,differ:d,maxDiff:+mx.toExponential(2),dynFdiffer:fd,ex,top,postKB:Math.round(bytes/1024),ms}}
  return {ok:Object.values(out).every(x=>x.players>200&&!x.differ&&!x.dynFdiffer),...out}` },
+  /* read only (Nov 24): do ESPN's box scores cover the three games our 1999–2000 NFL logs miss (1999 Wk 1 BAL at STL; 2000 Wk 3 SD–KC; 2000 Wk 6 BUF–MIA)? */
+  { name: "espn99", node: `const out={};const F=async u=>{try{const r=await fetch(u);return r.ok?r.json():{st:r.status}}catch(e){return {err:String(e.message)}}};
+    for(const [k,d,a,b] of [["99w1","19990912","BAL","STL"],["00w3","20000917","SD","KC"],["00w6","20001008","BUF","MIA"]]){const S=await F("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates="+d);
+      const ev=(S.events||[]).find(e=>{const t=(e.competitions||[{}])[0].competitors||[];const ab=t.map(c=>c.team&&c.team.abbreviation);return ab.includes(a)||ab.includes(b)||ab.includes(a==="SD"?"LAC":a)});
+      if(!ev){out[k]={events:(S.events||[]).length,names:(S.events||[]).map(e=>e.shortName).slice(0,16)};continue}
+      const B=await F("https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event="+ev.id);const pl=(B.boxscore&&B.boxscore.players)||[];
+      out[k]={id:ev.id,name:ev.shortName,score:(ev.competitions[0].competitors||[]).map(c=>c.team.abbreviation+" "+c.score).join(" "),teams:pl.length,cats:pl.map(t=>t.team.abbreviation+":"+(t.statistics||[]).map(s=>s.name+"("+(s.athletes||[]).length+")").join(",")),sample:pl[0]&&pl[0].statistics&&pl[0].statistics[0]?{labels:pl[0].statistics[0].labels,first:(pl[0].statistics[0].athletes||[]).slice(0,2).map(a=>a.athlete.displayName+" "+a.stats.join("/"))}:null}}
+    return {ok:true,...out}` },
   { name: "pickcmp", page: "/", widths: [1280], settle: 6000, run: `const G=await nflGames();await nflQbOutLoad().catch(()=>{});const r=await fetch("/api/pack/p"+CURYEAR+"_nfl-picks",{headers:{Authorization:"Bearer "+TOKEN}});if(!r.ok)return {ok:false,st:r.status};const P=await r.json();
 let n=0,d=0,mx=0,ex=[];for(const g of G){if(P.g[g.id]==null)continue;n++;const v=nflPickP(G,g),e=Math.abs(v-P.g[g.id]);if(e>0.0006){d++;if(ex.length<6)ex.push(g.id+" "+v.toFixed(4)+" vs "+P.g[g.id])}mx=Math.max(mx,e)}
 let pn=0,pd=0;const T=Object.keys(P.h);for(const a of T)for(const b of T)if(a!==b){pn++;const v=nflPickP(G,{home:a,away:b,neutral:false,date:null,season:CURYEAR});if(Math.abs(v-P.h[a][b])>0.0006)pd++}

@@ -884,7 +884,7 @@ out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(",
     const effS=(N,g)=>g==="QB"?(N("passing_ATT")?(N("passing_YDS")+20*N("passing_TD")-45*N("passing_INT"))/N("passing_ATT"):0):g==="RB"?(N("rushing_CAR")?N("rushing_YDS")/N("rushing_CAR"):0):(N("receiving_REC")?N("receiving_YDS")/N("receiving_REC"):0);
     const volOK=(N,g)=>g==="QB"?N("passing_ATT")>=150:g==="RB"?N("rushing_CAR")>=100:g==="WR"?N("receiving_REC")>=30:N("receiving_REC")>=20;
     const ms=v=>{const m=v.reduce((a,b)=>a+b,0)/(v.length||1),s=Math.sqrt(v.reduce((a,b)=>a+(b-m)**2,0)/(v.length||1))||1;return[m,s]};
-    const SEAS=[],REC={};const RK=[["pyd",N=>N("passing_YDS")],["ptd",N=>N("passing_TD")],["ryd",N=>N("rushing_YDS")],["rtd",N=>N("rushing_TD")],["cyd",N=>N("receiving_YDS")],["ctd",N=>N("receiving_TD")],["scr",N=>N("rushing_YDS")+N("receiving_YDS")],["std",N=>N("rushing_TD")+N("receiving_TD")],["tot",N=>N("passing_YDS")+N("rushing_YDS")]];
+    const SEAS=[],REC={},HIST={QB:[],RB:[],WR:[],TE:[]},HTOP={QB:[],RB:[],WR:[],TE:[]};const RK=[["pyd",N=>N("passing_YDS")],["ptd",N=>N("passing_TD")],["ryd",N=>N("rushing_YDS")],["rtd",N=>N("rushing_TD")],["cyd",N=>N("receiving_YDS")],["ctd",N=>N("receiving_TD")],["scr",N=>N("rushing_YDS")+N("receiving_YDS")],["std",N=>N("rushing_TD")+N("receiving_TD")],["tot",N=>N("passing_YDS")+N("rushing_YDS")]];
     for(let y=2004;y<=2025;y++){const cats=["passing","rushing","receiving","defensive","interceptions"];const R=await Promise.all([...cats.map(c=>api("/stats/player/season?year="+y+"&category="+c+"&seasonType=both")),api("/records?year="+y),api("/rankings?year="+y+"&seasonType=regular")]);
       const fbs={};for(const r of R[5]||[])if(r.classification==="fbs")fbs[r.team]={w:r.total.wins,g:r.total.games,conf:r.conference};
       let last=null;for(const w of R[6]||[])if(!last||w.week>last.week)last=w;const ap={};if(last){const p=(last.polls||[]).find(x=>/AP Top 25/.test(x.poll))||(last.polls||[])[0];for(const r of (p&&p.ranks)||[])ap[r.school]=r.rank}
@@ -900,15 +900,19 @@ out.ok=out.ok.slice(0,60).join(", ");out.blocked=out.blocked.slice(0,40).join(",
       const Z={};for(const g of ["QB","RB","WR","TE"]){const A=Object.values(P).filter(x=>POSX(x)===g&&fbs[x.t]&&volOK(k=>+(x.s[k]||0),g));Z[g]={p:ms(A.map(x=>prodS(k=>+(x.s[k]||0),g))),e:ms(A.map(x=>effS(k=>+(x.s[k]||0),g)))}}
       for(const c of C){const z=Z[c.g];c.zp=(c.prod-z.p[0])/z.p[1];c.ze=(c.eff-z.e[0])/z.e[1];c.parts=[W[0]*c.zp,W[1]*c.ze,W[2]*c.win,W[3]*c.ap,W[4]*c.qb,W[5]*c.p4,W[6]*c.sh];c.sc=c.parts.reduce((a,b)=>a+b,0)}
       C.sort((a,b)=>b.sc-a.sc);const top=C.slice(0,40),wr=WIN[y];
+      /* against history (9:03 pm): his production vs every past qualified season at his position (z), and his place among the past top-10 seasons at it (share he beats) */
+      for(const c of C){const H=HIST[c.g],T=HTOP[c.g];const hm=ms(H);c.hz=H.length?(c.prod-hm[0])/hm[1]:0;c.hp=T.length?T.filter(v=>c.prod>v).length/T.length:0}
       const bz=ms(top.filter(c=>c.g!=="QB").map(c=>c.bsh));
-      SEAS.push({y,win:wr&&wr[1],C:top.map(c=>({n:c.x.n,t:c.x.t,g:c.g,p4:c.p4,sc:c.sc,win:c.parts[2],ap:c.parts[3],bz:c.g==="QB"?0:(c.bsh-bz[0])/bz[1],rec:c.rec,rb:c.g==="RB"?1:0,w:wr&&nk(c.x.n)===nk(wr[1])?1:0}))})}
-      for(const [k,v] of Object.entries(best))REC[k]=Math.max(REC[k]||0,v)}
+      SEAS.push({y,win:wr&&wr[1],C:top.map(c=>({n:c.x.n,t:c.x.t,g:c.g,p4:c.p4,sc:c.sc,win:c.parts[2],ap:c.parts[3],bz:c.g==="QB"?0:(c.bsh-bz[0])/bz[1],zp0:c.zp,rec:c.rec,rb:c.g==="RB"?1:0,hz:c.hz,hp:c.hp,w:wr&&nk(c.x.n)===nk(wr[1])?1:0}))})}
+      for(const [k,v] of Object.entries(best))REC[k]=Math.max(REC[k]||0,v);
+      { const byG={QB:[],RB:[],WR:[],TE:[]};for(const x of Object.values(P)){const g=POSX(x),N=k=>+(x.s[k]||0);if(!g||!fbs[x.t]||!volOK(N,g))continue;const dp=4*N("defensive_SACKS")+2*N("defensive_TFL")+2*N("defensive_PD")+6*N("interceptions_INT")+.25*N("defensive_TOT");byG[g].push(prodS(N,g)+20*dp)}
+        for(const g in byG){HIST[g].push(...byG[g]);HTOP[g].push(...byG[g].sort((a,b)=>b-a).slice(0,10))} } }
     /* the fittings: team record (win share and AP rank) scaled; a back's share of his team's scrimmage yards and TDs; a record-season bonus (any stat / backs only) */
-    const F={teamRec:(c,w)=>(w-1)*(c.win+c.ap),winOnly:(c,w)=>(w-1)*c.win,backShare:(c,w)=>w*c.bz,recAny:(c,w)=>w*(c.rec.length?1:0),recBack:(c,w)=>w*(c.rb&&c.rec.some(k=>["ryd","rtd","scr","std"].includes(k))?1:0)};
-    const GR={teamRec:[0,.25,.5,.75,1,1.25,1.5,2],winOnly:[0,.5,1,1.5,2,3],backShare:[0,.25,.5,1,1.5,2],recAny:[0,.25,.5,1,1.5,2,3],recBack:[0,.25,.5,1,1.5,2,3]};
+    const F={teamRec:(c,w)=>(w-1)*(c.win+c.ap),winOnly:(c,w)=>(w-1)*c.win,backShare:(c,w)=>w*c.bz,recAny:(c,w)=>w*(c.rec.length?1:0),recBack:(c,w)=>w*(c.rb&&c.rec.some(k=>["ryd","rtd","scr","std"].includes(k))?1:0),histZ:(c,w)=>w*c.hz,histTop:(c,w)=>w*c.hp,histInstead:(c,w)=>w*(c.hz-c.zp0)};
+    const GR={teamRec:[0,.25,.5,.75,1,1.25,1.5,2],winOnly:[0,.5,1,1.5,2,3],backShare:[0,.25,.5,1,1.5,2],recAny:[0,.25,.5,1,1.5,2,3],recBack:[0,.25,.5,1,1.5,2,3],histZ:[0,.25,.5,1,1.5,2,3],histTop:[0,.5,1,1.5,2,3,4],histInstead:[0,.5,1,1.5,2.05]};
     const hit=(S,f,w)=>{const s=S.C.map(c=>c.sc+(f?F[f](c,w):0)),o=s.map((v,i)=>[v,i]).sort((a,b)=>b[0]-a[0]),r=o.findIndex(([,i])=>S.C[i].w);return [r===0?1:0,r>=0&&r<5?1:0]};
     const sum=(L,f,w)=>L.reduce((a,S)=>{const h=hit(S,f,w);return[a[0]+h[0],a[1]+h[1]]},[0,0]);
-    const base0={teamRec:1,winOnly:1,backShare:0,recAny:0,recBack:0};
+    const base0={teamRec:1,winOnly:1,backShare:0,recAny:0,recBack:0,histZ:0,histTop:0,histInstead:0};
     const out={base:sum(SEAS,null,0),seasons:SEAS.length,winnersInPool:SEAS.filter(S=>S.C.some(c=>c.w)).length,fits:{}};
     for(const f in F){let h1=0,h5=0;const picks=[];for(const S of SEAS){const rest=SEAS.filter(x=>x!==S),w=GR[f].reduce((b,w)=>{const a=sum(rest,f,w),c=sum(rest,f,b);return a[0]>c[0]||(a[0]===c[0]&&a[1]>c[1])?w:b},base0[f]);picks.push(w);const h=hit(S,f,w);h1+=h[0];h5+=h[1]}
       out.fits[f]={heldOut:[h1,h5],weights:picks.join(","),inSample:Object.fromEntries(GR[f].map(w=>[w,sum(SEAS,f,w).join("/")]))}}

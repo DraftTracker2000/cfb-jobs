@@ -134,15 +134,36 @@ const DEEP = site === "fb" ? [
   ["NFL profile (WR)", `(async()=>{const P=await nflPlayers();const k=Object.keys(P).find(k=>P[k].name==="Justin Jefferson")||Object.keys(P).find(k=>P[k].pos==="WR"&&P[k].team);nflProfile(k)})()`],
   ["NFL profile (RB)", `(async()=>{const P=await nflPlayers();const k=Object.keys(P).find(k=>P[k].name==="Saquon Barkley")||Object.keys(P).find(k=>P[k].pos==="RB"&&P[k].team);nflProfile(k)})()`],
   ["College profile (top board QB)", `(()=>{const k=Object.keys(D.pool).find(k=>D.pool[k].pos==="QB")||Object.keys(D.pool)[0];profile(k)})()`],
-  ["College profile (top board WR)", `(()=>{const k=Object.keys(D.pool).find(k=>D.pool[k].pos==="WR")||Object.keys(D.pool)[1];profile(k)})()`]
+  ["College profile (top board WR)", `(()=>{const k=Object.keys(D.pool).find(k=>D.pool[k].pos==="WR")||Object.keys(D.pool)[1];profile(k)})()`],
+  /* Nov 25 (the owner, 6:03 pm: "those coaches profiles looked bad and did not have the right info on each page"; 6:33 pm: "i constantly have you
+     audit to be sure everything is in the right place"): the audit never opened a coach or a team page, and never clicked a football profile's
+     tabs (it looked for .ptab, the bar is .ptabs) — coaches and teams on both sports now, every tab clicked, and the "wrong tab" check below */
+  ["College coach (one school)", `(async()=>{navGo("col","TEAMS","coaches");for(let i=0;i<40&&!(typeof coachScores==="function"&&coachScores());i++)await new Promise(r=>setTimeout(r,500));const A=(coachScores()||{}).all||[],c=A.find(c=>c.cur&&/Kirby Smart/.test(c.c.n))||A.find(c=>c.cur);coachProfile(c.c.k)})()`],
+  ["College coach (several schools)", `(async()=>{const A=(coachScores()||{}).all||[],c=A.find(c=>c.cur&&/Lane Kiffin|Brian Kelly/.test(c.c.n))||A.filter(c=>c.cur)[5];coachProfile(c.c.k)})()`],
+  ["College team", `teamProfile("Georgia")`],
+  ["NFL coach", `nflCoachProfile("Sean McVay")`],
+  ["NFL team", `nflTeamProfile("KC")`]
 ] : [
-  ["NBA profile", `(()=>{const t=Object.values(window.NBA_P||{})[0];if(typeof openPro==="function"&&t)openPro(t.id||t.pid)})()`]
+  ["NBA profile", `(()=>{const t=Object.values(window.NBA_P||{})[0];if(typeof openPro==="function"&&t)openPro(t.id||t.pid)})()`],
+  ["NBA coach", `openNbaCoach("Steve Kerr")`],
+  ["NBA team", `openNbaT("BOS")`],
+  ["College coach", `(async()=>{const CO=await loadCoaches();const K=Object.keys(CO.coaches);const id=K.find(k=>/Izzo|Few/.test(JSON.stringify(CO.coaches[k]).slice(0,200)))||K[0];openCoach(id)})()`],
+  ["College team", `(()=>{const K=Object.keys((TEAMS&&TEAMS.teams)||{});const id=K.find(k=>/Duke|Kansas/.test(JSON.stringify(TEAMS.teams[k]).slice(0,200)))||K[0];openT(id)})()`]
 ];
 for (const [name, js] of DEEP) { try { await p.evaluate(js) } catch (e) { RES.push({ n: ++n, name, probs: [["couldn't open", e.message.slice(0, 120)]] }); continue } await p.waitForTimeout(6000);
   /* profile tabs */
-  const tabs = await p.evaluate(() => [...document.querySelectorAll("#md [role=tab], #md .ptab, #md .tabs button")].filter(b => b.offsetParent).map(b => b.textContent.trim()).slice(0, 10)).catch(() => []);
-  await view(name);
-  for (const t of tabs.slice(1)) { const did = await p.evaluate(t => { const b = [...document.querySelectorAll("#md [role=tab], #md .ptab, #md .tabs button")].find(b => b.offsetParent && b.textContent.trim() === t); if (b) { b.click(); return true } return false }, t).catch(() => false); if (did) { await p.waitForTimeout(2500); await view(`${name} → ${t}`) } }
+  const tabs = await p.evaluate(() => [...document.querySelectorAll("#md [role=tab], #md .ptab, #md .tabs button, #md .ptabs button[data-pt]")].filter(b => b.offsetParent).map(b => b.textContent.trim()).slice(0, 10)).catch(() => []);
+  /* on a football profile, every card on screen must belong to the tab that's on, and no card may show under every tab */
+  const tabCheck = () => p.evaluate(() => { const md = document.getElementById("md"), bar = md && md.querySelector(":scope>.ptabs"); if (!bar) return null;
+    const cur = (bar.querySelector("button.on") || {}).dataset?.pt || bar.dataset.cur, seen = [...md.children].filter(e => e.dataset.pt && e.offsetParent !== null && e.getBoundingClientRect().height > 4);
+    const hd = e => ((e.querySelector(".sect,.k") || e).textContent || "").replace(/\s+/g, " ").trim().slice(0, 50);
+    return { cur, wrong: seen.filter(e => e.dataset.pt !== cur).map(e => e.dataset.pt + ": " + hd(e)), heads: seen.map(hd) } }).catch(() => null);
+  const onTabs = {}, noteTab = async label => { const t = await tabCheck(); if (!t) return []; for (const h of t.heads) (onTabs[h] = onTabs[h] || []).push(label);
+    return t.wrong.map(w => ["wrong tab", `${label}: ${w}`]) };
+  await view(name); { const w = await noteTab(tabs[0] || "first"); if (w.length) RES[RES.length - 1].probs.push(...w) }
+  for (const t of tabs.slice(1)) { const did = await p.evaluate(t => { const b = [...document.querySelectorAll("#md [role=tab], #md .ptab, #md .tabs button, #md .ptabs button[data-pt]")].find(b => b.offsetParent && b.textContent.trim() === t); if (b) { b.click(); return true } return false }, t).catch(() => false); if (did) { await p.waitForTimeout(2500); await view(`${name} → ${t}`); const w = await noteTab(t); if (w.length) RES[RES.length - 1].probs.push(...w) } }
+  /* a card heading shown under every tab of a profile with 3+ tabs is the Nov 25 bug (the coach's CoachScore row on every tab) */
+  if (tabs.length >= 3) { const every = Object.entries(onTabs).filter(([h, L]) => h && new Set(L).size >= tabs.length).map(([h]) => h); if (every.length) RES.push({ n: ++n, name: name + " · every tab", probs: every.map(h => ["on every tab", h]) }) }
   await p.evaluate(() => { const x = document.querySelector("#md .x, #md [aria-label=Close], .mclose"); if (x) x.click() }).catch(() => {}) }
 await browser.close();
 const sum = {}; for (const r of RES) for (const [k] of r.probs) sum[k] = (sum[k] || 0) + 1;
